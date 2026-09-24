@@ -11,11 +11,14 @@ import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../domain/access_control.dart';
+import '../catalog/assets_screen.dart';
 import '../catalog/kitchens_screen.dart';
 import '../catalog/items_screen.dart';
 import '../catalog/suppliers_screen.dart';
 import '../catalog/units_screen.dart';
 import '../catalog/warehouses_screen.dart';
+import '../daily/camp_dashboard_screen.dart';
+import '../daily/meal_plan_screen.dart';
 import '../daily/kitchen_log_screen.dart';
 import '../daily/ratios_screen.dart';
 import '../daily/strength_screen.dart';
@@ -23,12 +26,17 @@ import '../insights/activity_intel_screen.dart';
 import '../insights/executive_cmd_screen.dart';
 import '../insights/health_ops_screen.dart';
 import '../insights/sensitive_ops_screen.dart';
+import '../inventory/ration_order_screen.dart';
 import '../inventory/issue_screen.dart';
 import '../inventory/opening_screen.dart';
 import '../inventory/pending_screen.dart';
 import '../inventory/receive_screen.dart';
 import '../inventory/returns_screen.dart';
 import '../inventory/transfer_screen.dart';
+import 'notification_bell.dart';
+import '../reports/camp_ledger_screen.dart';
+import '../reports/camp_settlement_screen.dart';
+import '../reports/actual_entitlement_screen.dart';
 import '../reports/balances_screen.dart';
 import '../reports/reports_center_screen.dart';
 import '../settings/audit_screen.dart';
@@ -77,6 +85,7 @@ const _menu = <_MenuSection>[
     _MenuItem('units', 'users', 'الوحدات المستفيدة'),
     _MenuItem('stores', 'warehouse', 'المستودعات'),
     _MenuItem('kitchens', 'utensils', 'المطابخ والأفران'),
+    _MenuItem('assets', 'package', 'الأصول الثابتة'),
   ]),
   _MenuSection('stock', 'package', 'العمليات المخزنية', [
     _MenuItem('pendingOrders', 'bell', 'أوامر التوريد المعلقة'),
@@ -85,16 +94,22 @@ const _menu = <_MenuSection>[
     _MenuItem('transfer', 'refresh', 'تحويل مخزني'),
     _MenuItem('returns', 'undo', 'المرتجعات'),
     _MenuItem('opening', 'clipboard', 'الأرصدة الافتتاحية'),
+    _MenuItem('rationOrders', 'clipboard', 'طلبيات الإعاشة'),
   ]),
   _MenuSection('daily', 'chart', 'التشغيل اليومي', [
     _MenuItem('feeding', 'calendar', 'التغذية اليومية (حصر القوة)'),
     _MenuItem('kitchenLog', 'utensils', 'سجل التشغيل والطهي اليومي'),
     _MenuItem('ratios', 'scale', 'نسب الاستهلاك'),
+    _MenuItem('mealPlans', 'utensils', 'خطط الوجبات'),
+    _MenuItem('campDashboard', 'radio', 'لوحة المعسكرات'),
   ]),
   _MenuSection('reports', 'trending', 'التقارير والجرد', [
     _MenuItem('balances', 'calculator', 'الأرصدة الحالية'),
     _MenuItem('stocktake', 'clipboard', 'جرد المخزون'),
     _MenuItem('reports', 'chart', 'التقارير'),
+    _MenuItem('actualEntitlement', 'calculator', 'حساب الاستحقاق الفعلي'),
+    _MenuItem('campLedger', 'calculator', 'سجل حساب المعسكر'),
+    _MenuItem('campSettlement', 'lock', 'تصفية الشهر'),
     _MenuItem('auditTrail', 'scan', 'سجل النشاط والتدقيق'),
     _MenuItem('activityIntel', 'bulb', 'ذكاء النشاط والانحرافات'),
     _MenuItem('executiveCmd', 'target', 'مركز القيادة التنفيذية'),
@@ -180,6 +195,20 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return const KitchensScreen();
       case 'units':
         return const UnitsScreen();
+      case 'campDashboard':
+        return const CampDashboardScreen();
+      case 'campLedger':
+        return const CampLedgerScreen();
+      case 'campSettlement':
+        return const CampSettlementScreen();
+      case 'actualEntitlement':
+        return const ActualEntitlementScreen();
+      case 'mealPlans':
+        return const MealPlanScreen();
+      case 'assets':
+        return const AssetsScreen();
+      case 'rationOrders':
+        return const RationOrderScreen();
       case 'stores':
         return const WarehousesScreen();
       case 'pendingOrders':
@@ -281,6 +310,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               userName: side.userName,
               showBurger: !wide,
               onBurger: () => _scaffoldKey.currentState?.openEndDrawer(),
+              onOpenPage: _go,
             ),
             Expanded(
               child: Row(
@@ -303,11 +333,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
 /// `.topbar`
 class _Topbar extends StatelessWidget {
-  const _Topbar({required this.userName, required this.showBurger, required this.onBurger});
+  const _Topbar({
+    required this.userName,
+    required this.showBurger,
+    required this.onBurger,
+    required this.onOpenPage,
+  });
 
   final String userName;
   final bool showBurger;
   final VoidCallback onBurger;
+  final ValueChanged<String> onOpenPage;
 
   @override
   Widget build(BuildContext context) {
@@ -333,6 +369,8 @@ class _Topbar extends StatelessWidget {
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: c.text2),
           ),
           const Spacer(),
+          NotificationBell(onOpenPage: onOpenPage),
+          const SizedBox(width: 8),
           Container(
             height: 40,
             padding: const EdgeInsetsDirectional.fromSTEB(6, 4, 10, 4),

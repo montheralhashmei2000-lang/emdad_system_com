@@ -4,6 +4,8 @@ import 'package:drift/drift.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/db/app_database.dart';
+import '../../data/sync/sync_marks.dart';
+import '../../data/sync/sync_trust.dart';
 import 'pbkdf2.dart';
 
 /// نتيجة محاولة الدخول
@@ -163,10 +165,29 @@ class AuthService {
     return AuthResult(status: AuthStatus.ok, user: found, message: '🌐 تم الدخول محليًا (بدون إنترنت)');
   }
 
-  /// «إعادة تعيين محلي» في الويب: تُمسح حسابات الدخول المحلية (حسابات المدير المُهيّأة من شاشة الدخول)
-  /// وأقفال المحاولات والجلسة، فيظهر خيار تهيئة مدير جديد. بقية البيانات لا تُمس.
+  /// «إعادة تعيين محلي»: تُمسح حسابات الدخول من **هذا الجهاز وحده**، وأقفال
+  /// المحاولات والجلسة، فيظهر خيار تهيئة مدير جديد أو استقبال الحسابات
+  /// بالمزامنة. بقية البيانات لا تُمس.
+  ///
+  /// **و«محلي» تعني محليًا حقًا.** الحذف في هذا النظام يُكتب له شاهدٌ تحمله
+  /// المزامنة إلى بقية الأجهزة — وهو الصواب في حذف صنف أو سند، وكارثةٌ هنا:
+  /// مسؤول فرعٍ نسي كلمة مروره فضغط هذا الزر، فسافر الشاهد إلى جهاز الإدارة
+  /// وحذف حساب المدير هناك، ثم إلى كل فرع. إجراءُ إنقاذٍ على جهاز واحد يقفل
+  /// الوحدة كلها خارج نظامها.
+  ///
+  /// فتُمحى الشواهد بعد الحذف مباشرة: الجهاز الآخر لا يعلم أن شيئًا حُذف هنا،
+  /// وتُصفَّر علامات السحب فتعود الحسابات إليه في أول مزامنة.
   Future<void> localReset() async {
     await (db.delete(db.users)..where((t) => t.id.like('local-%'))).go();
+
+    // لا شاهد يسافر: ما جرى هنا شأن هذا الجهاز.
+    await db.customStatement(
+      "DELETE FROM ${SyncMarks.table} WHERE entity = 'users' AND deleted_at IS NOT NULL",
+    );
+    // وتصفير علامات السحب يجعل المزامنة القادمة كاملة، فتعود الحسابات — ولولاه
+    // لظنّ الجهاز أنه استلمها فلا يطلبها مرة أخرى أبدًا.
+    await SyncTrust(db).resetPullWatermarks();
+
     final prefs = await SharedPreferences.getInstance();
     for (final k in prefs.getKeys().where((k) => k.startsWith('imdad.auth.lock.')).toList()) {
       await prefs.remove(k);

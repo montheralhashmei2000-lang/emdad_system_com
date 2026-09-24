@@ -158,6 +158,19 @@ class SyncTrust {
 
   Future<void> remember(TrustedPeer peer) => _put('peers', peer);
 
+  /// تُصفَّر علامات السحب وحدها، فتكون المزامنة القادمة كاملة من كل جهاز
+  /// موثوق. الثقة والمفاتيح تبقى — المقصود إعادة جلب البيانات لا قطع العلاقة.
+  Future<void> resetPullWatermarks() async {
+    final map = await _read();
+    final bag = map['peers'];
+    if (bag is! Map) return;
+    for (final entry in bag.entries) {
+      final v = entry.value;
+      if (v is Map) v['pulledUpTo'] = 0;
+    }
+    await _write(map);
+  }
+
   /// يُنسى الجهاز من الجهتين: نسيان نصف العلاقة يترك بابًا مفتوحًا بلا واجهة
   /// تعرضه.
   Future<void> forget(String deviceId) async {

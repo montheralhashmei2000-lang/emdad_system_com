@@ -12,6 +12,7 @@ import 'core/ui/imd_fonts.dart';
 import 'core/ui/imd_widgets.dart';
 import 'core/theme/app_theme.dart';
 import 'data/db/app_database.dart';
+import 'data/repos/camp_ledger_repo.dart';
 import 'data/repos/settings_repo.dart';
 import 'data/sync/auto_sync.dart';
 import 'features/auth/login_screen.dart';
@@ -34,6 +35,7 @@ Future<void> main() async {
         center: true,
       ),
       () async {
+        await _restoreNormalWindow();
         await windowManager.show();
         await windowManager.focus();
       },
@@ -52,6 +54,28 @@ Future<void> main() async {
     themeMode: ImdTheme.parse(identity.themePref),
     fontFamily: identity.fontFamily,
   ));
+}
+
+/// نافذة عادية مؤطَّرة، داخل حدود الشاشة — تُضبط عند كل إقلاع.
+///
+/// ويندوز يستعيد للنافذة وضعها السابق: فإن تركها المستخدم في ملء الشاشة، أو
+/// جرّها حتى صار شريط عنوانها فوق حافة الشاشة، فتحها في المرة القادمة كذلك.
+/// فيختفي الشريط ومعه زرّا التصغير والتكبير، ويبدو التطبيق معطوبًا وهو سليم
+/// — ولا يبقى للمستخدم إلا اختصارات لوحة مفاتيح لا يعرفها.
+///
+/// فلا يُترك الأمر لويندوز: كل إقلاع يبدأ بنافذة سويّة.
+Future<void> _restoreNormalWindow() async {
+  try {
+    if (await windowManager.isFullScreen()) await windowManager.setFullScreen(false);
+    await windowManager.setTitleBarStyle(TitleBarStyle.normal);
+    await windowManager.setResizable(true);
+    await windowManager.setMaximizable(true);
+    // إحداثيّ سالب يعني أن أعلى النافذة خارج الشاشة — وهناك يقع الشريط.
+    final at = await windowManager.getPosition();
+    if (at.dy < 0 || at.dx < 0) await windowManager.center();
+  } catch (_) {
+    // الإضافة غير مُهيّأة في بيئة الاختبار، وفشل التجميل لا يمنع التطبيق.
+  }
 }
 
 /// تفضيل السمة المحفوظ في شاشة الهوية (`APP_CFG.themePref`) — يطبَّق على التطبيق كله.
@@ -121,7 +145,13 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
   void initState() {
     super.initState();
     // بعد أول إطار: الإقلاع لا ينتظر الشبكة، وفشلها لا يمنع ظهور الواجهة.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _autoSync.refresh());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _autoSync.refresh();
+      // تصفية الشهر المنقضي إن أُذن بها — تتحقق بنفسها من الإذن وانقضاء الشهر.
+      CampLedgerRepo(widget.db).autoSettleIfDue().catchError(
+            (_) => const SettlementResult(ok: false, error: ''),
+          );
+    });
     // زر إغلاق النافذة لا يمرّ بـ `PopScope`، فيُعترض هنا ليُسأل عن التأكيد
     // كما يُسأل زر الرجوع على الهاتف.
     if (!kIsWeb && Platform.isWindows) {

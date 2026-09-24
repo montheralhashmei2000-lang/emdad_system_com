@@ -306,7 +306,7 @@ class ReportsRepo {
     }
     for (final r in await db.select(db.returns).get()) {
       push(r, r.type == 'TO_SUPPLIER' ? 'RETURN_OUT' : 'RETURN_IN', r.warehouse, r.party,
-          condition: r.condition);
+          condition: r.condition, unitId: r.beneficiaryUnitId);
     }
     for (final r in await db.select(db.openingBalances).get()) {
       final it = byId[r.itemId];

@@ -96,6 +96,7 @@ class DataExporter {
                 'manager': w.manager,
                 'location': w.location,
                 'feedsAllCamps': w.feedsAllCamps,
+                'isMain': w.isMain,
                 'campIds': w.campIds,
                 'notes': w.notes,
               })
@@ -228,6 +229,8 @@ class DataExporter {
                 ),
                 'party': r.party,
                 'type': r.type,
+                'beneficiaryUnitId': r.beneficiaryUnitId,
+                'beneficiaryUnitName': r.beneficiaryUnitName,
                 'condition': r.condition,
                 'origRef': r.origRef,
               })
@@ -375,6 +378,164 @@ class DataExporter {
                 'createdAt': a.createdAt.toIso8601String(),
               })
           .toList(),
+      'assets': (await _rows(db.assets, ids('assets'), (t) => t.id))
+          .map((a) => {
+                'id': a.id,
+                'name': a.name,
+                'assetType': a.assetType,
+                'serialNumber': a.serialNumber,
+                'facilityId': a.facilityId,
+                'facilityName': a.facilityName,
+                'beneficiaryUnitId': a.beneficiaryUnitId,
+                'beneficiaryUnitName': a.beneficiaryUnitName,
+                'warehouse': a.warehouse,
+                'status': a.status,
+                'acquisitionDate': a.acquisitionDate,
+                'value': a.value,
+                'lifespanMonths': a.lifespanMonths,
+                'supplierId': a.supplierId,
+                'supplierName': a.supplierName,
+                'invoiceNumber': a.invoiceNumber,
+                'notes': a.notes,
+                'createdBy': a.createdBy,
+                'createdAt': a.createdAt.toIso8601String(),
+              })
+          .toList(),
+      'assetAssignments':
+          (await _rows(db.assetAssignments, ids('asset_assignments'), (t) => t.id))
+              .map((g) => {
+                    'id': g.id,
+                    'assetId': g.assetId,
+                    'assetName': g.assetName,
+                    'beneficiaryUnitId': g.beneficiaryUnitId,
+                    'beneficiaryUnitName': g.beneficiaryUnitName,
+                    'assignedDate': g.assignedDate,
+                    'returnedDate': g.returnedDate,
+                    'assignedTo': g.assignedTo,
+                    'notes': g.notes,
+                    'createdBy': g.createdBy,
+                    'createdAt': g.createdAt.toIso8601String(),
+                  })
+              .toList(),
+      'rationOrders': (await _rows(db.rationOrders, ids('ration_orders'), (t) => t.id))
+          .map((o) => {
+                'id': o.id,
+                'refNo': o.refNo,
+                'requestingWarehouse': o.requestingWarehouse,
+                'supplyingWarehouse': o.supplyingWarehouse,
+                'date': o.date,
+                'requiredDate': o.requiredDate,
+                'status': o.status,
+                'priority': o.priority,
+                'notes': o.notes,
+                'rejectReason': o.rejectReason,
+                'createdBy': o.createdBy,
+                'approvedBy': o.approvedBy,
+                'receivedBy': o.receivedBy,
+                'receiptRef': o.receiptRef,
+                'createdAt': o.createdAt.toIso8601String(),
+              })
+          .toList(),
+      'rationOrderLines':
+          (await _rows(db.rationOrderLines, ids('ration_order_lines'), (t) => t.id))
+              .map((l) => {
+                    'id': l.id,
+                    'orderId': l.orderId,
+                    'itemId': l.itemId,
+                    'itemCode': l.itemCode,
+                    'itemName': l.itemName,
+                    'unitName': l.unitName,
+                    'factor': l.factor,
+                    'requestedQty': l.requestedQty,
+                    'approvedQty': l.approvedQty,
+                    'receivedQty': l.receivedQty,
+                    'notes': l.notes,
+                  })
+              .toList(),
+      'mealPlans': (await _rows(db.mealPlans, ids('meal_plans'), (t) => t.id))
+          .map((p) => {
+                'id': p.id,
+                'name': p.name,
+                'planType': p.planType,
+                'startDate': p.startDate,
+                'endDate': p.endDate,
+                'status': p.status,
+                'facilityId': p.facilityId,
+                'facilityName': p.facilityName,
+                'warehouse': p.warehouse,
+                'notes': p.notes,
+                'createdBy': p.createdBy,
+                'createdAt': p.createdAt.toIso8601String(),
+              })
+          .toList(),
+      'mealPlanEntries':
+          (await _rows(db.mealPlanEntries, ids('meal_plan_entries'), (t) => t.id))
+              .map((e) => {
+                    'id': e.id,
+                    'planId': e.planId,
+                    'entryDate': e.entryDate,
+                    'mealType': e.mealType,
+                    'itemId': e.itemId,
+                    'itemCode': e.itemCode,
+                    'itemName': e.itemName,
+                    'unitName': e.unitName,
+                    'factor': e.factor,
+                    'qtyPerPerson': e.qtyPerPerson,
+                    'notes': e.notes,
+                  })
+              .toList(),
+      'campLedgers': (await _rows(db.campLedgers, ids('camp_ledgers'), (t) => t.id))
+          .map((l) => {
+                'id': l.id,
+                'campId': l.campId,
+                'campName': l.campName,
+                'itemId': l.itemId,
+                'itemName': l.itemName,
+                'unitName': l.unitName,
+                'year': l.year,
+                'month': l.month,
+                'openingEntitled': l.openingEntitled,
+                'openingStock': l.openingStock,
+                'entitlementTotal': l.entitlementTotal,
+                'transferredIn': l.transferredIn,
+                'issuedDirect': l.issuedDirect,
+                'returnedQty': l.returnedQty,
+                'consumedKitchen': l.consumedKitchen,
+                'strengthSum': l.strengthSum,
+                'strengthDays': l.strengthDays,
+                'status': l.status,
+                'closedBy': l.closedBy,
+                if (l.closedAt != null) 'closedAt': l.closedAt!.toIso8601String(),
+              })
+          .toList(),
+      'campStockLimits':
+          (await _rows(db.campStockLimits, ids('camp_stock_limits'), (t) => t.id))
+              .map((c) => {
+                    'id': c.id,
+                    'campId': c.campId,
+                    'campName': c.campName,
+                    'itemId': c.itemId,
+                    'itemName': c.itemName,
+                    'minStock': c.minStock,
+                    'maxStock': c.maxStock,
+                    'alertDaysBefore': c.alertDaysBefore,
+                  })
+              .toList(),
+      'monthlySettlements':
+          (await _rows(db.monthlySettlements, ids('monthly_settlements'), (t) => t.id))
+              .map((m) => {
+                    'id': m.id,
+                    'year': m.year,
+                    'month': m.month,
+                    'settledBy': m.settledBy,
+                    'notes': m.notes,
+                    'campsCount': m.campsCount,
+                    'itemsCount': m.itemsCount,
+                    'totalCredit': m.totalCredit,
+                    'totalDebit': m.totalDebit,
+                    'settledAt': m.settledAt.toIso8601String(),
+                  })
+              .toList(),
       'settings': (await _rows(db.appSettings, ids('app_settings'), (t) => t.key))
           .map((s) => {'key': s.key, 'value': s.value})
           .toList(),

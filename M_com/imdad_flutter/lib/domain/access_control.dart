@@ -33,9 +33,14 @@ class RoleTemplate {
 
 class AccessControl {
   static const List<String> basicPages = [
-    'dashboard', 'items', 'suppliers', 'units', 'stores', 'kitchens',
+    'dashboard', 'items', 'suppliers', 'units', 'stores', 'kitchens', 'assets',
   ];
-  static const List<String> opsPages = ['receive', 'issue', 'transfer', 'returns'];
+
+  /// طلبيات الإعاشة ضمن العمليات: من يستلم ويصرف هو من يطلب، ومن يعتمد سندًا
+  /// هو من يعتمد طلبية.
+  static const List<String> opsPages = [
+    'receive', 'issue', 'transfer', 'returns', 'rationOrders',
+  ];
 
   static PermissionMap grant(List<String> pages, List<String> actions) {
     final out = <String, Map<String, bool>>{};
@@ -66,7 +71,7 @@ class AccessControl {
       permissions: merge([
         grant(basicPages, [PermAction.view]),
         grant(opsPages, [PermAction.view, PermAction.create]),
-        grant(['feeding', 'kitchenLog'], [PermAction.view, PermAction.create, PermAction.edit]),
+        grant(['feeding', 'kitchenLog', 'mealPlans'], [PermAction.view, PermAction.create, PermAction.edit]),
         grant(['balances', 'pendingOrders'], [PermAction.view]),
         grant(['documents'], [PermAction.view]),
         grant(['stocktake'], [PermAction.view, PermAction.edit]),
@@ -84,6 +89,7 @@ class AccessControl {
         grant(['pendingOrders'], [PermAction.view, PermAction.approve, PermAction.print]),
         grant(['opening'], [PermAction.view, PermAction.create, PermAction.print]),
         grant(['balances'], [PermAction.view, PermAction.print, PermAction.export]),
+        grant(['campDashboard'], [PermAction.view]),
         grant(['stocktake'], [PermAction.view, PermAction.create, PermAction.edit, PermAction.print]),
         grant(['reports'], [PermAction.view, PermAction.print]),
         grant(['documents'], [PermAction.view, PermAction.print, PermAction.edit]),
@@ -103,7 +109,18 @@ class AccessControl {
           PermAction.view, PermAction.create, PermAction.edit, PermAction.print, PermAction.export,
         ]),
         grant(['ratios'], [PermAction.view, PermAction.edit, PermAction.print, PermAction.export]),
-        grant(['balances', 'reports'], [PermAction.view, PermAction.print, PermAction.export]),
+        // ركن الإمداد هو من يضع قائمة الطعام ويعتمدها — ولذلك وحده التنشيط.
+        grant(['mealPlans'], [
+          PermAction.view, PermAction.create, PermAction.edit,
+          PermAction.approve, PermAction.print, PermAction.export,
+        ]),
+        // سجل المعسكرات يبنيه ركن الإمداد ويصفّيه — وهو من يوازن بين الوحدات.
+        grant(['campLedger', 'campDashboard'], [
+          PermAction.view, PermAction.create, PermAction.edit,
+          PermAction.print, PermAction.export,
+        ]),
+        grant(['campSettlement'], [PermAction.view, PermAction.approve]),
+        grant(['balances', 'reports', 'actualEntitlement'], [PermAction.view, PermAction.print, PermAction.export]),
         grant(['stocktake'], [PermAction.view, PermAction.approve, PermAction.print]),
         grant(['documents'], [PermAction.view, PermAction.print]),
       ]),
@@ -116,10 +133,10 @@ class AccessControl {
         grant(basicPages, [PermAction.view]),
         grant(opsPages, [PermAction.view, PermAction.print]),
         grant(['pendingOrders'], [PermAction.view, PermAction.approve, PermAction.print]),
-        grant(['feeding', 'kitchenLog', 'ratios'], [
+        grant(['feeding', 'kitchenLog', 'ratios', 'mealPlans'], [
           PermAction.view, PermAction.print, PermAction.export,
         ]),
-        grant(['balances', 'reports', 'auditTrail', 'executiveCmd'], [
+        grant(['balances', 'reports', 'actualEntitlement', 'campLedger', 'campDashboard', 'auditTrail', 'executiveCmd'], [
           PermAction.view, PermAction.print, PermAction.export,
         ]),
         grant(['stocktake'], [
@@ -136,7 +153,7 @@ class AccessControl {
       permissions: merge([
         grant(basicPages, [PermAction.view]),
         grant(opsPages, [PermAction.view]),
-        grant(['balances', 'reports', 'documents', 'stocktake'], [PermAction.view]),
+        grant(['balances', 'reports', 'actualEntitlement', 'documents', 'stocktake', 'mealPlans'], [PermAction.view]),
       ]),
     ),
   };

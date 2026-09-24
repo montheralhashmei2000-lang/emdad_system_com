@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import '../../domain/stock_ledger.dart';
 import '../../core/ids.dart';
 import '../../core/ui/imd_format.dart';
+import '../../domain/main_warehouse.dart';
 import '../db/app_database.dart';
 import 'audit_repo.dart';
 
@@ -421,6 +422,34 @@ class MovementsRepo {
       return const SaveResult(ok: false, error: 'لا يمكن التحويل إلى نفس المستودع');
     }
 
+    // قيد تغذية المعسكرات: من المخزن الرئيسي وحده. يُفحص هنا لا في الشاشة —
+    // إخفاء الخيار من القائمة تجميل، والمنع عند الحفظ هو الحماية.
+    //
+    // والوجهة تُعدّ معسكرًا بأمرين: وسمُ السند بمعسكر، **أو** مطابقة اسم
+    // المستودع لاسم معسكر. الاكتفاء بالوسم يترك ثغرة: سندٌ يُحفظ بلا وسم
+    // يمرّ من معسكر إلى معسكر بلا مانع.
+    {
+      final warehouses = await db.select(db.warehouses).get();
+      final campNames = {
+        for (final u in await db.select(db.beneficiaryUnits).get())
+          if (u.isCamp || u.type == 'camp') u.name.trim(),
+      }..removeWhere((v) => v.isEmpty);
+      final refs = [
+        for (final w in warehouses) WarehouseRef(id: w.id, name: w.name, isMain: w.isMain),
+      ];
+      final toCamp = campId.isNotEmpty || campNames.contains(toWarehouse.trim());
+      final fromCamp = campNames.contains(fromWarehouse.trim());
+
+      final error = MainWarehouse.validate(
+        fromWarehouse: fromWarehouse,
+        destWarehouse: toWarehouse,
+        toCamp: toCamp,
+        fromCamp: fromCamp,
+        warehouses: refs,
+      );
+      if (error != null) return SaveResult(ok: false, error: '✖ $error');
+    }
+
     final check = (await ledger()).check(
       warehouse: fromWarehouse,
       requiredBaseQty: _sumByItem(lines),
@@ -580,6 +609,8 @@ class MovementsRepo {
     required String date,
     required List<DocLineInput> lines,
     String type = 'FROM_UNIT', // FROM_UNIT | TO_SUPPLIER
+    String beneficiaryUnitId = '',
+    String beneficiaryUnitName = '',
     String condition = 'صالحة',
     String origRef = '',
     String refNo = '',
@@ -625,6 +656,9 @@ class MovementsRepo {
               createdBy: Value(createdBy),
               party: Value(party),
               type: Value(type),
+              beneficiaryUnitId: Value(beneficiaryUnitId),
+              beneficiaryUnitName:
+                  Value(beneficiaryUnitName.isEmpty ? party : beneficiaryUnitName),
               condition: Value(condition),
               origRef: Value(origRef),
             ));

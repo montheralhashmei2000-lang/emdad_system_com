@@ -35,6 +35,9 @@ dependencies:
   flutter_svg: ^2.0.10 # أيقونات الويب نفسها (مسارات SVG)
   window_manager: ^0.4.2 # ضبط نافذة سطح المكتب (ويندوز)
   mobile_scanner: ^7.4.2
+  # رسم باركود الأصول على الشاشة وفي الطباعة. كانت تصل تبعًا لحزمة pdf،
+  # والاعتماد على تبعية غير معلنة ينكسر بأول ترقية تُسقطها.
+  barcode: ^2.2.9
   pointycastle: ^4.0.0
   sqlcipher_flutter_libs: 0.6.0
   flutter_secure_storage: ^10.3.4

@@ -142,6 +142,19 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
     await _refreshBal();
   }
 
+  /// معرّف الوحدة من اسمها المعروض في القائمة.
+  ///
+  /// القائمة تعرض الاسم لأنه ما يقرؤه المستخدم، والمعرّف هو ما يُحفظ: الاسم
+  /// يتبدّل بإعادة تسمية، والمعرّف لا.
+  String _unitIdOf(String name) {
+    final n = name.trim();
+    if (n.isEmpty) return '';
+    for (final u in _units) {
+      if (u.name.trim() == n) return u.id;
+    }
+    return '';
+  }
+
   Future<void> _refreshBal() async {
     final wh = _tab == 'unit' ? _uWh : _sWh;
     if (wh.isEmpty) return;
@@ -615,6 +628,8 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
       final res = await _moves.saveReturn(
         warehouse: _uWh,
         party: _uUnit,
+        beneficiaryUnitId: _unitIdOf(_uUnit),
+        beneficiaryUnitName: _uUnit,
         date: _uDate,
         lines: c.rows,
         type: 'FROM_UNIT',

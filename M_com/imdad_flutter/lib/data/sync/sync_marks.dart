@@ -91,6 +91,17 @@ class SyncMarks {
     'stocktake_lines': 'id',
     'sensitive_reviews': 'id',
     'audit_logs': 'id',
+    // v8: الأصول وعهدها وطلبيات الإعاشة — تُسجَّل هنا يوم تُنشأ لا بعد أن
+    // يكتشف أحدهم أن بياناتها لا تغادر جهازها.
+    'assets': 'id',
+    'asset_assignments': 'id',
+    'ration_orders': 'id',
+    'ration_order_lines': 'id',
+    'meal_plans': 'id',
+    'meal_plan_entries': 'id',
+    'camp_ledgers': 'id',
+    'camp_stock_limits': 'id',
+    'monthly_settlements': 'id',
   };
 
   /// المللي ثانية الحالية بصيغة SQLite (لا يوجد `unixepoch('subsec')` في كل نسخة).
