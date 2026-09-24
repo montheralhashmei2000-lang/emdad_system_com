@@ -1,0 +1,8 @@
+{
+  "appId": "com.imdad.supply",
+  "appName": "نظام الإمداد والتموين",
+  "webDir": "../source_web_v720",
+  "server": {
+    "androidScheme": "https"
+  }
+}

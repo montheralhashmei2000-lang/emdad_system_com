@@ -1,0 +1,63 @@
+{
+  "name": "imdad-supply-app",
+  "productName": "نظام الإمداد والتموين",
+  "version": "7.4.0",
+  "description": "نظام الإمداد والتموين — إمداد",
+  "main": "main.js",
+  "author": "IMDAD",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win portable",
+    "dist:linux": "electron-builder --linux AppImage dir"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.imdad.supply",
+    "productName": "نظام الإمداد والتموين",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "web/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "dir"
+      ],
+      "icon": "build/icon.png",
+      "category": "Utility"
+    },
+    "asar": true,
+    "electronLanguages": [
+      "en-US",
+      "ar"
+    ],
+    "artifactName": "${productName} ${version}.${ext}"
+  }
+}

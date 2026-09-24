@@ -1,0 +1,96 @@
+name: imdad
+description: نظام الإمداد والتموين — تطبيق أصلي (Android / Windows)
+publish_to: "none"
+version: 8.0.0+800
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # قاعدة البيانات المحلية (بديل IndexedDB/localStorage)
+  drift: ^2.19.0
+  sqlite3: ^2.4.6
+  path_provider: ^2.1.4
+  path: ^1.9.0
+
+  # التشفير: PBKDF2-HMAC-SHA256 بـ 45,000 دورة + Salt
+  crypto: ^3.0.5
+
+  # الطباعة: PDF للورق والرول الحراري عبر تعريف الطابعة
+  printing: ^5.13.1
+  pdf: ^3.11.1
+
+  # واجهة وحالة
+  provider: ^6.1.2
+  intl: ^0.20.3
+  shared_preferences: ^2.3.2
+  file_picker: ^8.1.2
+  excel: ^4.0.3
+  fl_chart: ^0.69.0
+  flutter_svg: ^2.0.10 # أيقونات الويب نفسها (مسارات SVG)
+  window_manager: ^0.4.2 # ضبط نافذة سطح المكتب (ويندوز)
+  mobile_scanner: ^7.4.2
+  pointycastle: ^4.0.0
+  sqlcipher_flutter_libs: 0.6.0
+  flutter_secure_storage: ^10.3.4
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  drift_dev: ^2.19.0
+  build_runner: ^2.4.12
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/logo.png
+  fonts:
+    # خط الواجهة نفسه في نسخة الويب (IBM Plex Sans Arabic — رخصة OFL)، مضمَّن ليعمل بلا إنترنت.
+    - family: IBMPlexSansArabic
+      fonts:
+        - asset: assets/fonts/IBMPlexSansArabic-Regular.ttf
+        - asset: assets/fonts/IBMPlexSansArabic-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/IBMPlexSansArabic-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/IBMPlexSansArabic-Bold.ttf
+          weight: 700
+    # خطوط الواجهة المتاحة للاختيار من «بيانات الجهة والمظهر».
+    # كلها بأوزان ثابتة (لا متغيّرة) حتى تتمايز العناوين عن الحقول والمجاميع،
+    # وأرقامها متساوية العرض فتتراصف خانات الجداول عموديًا.
+    - family: Tajawal
+      fonts:
+        - asset: assets/fonts/Tajawal-Regular.ttf
+        - asset: assets/fonts/Tajawal-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Tajawal-Bold.ttf
+          weight: 700
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Regular.ttf
+        - asset: assets/fonts/Cairo-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Cairo-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Cairo-Bold.ttf
+          weight: 700
+    - family: NotoSansArabic
+      fonts:
+        - asset: assets/fonts/NotoSansArabic-Regular.ttf
+        - asset: assets/fonts/NotoSansArabic-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/NotoSansArabic-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/NotoSansArabic-Bold.ttf
+          weight: 700
+    - family: Amiri
+      fonts:
+        - asset: assets/fonts/Amiri-Regular.ttf
+        - asset: assets/fonts/Amiri-Bold.ttf
+          weight: 700
+  # خط Amiri (رخصة OFL) يُستخدم في مستندات PDF ليظهر النص العربي متصلًا في الطباعة.

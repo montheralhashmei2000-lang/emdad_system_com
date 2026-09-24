@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">نظام الإمداد والتموين</string>
+    <string name="title_activity_main">نظام الإمداد والتموين</string>
+    <string name="package_name">com.imdad.supply</string>
+    <string name="custom_url_scheme">com.imdad.supply</string>
+</resources>

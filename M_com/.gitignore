@@ -1,0 +1,19 @@
+node_modules/
+*.log
+.vscode/
+# Android / Capacitor
+android_app/node_modules/
+android_app/www/
+android_app/android/local.properties
+android_app/android/.gradle/
+android_app/android/**/build/
+android_app/android/app/src/main/assets/public/
+android_app/android/app/src/main/assets/capacitor.config.json
+android_app/android/app/src/main/assets/capacitor.plugins.json
+*.jks
+*.keystore
+keystore.properties
+release/
+# Electron
+electron_app/web/
+electron_app/release/
