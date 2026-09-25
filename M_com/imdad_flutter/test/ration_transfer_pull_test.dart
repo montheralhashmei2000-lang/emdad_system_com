@@ -10,6 +10,7 @@ import 'package:imdad/data/repos/catalog_repo.dart';
 import 'package:imdad/data/repos/ration_repo.dart';
 import 'package:imdad/features/catalog/authorities_screen.dart';
 import 'package:imdad/features/inventory/transfer_screen.dart';
+import 'package:imdad/features/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -171,8 +172,38 @@ void main() {
         reason: 'المطابقة عرضٌ لا منع — السطر يبقى بكميته');
   });
 
-  testWidgets('شاشة جهات الإمداد تُبنى وتحفظ جهة', (tester) async {
-    await show(tester, const AuthoritiesScreen());
+  testWidgets('جهات الاعتمادات تُفتح من قسمها في الإعدادات', (tester) async {
+    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    // موضعها الحقيقي: قسمٌ داخل الإعدادات لا شاشةٌ في قائمة العمليات.
+    await show(tester, const SettingsScreen());
+    // قسم «نظرة عامة» يفيض 36 بكسل بصفٍّ ثابت العرض، وهو عطلٌ سابق لهذا
+    // القسم ومستقلٌّ عن عرض الشاشة. يُستنزف هنا كي لا يُحاسَب عليه ما ليس
+    // منه — ويبقى قائمًا حتى يُصلَح في موضعه.
+    tester.takeException();
+
+    final section = find.text('جهات الاعتمادات');
+    expect(section, findsWidgets, reason: 'القسم غائب عن قائمة الإعدادات');
+    await tester.ensureVisible(section.first);
+    await tester.pumpAndSettle();
+    await tester.tap(section.first, warnIfMissed: false);
+    await tester.pump();
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 150)));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('إضافة جهة'), findsWidgets);
+  });
+
+  testWidgets('جهات الاعتمادات تُبنى مضمَّنةً وتحفظ جهة', (tester) async {
+    // مضمَّنةً كما تظهر في الإعدادات: داخل صفحة تُمرَّر، بلا عنوان خاص بها.
+    await show(
+      tester,
+      const SingleChildScrollView(child: AuthoritiesScreen(embedded: true)),
+    );
     expect(tester.takeException(), isNull);
 
     await tester.enterText(find.byType(TextField).first, 'ركن إمداد الفرقة');

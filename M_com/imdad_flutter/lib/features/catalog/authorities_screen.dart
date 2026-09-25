@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/security/auth_service.dart';
 import '../../core/security/perm.dart';
 import '../../core/ui/imd_form.dart';
+import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_layout.dart';
 import '../../core/ui/imd_tokens.dart';
@@ -12,7 +13,7 @@ import '../../data/db/app_database.dart';
 import '../../data/repos/ration_repo.dart';
 import '../../domain/access_control.dart';
 
-/// جهات الإمداد: من يطلب منهم **المخزن الرئيسي**.
+/// جهات الاعتمادات: من يعتمدون الطلبيات ومن يطلب منهم **المخزن الرئيسي**.
 ///
 /// المخزن الرئيسي لا يطلب من مستودعٍ آخر — يطلب من جهةٍ في تسلسل الفرقة: ركن
 /// الإمداد، رئيس الشعبة، قائد الفرقة. وهذه ليست طرفًا مخزنيًّا فلا رصيد لها
@@ -20,8 +21,14 @@ import '../../domain/access_control.dart';
 ///
 /// ويُدار من هنا لا من الكود: تُضاف جهةٌ أو يُغيَّر مسمّاها بلا تحديثٍ
 /// للبرنامج، ويُزامَن كبقية الأدلة.
+///
+/// وموضعه الإعدادات لا قائمة العمليات: دليلٌ يُضبط مرةً ثم يُنسى، لا شاشةٌ
+/// تُفتح كل يوم — فوجوده بين شاشات التشغيل يزحم ما يُستعمل فعلًا.
 class AuthoritiesScreen extends StatefulWidget {
-  const AuthoritiesScreen({super.key});
+  const AuthoritiesScreen({super.key, this.embedded = false});
+
+  /// تبويبًا داخل الإعدادات: بلا عنوان صفحة ولا هوامشها.
+  final bool embedded;
 
   @override
   State<AuthoritiesScreen> createState() => _AuthoritiesScreenState();
@@ -135,24 +142,55 @@ class _AuthoritiesScreenState extends State<AuthoritiesScreen> {
     }
   }
 
+  /// إطار القسم: لوحةٌ حين تكون الشاشة مستقلة، وعنوانٌ خفيف حين تُضمَّن.
+  ///
+  /// لوحةٌ داخل لوحة تُضاعف الهوامش، فيضيق الجدول عن أضيق عرضٍ يقبله ويفيض
+  /// خارج الشاشة. والإعدادات تضع محتواها في لوحةٍ أصلًا.
+  Widget _wrap({required String title, required String icon, required Widget child}) {
+    if (!widget.embedded) {
+      return ImdPanel(title: title, icon: icon, child: child);
+    }
+    final c = context.imd;
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(children: [
+            ImdIcon(icon, size: 15, color: c.accent),
+            const SizedBox(width: 6),
+            Text(title,
+                style: TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w700, color: c.text)),
+          ]),
+        ),
+        child,
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const ImdPage(children: [
-        ImdPageTitle(title: 'جهات الإمداد', icon: 'users'),
-        ImdLd('⏳ جارٍ التحميل…'),
-      ]);
+      const spinner = ImdLd('⏳ جارٍ التحميل…');
+      return widget.embedded
+          ? spinner
+          : const ImdPage(children: [
+              ImdPageTitle(title: 'جهات الاعتمادات', icon: 'users'),
+              spinner,
+            ]);
     }
     final can = Perm.of(context).writable('supplyAuthorities');
     final active = _items.where((a) => a.active).length;
 
-    return ImdPage(children: [
-      const ImdPageTitle(
-        title: 'جهات الإمداد',
-        icon: 'users',
-        subtitle: 'من يطلب منهم المخزن الرئيسي: ركن الإمداد، رئيس الشعبة، '
-            'قائد الفرقة. جهاتٌ في تسلسل الفرقة لا مستودعات — فلا رصيد لها',
-      ),
+    final body = <Widget>[
+      if (!widget.embedded)
+        const ImdPageTitle(
+          title: 'جهات الاعتمادات',
+          icon: 'users',
+          subtitle: 'من يعتمدون الطلبيات ويطلب منهم المخزن الرئيسي: ركن '
+              'الإمداد، رئيس الشعبة، قائد الفرقة — جهاتٌ لا مستودعات',
+        ),
       ImdKpis(children: [
         ImdKpi(label: 'إجمالي الجهات', value: nf(_items.length)),
         ImdKpi(label: 'مفعَّلة', value: nf(active)),
@@ -165,7 +203,7 @@ class _AuthoritiesScreenState extends State<AuthoritiesScreen> {
         ),
       ]),
       if (can)
-        ImdPanel(
+        _wrap(
           title: _editId == null ? 'إضافة جهة' : 'تعديل جهة',
           icon: _editId == null ? 'plus-square' : 'edit',
           child: Column(
@@ -201,12 +239,12 @@ class _AuthoritiesScreenState extends State<AuthoritiesScreen> {
             ],
           ),
         ),
-      ImdPanel(
+      _wrap(
         title: 'الجهات',
         icon: 'list',
         child: ImdTable(
-          empty: 'لا جهات بعد — أضف ركن الإمداد أولًا',
-          minWidth: 660,
+          empty: 'لا جهات بعد — أضف ركن إمداد الفرقة أولًا',
+          minWidth: 560,
           columns: const [
             ImdCol('الجهة'),
             ImdCol('المسمّى'),
@@ -243,6 +281,10 @@ class _AuthoritiesScreenState extends State<AuthoritiesScreen> {
           ],
         ),
       ),
-    ]);
+    ];
+
+    return widget.embedded
+        ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: body)
+        : ImdPage(children: body);
   }
 }

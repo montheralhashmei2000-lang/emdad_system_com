@@ -16,6 +16,7 @@ import '../../core/ui/imd_layout.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
+import '../catalog/authorities_screen.dart';
 import '../../data/migration/data_export.dart';
 import '../../data/migration/excel_import.dart';
 import '../../data/migration/web_import.dart';
@@ -58,6 +59,8 @@ const _sections = <_Section>[
       'الأرصدة الافتتاحية ومعدلات الاستحقاق والقوانين'),
   _Section('print', 'printer', 'الطباعة والتصدير والاستيراد', 'النماذج المطبوعة وأدوات كل شاشة'),
   _Section('sync', 'swap', 'المزامنة والتوقيع', 'ربط الأجهزة وملفات المزامنة والتوقيع الإلكتروني'),
+  _Section('authorities', 'users', 'جهات الاعتمادات',
+      'من يعتمدون الطلبيات ويطلب منهم المخزن الرئيسي'),
   _Section('devices', 'monitor', 'تفعيل الأجهزة',
       'رمز تفعيل كل جهاز ومفتاح الإصدار — لا يعمل جهاز بلا رمز'),
   _Section('backup', 'database', 'النسخ الاحتياطي', 'تصدير البيانات واستعادتها'),
@@ -886,6 +889,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ImdLabeled('معرّف المفتاح', ImdReadonlyField(text: _signKeyId)),
             ],
           ]),
+        ),
+      ),
+      (
+        'authorities',
+        'جهات الاعتمادات الجهات ركن الإمداد رئيس الشعبة قائد الفرقة '
+            'اعتماد الطلبيات دليل',
+        const ImdPanel(
+          title: 'جهات الاعتمادات',
+          icon: 'users',
+          child: AuthoritiesScreen(embedded: true),
         ),
       ),
       (

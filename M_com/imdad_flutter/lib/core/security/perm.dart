@@ -20,7 +20,7 @@ class Perm {
     'kitchens': 'المطابخ والأفران',
     'assets': 'الأصول الثابتة',
     'rationOrders': 'طلبيات الإعاشة',
-    'supplyAuthorities': 'جهات الإمداد',
+    'supplyAuthorities': 'جهات الاعتمادات',
     'receive': 'الاستلام',
     'issue': 'الصرف',
     'transfer': 'التحويل المخزني',
