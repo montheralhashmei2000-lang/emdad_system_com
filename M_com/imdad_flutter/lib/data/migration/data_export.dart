@@ -155,6 +155,7 @@ class DataExporter {
                 'audit': r.audit,
                 // توريد التعبئة لا يزيد عدد الأسطوانات: بدونه يُحسب في الجهاز الآخر توريدًا جديدًا.
                 'cylinderAction': r.cylinderAction,
+                'expiryDate': r.expiryDate,
                 ..._edits(r.editCount, r.editLog, r.editedBy, r.cancelReason, r.cancelledBy, r.prevStatus),
               })
           .toList(),

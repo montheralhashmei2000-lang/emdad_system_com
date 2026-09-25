@@ -13,6 +13,7 @@ import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../domain/access_control.dart';
+import '../../domain/stock_alerts.dart';
 
 /// الأرصدة الحالية — نقل `renderBalances()` / `balPaint()`:
 /// كشف لحظي بأرصدة الأصناف (الافتتاحي + الوارد − المنصرف ± التحويلات) مع رقائق
@@ -93,7 +94,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
   (String, ImdTone) _state(Item x) {
     final bal = _bal(x);
     if (bal <= 0) return ('فارغ ❌', ImdTone.off);
-    if (x.minQty > 0 && bal <= x.minQty) return ('تحت الحد ⚠️', ImdTone.pend);
+    if (StockAlerts.isLow(bal, x.minQty)) return ('تحت الحد ⚠️', ImdTone.pend);
     return ('جيد ✅', ImdTone.ok);
   }
 
@@ -155,7 +156,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
   @override
   Widget build(BuildContext context) {
     final rows = _rows();
-    final low = _items.where((x) => x.minQty > 0 && _bal(x) <= x.minQty).length;
+    final low = _items.where((x) => StockAlerts.isLow(_bal(x), x.minQty)).length;
     final zero = _items.where((x) => _bal(x) <= 0).length;
 
     return ImdPage(children: [

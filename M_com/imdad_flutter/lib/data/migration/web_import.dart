@@ -471,6 +471,7 @@ class WebImporter {
             supervision: Value(_s(r, 'supervision')),
             audit: Value(_s(r, 'audit')),
             cylinderAction: Value(_s(r, 'cylinderAction')),
+            expiryDate: Value(_s(r, 'expiryDate')),
             editCount: Value(_i(r, 'editCount')),
             editLog: Value(_json(r['editLog'])),
             editedBy: Value(_s(r, 'editedBy')),

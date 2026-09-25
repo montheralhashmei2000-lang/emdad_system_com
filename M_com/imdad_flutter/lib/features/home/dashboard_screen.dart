@@ -10,6 +10,7 @@ import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/movements_repo.dart';
+import '../../domain/stock_alerts.dart';
 import 'home_shell.dart';
 
 /// الرئيسية — نقل مطابق لـ `renderDash()` في نسخة الويب:
@@ -446,7 +447,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Text(i.minQty > 0 ? nf(i.minQty) : '—'),
                         bal <= 0
                             ? const ImdChip('صفرية', tone: ImdTone.err)
-                            : (i.minQty > 0 && bal <= i.minQty
+                            : (StockAlerts.isLow(bal, i.minQty)
                                 ? const ImdChip('تحت الحد', tone: ImdTone.pend)
                                 : const ImdChip('مستقرة', tone: ImdTone.ok)),
                       ],

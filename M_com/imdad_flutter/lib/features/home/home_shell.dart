@@ -29,6 +29,7 @@ import '../inventory/pending_screen.dart';
 import '../inventory/receive_screen.dart';
 import '../inventory/returns_screen.dart';
 import '../inventory/transfer_screen.dart';
+import '../alerts/stock_alerts_screen.dart';
 import '../reports/balances_screen.dart';
 import '../reports/reports_center_screen.dart';
 import '../settings/audit_screen.dart';
@@ -93,6 +94,7 @@ const _menu = <_MenuSection>[
   ]),
   _MenuSection('reports', 'trending', 'التقارير والجرد', [
     _MenuItem('balances', 'calculator', 'الأرصدة الحالية'),
+    _MenuItem('stockAlerts', 'alert', 'تنبيهات المخزون'),
     _MenuItem('stocktake', 'clipboard', 'جرد المخزون'),
     _MenuItem('reports', 'chart', 'التقارير'),
     _MenuItem('auditTrail', 'scan', 'سجل النشاط والتدقيق'),
@@ -159,7 +161,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   bool _isAdmin(AuthService auth) => auth.currentUser?.role == 'admin';
 
+  /// صفحات بلا صلاحية خاصة بها تتبع صلاحية صفحة أخرى، فلا يلزم تعديل الأدوار.
+  static const _permPage = {'lanSync': 'settings', 'stockAlerts': 'balances'};
+
   bool _hasPerm(AuthService auth, String page, [String action = PermAction.view]) {
+    page = _permPage[page] ?? page;
     final user = auth.currentUser;
     if (user == null) return false;
     final perms = auth.permissionsOf(user).map(
@@ -202,6 +208,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return const RatiosScreen();
       case 'balances':
         return const BalancesScreen();
+      case 'stockAlerts':
+        return const StockAlertsScreen();
       case 'stocktake':
         return const StocktakeScreen();
       case 'reports':
@@ -241,7 +249,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final c = context.imd;
     final wide = MediaQuery.sizeOf(context).width > 920;
 
-    final allowed = _page == 'dash' || _hasPerm(auth, _page == 'lanSync' ? 'settings' : _page);
+    final allowed = _page == 'dash' || _hasPerm(auth, _page);
     final body = allowed ? _pageBody(_page) : const _NoAccess();
 
     final side = _Sidebar(

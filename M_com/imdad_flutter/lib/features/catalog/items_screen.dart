@@ -20,6 +20,7 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/movements_repo.dart';
+import '../../domain/stock_alerts.dart';
 
 /// إدارة الأصناف — نقل مطابق لـ `renderItems()` في نسخة الويب بتبويباتها الست:
 /// القائمة، التصنيفات، بطاقة الصنف، الأرصدة، حركة الصنف، الباركودات.
@@ -174,7 +175,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
   Widget _list(BuildContext context) {
     final w = _w(context);
     final c = context.imd;
-    final lowN = _items.where((x) => _qty(x) <= x.minQty && x.minQty > 0).length;
+    final lowN = _items.where((x) => StockAlerts.isLow(_qty(x), x.minQty)).length;
     final q = _search.text.trim().toLowerCase();
     final rows = _items
         .where((x) =>
@@ -238,7 +239,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                 Text(nf(_qty(x)),
                     style: TextStyle(
                         fontWeight: FontWeight.w900,
-                        color: (_qty(x) <= x.minQty && x.minQty > 0) ? c.danger : c.text)),
+                        color: (StockAlerts.isLow(_qty(x), x.minQty)) ? c.danger : c.text)),
                 _unitsStr(x),
                 if (w)
                   Row(mainAxisSize: MainAxisSize.min, children: [
@@ -832,7 +833,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
               value: nf(r2(bal)),
               extra: bal <= 0
                   ? const ImdChip('فارغ ❌', tone: ImdTone.off)
-                  : (min > 0 && bal <= min
+                  : (StockAlerts.isLow(bal, min)
                       ? const ImdChip('تحت الحد ⚠️', tone: ImdTone.pend)
                       : const ImdChip('جيد ✅', tone: ImdTone.ok)),
             ),

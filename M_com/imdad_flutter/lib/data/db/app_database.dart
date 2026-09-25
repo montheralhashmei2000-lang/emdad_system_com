@@ -149,6 +149,8 @@ class Receipts extends Table with MovementColumns {
   TextColumn get committee => text().withDefault(const Constant(''))();
   TextColumn get supervision => text().withDefault(const Constant(''))(); // v2: المراجعة والتفتيش
   TextColumn get audit => text().withDefault(const Constant(''))(); // v2: التدقيق
+  // v8: تاريخ انتهاء صلاحية دفعة هذا السطر (yyyy-MM-dd)، فارغ للأصناف بلا صلاحية.
+  TextColumn get expiryDate => text().withDefault(const Constant(''))();
   TextColumn get cylinderAction => text().withDefault(const Constant(''))(); // v2: RECEIVE_FULL | RECEIVE_EMPTY | REFILL
   @override
   Set<Column> get primaryKey => {id};
@@ -386,7 +388,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   /// الفهارس المخدومة فعليًا بالاستعلامات: البحث بالمرجع (فتح سند من سجل
   /// المستندات)، وبالحالة (الأوامر المعلقة والمسودات)، وبالمستودع والصنف
@@ -486,6 +488,10 @@ class AppDatabase extends _$AppDatabase {
           // v7: وحدة العرض الافتراضية في بطاقة الصنف.
           if (from < 7) {
             await m.addColumn(items, items.reportUnit);
+          }
+          // v8: صلاحية دفعات الوارد لتنبيهات قرب الانتهاء.
+          if (from < 8) {
+            await m.addColumn(receipts, receipts.expiryDate);
           }
           // v6: ربط الوحدة بأكثر من منشأة (مطبخ وفرن معًا).
           if (from < 6) {

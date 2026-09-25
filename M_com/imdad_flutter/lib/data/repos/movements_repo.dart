@@ -20,6 +20,7 @@ class DocLineInput {
     this.beneficiaryUnitId = '',
     this.beneficiaryUnitName = '',
     this.cylinderAction = '',
+    this.expiryDate = '',
   });
 
   final String itemId;
@@ -34,6 +35,9 @@ class DocLineInput {
 
   /// عملية الأصناف القابلة للتعبئة (فارغ لغيرها).
   final String cylinderAction;
+
+  /// تاريخ انتهاء صلاحية الدفعة (سند الوارد فقط)، فارغ إن لم يُحدَّد.
+  final String expiryDate;
 
   double get baseQty => _round(qty * (factor <= 0 ? 1 : factor));
 
@@ -141,6 +145,16 @@ class MovementsRepo {
         continue;
       }
       out[item] = _roundQty((out[item] ?? 0) + qty);
+    }
+    return out;
+  }
+
+  /// أرصدة كل المستودعات دفعة واحدة: المستودع ← (الصنف ← الرصيد).
+  Future<Map<String, Map<String, double>>> balancesByWarehouse({List<String>? scope}) async {
+    final out = <String, Map<String, double>>{};
+    for (final (wh, item, qty) in await _balanceRows()) {
+      if (scope != null && !scope.contains(wh)) continue;
+      out.putIfAbsent(wh, () => {})[item] = qty;
     }
     return out;
   }
@@ -279,6 +293,7 @@ class MovementsRepo {
               supervision: Value(supervision),
               audit: Value(audit),
               cylinderAction: Value(l.cylinderAction),
+              expiryDate: Value(l.expiryDate),
             ));
       }
     });
