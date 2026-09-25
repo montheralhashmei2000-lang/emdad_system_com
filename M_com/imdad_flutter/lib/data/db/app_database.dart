@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../repos/audit_repo.dart';
 import '../repos/signatures_repo.dart';
 import '../sync/sync_marks.dart';
 import 'connection/connection.dart';
@@ -70,6 +71,11 @@ class Warehouses extends Table {
   TextColumn get manager => text().withDefault(const Constant(''))();
   TextColumn get location => text().withDefault(const Constant(''))();
   BoolColumn get feedsAllCamps => boolean().withDefault(const Constant(true))();
+
+  /// v10: المخزن الرئيسي للوحدة — منه وحده تُغذّى المعسكرات.
+  ///
+  /// واحد لا أكثر: تعيين مخزن رئيسيًا يُلغي السابق (`CampLedgerRepo.setMain`).
+  BoolColumn get isMain => boolean().withDefault(const Constant(false))();
   TextColumn get campIds => text().withDefault(const Constant('[]'))(); // JSON
   TextColumn get notes => text().withDefault(const Constant(''))();
   @override
@@ -149,7 +155,7 @@ class Receipts extends Table with MovementColumns {
   TextColumn get committee => text().withDefault(const Constant(''))();
   TextColumn get supervision => text().withDefault(const Constant(''))(); // v2: المراجعة والتفتيش
   TextColumn get audit => text().withDefault(const Constant(''))(); // v2: التدقيق
-  // v8: تاريخ انتهاء صلاحية دفعة هذا السطر (yyyy-MM-dd)، فارغ للأصناف بلا صلاحية.
+  // v12: تاريخ انتهاء صلاحية دفعة هذا السطر (yyyy-MM-dd)، فارغ للأصناف بلا صلاحية.
   TextColumn get expiryDate => text().withDefault(const Constant(''))();
   TextColumn get cylinderAction => text().withDefault(const Constant(''))(); // v2: RECEIVE_FULL | RECEIVE_EMPTY | REFILL
   @override
@@ -188,6 +194,14 @@ class Transfers extends Table with MovementColumns {
 
 class Returns extends Table with MovementColumns {
   TextColumn get party => text().withDefault(const Constant(''))();
+
+  /// v11: الوحدة التي أعادت الأصناف — **بمعرّفها** لا باسمها وحده.
+  ///
+  /// كان الربط بالاسم ([party]) فقط، فتفشل نسبةُ المرتجع إلى معسكره صامتةً
+  /// كلما اختلف الإملاء أو أُعيدت تسمية الوحدة — فيبدو المعسكر مستلمًا ما
+  /// ردّه، ويُحرم من استحقاقه في الشهر التالي.
+  TextColumn get beneficiaryUnitId => text().withDefault(const Constant(''))();
+  TextColumn get beneficiaryUnitName => text().withDefault(const Constant(''))();
   TextColumn get type => text().withDefault(const Constant('FROM_UNIT'))(); // FROM_UNIT | TO_SUPPLIER
   TextColumn get condition => text().withDefault(const Constant('صالحة'))();
   TextColumn get origRef => text().withDefault(const Constant(''))();
@@ -351,6 +365,247 @@ class AuditLogs extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// v8: الأصول الثابتة — ما يُقتنى ويُعمَّر ثم يُستهلك، لا ما يُصرف.
+///
+/// المعرّف نصّي كبقية جداول النظام لا رقمًا تلقائيًا: جهازان يعملان بلا شبكة
+/// يولّدان الرقم `1` لأصلين مختلفين، فيدهس أحدهما الآخر عند أول مزامنة.
+///
+/// و[warehouse] ليس زينة: به يخضع الأصل لنطاق مستودعات المستخدم كما تخضع
+/// الحركات، فلا يرى مسؤول فرعٍ أصولَ فرعٍ آخر.
+class Assets extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  TextColumn get assetType => text().withDefault(const Constant('equipment'))();
+  TextColumn get serialNumber => text().withDefault(const Constant(''))();
+  TextColumn get facilityId => text().withDefault(const Constant(''))();
+  TextColumn get facilityName => text().withDefault(const Constant(''))();
+  TextColumn get beneficiaryUnitId => text().withDefault(const Constant(''))();
+  TextColumn get beneficiaryUnitName => text().withDefault(const Constant(''))();
+  TextColumn get warehouse => text().withDefault(const Constant(''))();
+  TextColumn get status => text().withDefault(const Constant('NEW'))();
+
+  /// yyyy-MM-dd — نصًّا كتواريخ الحركات، فلا يزيحها اختلاف المناطق الزمنية.
+  TextColumn get acquisitionDate => text().withDefault(const Constant(''))();
+  RealColumn get value => real().withDefault(const Constant(0))();
+  IntColumn get lifespanMonths => integer().withDefault(const Constant(0))();
+  TextColumn get supplierId => text().withDefault(const Constant(''))();
+  TextColumn get supplierName => text().withDefault(const Constant(''))();
+  TextColumn get invoiceNumber => text().withDefault(const Constant(''))();
+  TextColumn get notes => text().withDefault(const Constant(''))();
+  TextColumn get createdBy => text().withDefault(const Constant(''))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// عهدة أصل لدى وحدة مستفيدة. [returnedDate] فارغة ⇒ العهدة قائمة.
+///
+/// الفراغ لا `NULL` كبقية النظام: عمود نصّي واحد يُقارن ويُصدَّر ويُدمج بلا
+/// حالة ثالثة.
+class AssetAssignments extends Table {
+  TextColumn get id => text()();
+  TextColumn get assetId => text()();
+  TextColumn get assetName => text().withDefault(const Constant(''))();
+  TextColumn get beneficiaryUnitId => text().withDefault(const Constant(''))();
+  TextColumn get beneficiaryUnitName => text().withDefault(const Constant(''))();
+  TextColumn get assignedDate => text().withDefault(const Constant(''))();
+  TextColumn get returnedDate => text().withDefault(const Constant(''))();
+  TextColumn get assignedTo => text().withDefault(const Constant(''))();
+  TextColumn get notes => text().withDefault(const Constant(''))();
+  TextColumn get createdBy => text().withDefault(const Constant(''))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// v8: طلبيات الإعاشة — فرعٌ يطلب من مستودع مورِّد، ثم تُعتمد وتُستلم.
+///
+/// المستودعات بأسمائها لا بمعرّفاتها، كما تفعل الحركات: نطاق صلاحيات المستخدم
+/// (`Perm.canWh`) يُقاس بالاسم، فتخزينه معرّفًا يعني ترجمةً في كل فحص صلاحية.
+class RationOrders extends Table {
+  TextColumn get id => text()();
+  TextColumn get refNo => text().withDefault(const Constant(''))();
+  TextColumn get requestingWarehouse => text().withDefault(const Constant(''))();
+  TextColumn get supplyingWarehouse => text().withDefault(const Constant(''))();
+  TextColumn get date => text().withDefault(const Constant(''))();
+  TextColumn get requiredDate => text().withDefault(const Constant(''))();
+
+  /// DRAFT | PENDING | APPROVED | RECEIVED | REJECTED
+  TextColumn get status => text().withDefault(const Constant('DRAFT'))();
+  TextColumn get priority => text().withDefault(const Constant('NORMAL'))();
+  TextColumn get notes => text().withDefault(const Constant(''))();
+  TextColumn get rejectReason => text().withDefault(const Constant(''))();
+  TextColumn get createdBy => text().withDefault(const Constant(''))();
+  TextColumn get approvedBy => text().withDefault(const Constant(''))();
+  TextColumn get receivedBy => text().withDefault(const Constant(''))();
+
+  /// مرجع سند الاستلام الذي وُلّد عند استلام الطلبية — به يُربط الطلب بأثره
+  /// المخزني، فلا تبقى الطلبية ورقةً بلا حركة.
+  TextColumn get receiptRef => text().withDefault(const Constant(''))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class RationOrderLines extends Table {
+  TextColumn get id => text()();
+  TextColumn get orderId => text()();
+  TextColumn get itemId => text().withDefault(const Constant(''))();
+  TextColumn get itemCode => text().withDefault(const Constant(''))();
+  TextColumn get itemName => text().withDefault(const Constant(''))();
+  TextColumn get unitName => text().withDefault(const Constant(''))();
+  RealColumn get factor => real().withDefault(const Constant(1))();
+  RealColumn get requestedQty => real().withDefault(const Constant(0))();
+  RealColumn get approvedQty => real().withDefault(const Constant(0))();
+  RealColumn get receivedQty => real().withDefault(const Constant(0))();
+  TextColumn get notes => text().withDefault(const Constant(''))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// v9: خطة الوجبات — ما يُطبخ في كل يوم ووجبة، وكم لكل فرد.
+///
+/// **وهي غير نسب الاستحقاق.** النسبة مقرَّر شهري ثابت للفرد من كل صنف
+/// (`Entitlements`)، والخطة قائمة طعام: أرزٌ يوم الأحد ومعكرونة يوم الاثنين.
+/// من النسبة تُعرف حصة الشهر، ومن الخطة يُعرف طلب الغد.
+class MealPlans extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+
+  /// WEEKLY | BIWEEKLY | MONTHLY | CUSTOM
+  TextColumn get planType => text().withDefault(const Constant('WEEKLY'))();
+  TextColumn get startDate => text().withDefault(const Constant(''))();
+  TextColumn get endDate => text().withDefault(const Constant(''))();
+
+  /// DRAFT | ACTIVE | ARCHIVED
+  TextColumn get status => text().withDefault(const Constant('DRAFT'))();
+
+  /// المطبخ أو الفرن الذي تنفَّذ فيه الخطة — فارغ يعني الوحدة كلها.
+  TextColumn get facilityId => text().withDefault(const Constant(''))();
+  TextColumn get facilityName => text().withDefault(const Constant(''))();
+  TextColumn get warehouse => text().withDefault(const Constant(''))();
+  TextColumn get notes => text().withDefault(const Constant(''))();
+  TextColumn get createdBy => text().withDefault(const Constant(''))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// صنف واحد في وجبة واحدة من يوم واحد.
+///
+/// [qtyPerPerson] بوحدة [unitName]، و[factor] يحوّلها إلى وحدة الأساس — نفس
+/// اصطلاح سطور الحركات، فيُجمع الاثنان بلا ترجمة.
+class MealPlanEntries extends Table {
+  TextColumn get id => text()();
+  TextColumn get planId => text()();
+  TextColumn get entryDate => text().withDefault(const Constant(''))();
+
+  /// BREAKFAST | LUNCH | DINNER | SNACK
+  TextColumn get mealType => text().withDefault(const Constant('LUNCH'))();
+  TextColumn get itemId => text().withDefault(const Constant(''))();
+  TextColumn get itemCode => text().withDefault(const Constant(''))();
+  TextColumn get itemName => text().withDefault(const Constant(''))();
+  TextColumn get unitName => text().withDefault(const Constant(''))();
+  RealColumn get factor => real().withDefault(const Constant(1))();
+  RealColumn get qtyPerPerson => real().withDefault(const Constant(0))();
+  TextColumn get notes => text().withDefault(const Constant(''))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// v10: سجل حساب المعسكر — شهرٌ واحد لمعسكر واحد وصنف واحد.
+///
+/// **رصيدان لا واحد**، وخلطهما أصل الغلط في هذا الباب:
+/// • **رصيد الاستحقاق** = المُرحَّل + المستحق − المُسلَّم. يُجيب: «هل أخذ
+///   المعسكر حقه؟». موجب ⇒ له عندنا، سالب ⇒ أخذ أكثر من حقه.
+/// • **رصيد المخزون** = المُرحَّل عينًا + المُسلَّم − المستهلك في المطبخ.
+///   يُجيب: «كم بقي في مخزن المعسكر الآن؟».
+///
+/// وحدةٌ أخذت كامل حقها وطبخته: رصيد استحقاقها صفر ومخزونها صفر. وأخرى أخذت
+/// حقها ولم تطبخه: استحقاقها صفر ومخزونها ممتلئ. الرقمان مختلفان ويُسأل عن
+/// كليهما — ولذلك عمودان للترحيل لا عمود.
+class CampLedgers extends Table {
+  TextColumn get id => text()();
+  TextColumn get campId => text()();
+  TextColumn get campName => text().withDefault(const Constant(''))();
+  TextColumn get itemId => text()();
+  TextColumn get itemName => text().withDefault(const Constant(''))();
+  TextColumn get unitName => text().withDefault(const Constant(''))();
+  IntColumn get year => integer()();
+  IntColumn get month => integer()();
+
+  /// رصيد الاستحقاق المُرحَّل من الشهر السابق.
+  RealColumn get openingEntitled => real().withDefault(const Constant(0))();
+
+  /// رصيد المخزون العيني المُرحَّل.
+  RealColumn get openingStock => real().withDefault(const Constant(0))();
+
+  /// المستحق: المعدل اليومي للفرد × مجموع القوى اليومية.
+  RealColumn get entitlementTotal => real().withDefault(const Constant(0))();
+  RealColumn get transferredIn => real().withDefault(const Constant(0))();
+  RealColumn get issuedDirect => real().withDefault(const Constant(0))();
+  RealColumn get returnedQty => real().withDefault(const Constant(0))();
+  RealColumn get consumedKitchen => real().withDefault(const Constant(0))();
+
+  /// مجموع القوى اليومية وعدد أيامها — يُحفظان ليُقرأ التقرير بعد إغلاق الشهر
+  /// بلا إعادة حساب من جداول قد تتغيّر.
+  RealColumn get strengthSum => real().withDefault(const Constant(0))();
+  IntColumn get strengthDays => integer().withDefault(const Constant(0))();
+
+  /// OPEN | CLOSED
+  TextColumn get status => text().withDefault(const Constant('OPEN'))();
+  TextColumn get closedBy => text().withDefault(const Constant(''))();
+  DateTimeColumn get closedAt => dateTime().nullable()();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// حدّا المخزون لصنف في معسكر — منهما يُحسب التنبيه قبل النفاد.
+class CampStockLimits extends Table {
+  TextColumn get id => text()();
+  TextColumn get campId => text()();
+  TextColumn get campName => text().withDefault(const Constant(''))();
+  TextColumn get itemId => text()();
+  TextColumn get itemName => text().withDefault(const Constant(''))();
+  RealColumn get minStock => real().withDefault(const Constant(0))();
+  RealColumn get maxStock => real().withDefault(const Constant(0))();
+
+  /// كم يومًا قبل بلوغ الحد الأدنى يبدأ التنبيه.
+  IntColumn get alertDaysBefore => integer().withDefault(const Constant(2))();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// أرشيف تصفيات الشهر — سطر لكل شهر أُغلق.
+class MonthlySettlements extends Table {
+  TextColumn get id => text()();
+  IntColumn get year => integer()();
+  IntColumn get month => integer()();
+  TextColumn get settledBy => text().withDefault(const Constant(''))();
+  TextColumn get notes => text().withDefault(const Constant(''))();
+  IntColumn get campsCount => integer().withDefault(const Constant(0))();
+  IntColumn get itemsCount => integer().withDefault(const Constant(0))();
+  RealColumn get totalCredit => real().withDefault(const Constant(0))();
+  RealColumn get totalDebit => real().withDefault(const Constant(0))();
+  DateTimeColumn get settledAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// إعدادات عامة (هوية الجهة، تخطيط الطباعة، إعدادات النماذج) بصيغة JSON
 class AppSettings extends Table {
   TextColumn get key => text()();
@@ -381,6 +636,15 @@ class AppSettings extends Table {
   Adjustments,
   AuditLogs,
   SensitiveReviews,
+  Assets,
+  AssetAssignments,
+  RationOrders,
+  RationOrderLines,
+  MealPlans,
+  MealPlanEntries,
+  CampLedgers,
+  CampStockLimits,
+  MonthlySettlements,
   AppSettings,
 ])
 class AppDatabase extends _$AppDatabase {
@@ -388,7 +652,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 12;
 
   /// الفهارس المخدومة فعليًا بالاستعلامات: البحث بالمرجع (فتح سند من سجل
   /// المستندات)، وبالحالة (الأوامر المعلقة والمسودات)، وبالمستودع والصنف
@@ -416,6 +680,19 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS ix_stocktakes_wh ON stocktakes (warehouse, status)',
       'CREATE INDEX IF NOT EXISTS ix_strengths_date ON strengths (strength_date)',
       'CREATE INDEX IF NOT EXISTS ix_kitchen_logs_date ON kitchen_logs (date)',
+      'CREATE INDEX IF NOT EXISTS ix_assets_type_status ON assets (asset_type, status)',
+      'CREATE INDEX IF NOT EXISTS ix_assets_wh ON assets (warehouse)',
+      'CREATE INDEX IF NOT EXISTS ix_asset_assign_asset ON asset_assignments (asset_id)',
+      'CREATE INDEX IF NOT EXISTS ix_ration_status ON ration_orders (status)',
+      'CREATE INDEX IF NOT EXISTS ix_ration_wh ON ration_orders (requesting_warehouse)',
+      'CREATE INDEX IF NOT EXISTS ix_ration_lines_order ON ration_order_lines (order_id)',
+      'CREATE INDEX IF NOT EXISTS ix_meal_plans_status ON meal_plans (status)',
+      'CREATE INDEX IF NOT EXISTS ix_meal_entries_plan ON meal_plan_entries (plan_id, entry_date)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS ux_camp_ledger ON camp_ledgers (camp_id, item_id, year, month)',
+      'CREATE INDEX IF NOT EXISTS ix_camp_ledger_month ON camp_ledgers (year, month, status)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS ux_camp_limit ON camp_stock_limits (camp_id, item_id)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS ux_settlement_month ON monthly_settlements (year, month)',
+      'CREATE INDEX IF NOT EXISTS ix_returns_unit ON returns (beneficiary_unit_id)',
     ];
     for (final sql in statements) {
       await customStatement(sql);
@@ -489,10 +766,6 @@ class AppDatabase extends _$AppDatabase {
           if (from < 7) {
             await m.addColumn(items, items.reportUnit);
           }
-          // v8: صلاحية دفعات الوارد لتنبيهات قرب الانتهاء.
-          if (from < 8) {
-            await m.addColumn(receipts, receipts.expiryDate);
-          }
           // v6: ربط الوحدة بأكثر من منشأة (مطبخ وفرن معًا).
           if (from < 6) {
             await m.addColumn(beneficiaryUnits, beneficiaryUnits.facilityIds);
@@ -516,6 +789,34 @@ class AppDatabase extends _$AppDatabase {
               await m.addColumn(stocktakes, col);
             }
           }
+          // v8: الأصول الثابتة وعهدها، وطلبيات الإعاشة وسطورها.
+          if (from < 8) {
+            await m.createTable(assets);
+            await m.createTable(assetAssignments);
+            await m.createTable(rationOrders);
+            await m.createTable(rationOrderLines);
+          }
+          // v9: خطط الوجبات ومدخلاتها.
+          if (from < 9) {
+            await m.createTable(mealPlans);
+            await m.createTable(mealPlanEntries);
+          }
+          // v10: سجل حساب المعسكرات وحدود مخزونها وأرشيف التصفيات.
+          if (from < 10) {
+            await m.addColumn(warehouses, warehouses.isMain);
+            await m.createTable(campLedgers);
+            await m.createTable(campStockLimits);
+            await m.createTable(monthlySettlements);
+          }
+          // v11: ربط المرتجع بوحدته بالمعرّف لا بالاسم.
+          if (from < 11) {
+            await m.addColumn(returns, returns.beneficiaryUnitId);
+            await m.addColumn(returns, returns.beneficiaryUnitName);
+          }
+          // v12: صلاحية دفعات الوارد لتنبيهات قرب الانتهاء.
+          if (from < 12) {
+            await m.addColumn(receipts, receipts.expiryDate);
+          }
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');
@@ -525,6 +826,8 @@ class AppDatabase extends _$AppDatabase {
           await SignaturesRepo.install(this);
           // شواهد الحذف تنمو بلا حد لو تُركت: تُنظَّف القديمة عند كل تشغيل.
           await SyncMarks(this).pruneTombstones();
+          // وكذلك سجل التدقيق العادي — وعالي الخطورة يبقى.
+          await AuditRepo(this).prune();
         },
       );
 }

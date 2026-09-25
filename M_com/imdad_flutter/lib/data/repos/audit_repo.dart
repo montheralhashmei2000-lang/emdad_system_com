@@ -15,6 +15,36 @@ class AuditRepo {
   static const String riskNormal = 'normal';
   static const String riskHigh = 'high';
 
+  /// المدة التي تُحفَظ بها الأحداث **العادية** قبل التقليم.
+  ///
+  /// عالية الخطورة لا تُحذف أبدًا مهما طال العمر: تغييرُ صلاحية وإلغاءُ سند
+  /// واعتمادُ جرد هي أثرُ المساءلة وسببُ وجود الجدول أصلًا. أما العادية فتُكتب
+  /// بمعدّل مئاتٍ في اليوم، وتُزامَن إلى كل جهاز، فتصير بعد سنوات أكبرَ جداول
+  /// النظام وأثقلَ ما يُنقل — بلا من يقرؤها. وسنتان أطولُ من أي مراجعة دورية.
+  static const Duration normalTtl = Duration(days: 730);
+
+  /// حدّ الحذف في التشغيلة الواحدة.
+  ///
+  /// كل حذفٍ يولّد شاهدًا في `sync_marks` يُنقل إلى النظراء، فحذف عشرات
+  /// الألوف دفعةً واحدة يُثقل أول مزامنة بعده. التقليم يتوزّع على إقلاعات.
+  static const int pruneBatch = 2000;
+
+  /// يحذف دفعةً من الأحداث العادية التي تجاوزت [normalTtl]، ويعيد عددها.
+  Future<int> prune({DateTime? now}) async {
+    final cutoff = (now ?? DateTime.now()).subtract(normalTtl);
+    final stale = await (db.select(db.auditLogs)
+          ..where((t) =>
+              t.risk.equals(riskHigh).not() &
+              t.createdAt.isSmallerThanValue(cutoff))
+          ..orderBy([(t) => OrderingTerm.asc(t.createdAt)])
+          ..limit(pruneBatch))
+        .get();
+    if (stale.isEmpty) return 0;
+    final ids = [for (final r in stale) r.id];
+    await (db.delete(db.auditLogs)..where((t) => t.id.isIn(ids))).go();
+    return ids.length;
+  }
+
   Future<void> log({
     required String action,
     required String summary,

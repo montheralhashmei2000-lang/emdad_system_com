@@ -13,6 +13,7 @@ import 'core/ui/imd_widgets.dart';
 import 'core/ui/imd_window.dart';
 import 'core/theme/app_theme.dart';
 import 'data/db/app_database.dart';
+import 'data/repos/camp_ledger_repo.dart';
 import 'data/repos/settings_repo.dart';
 import 'data/sync/auto_sync.dart';
 import 'features/auth/login_screen.dart';
@@ -129,7 +130,13 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
   void initState() {
     super.initState();
     // بعد أول إطار: الإقلاع لا ينتظر الشبكة، وفشلها لا يمنع ظهور الواجهة.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _autoSync.refresh());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _autoSync.refresh();
+      // تصفية الشهر المنقضي إن أُذن بها — تتحقق بنفسها من الإذن وانقضاء الشهر.
+      CampLedgerRepo(widget.db).autoSettleIfDue().catchError(
+            (_) => const SettlementResult(ok: false, error: ''),
+          );
+    });
     // زر إغلاق النافذة لا يمرّ بـ `PopScope`، فيُعترض هنا ليُسأل عن التأكيد
     // كما يُسأل زر الرجوع على الهاتف.
     if (!kIsWeb && Platform.isWindows) {

@@ -17,7 +17,9 @@ import '../inventory/doc_kit.dart';
 /// وتبويب السجل والمقارنات (بطاقات مجمّعة بالمطبخ + التاريخ + الوجبة).
 /// القوة المستفيدة تُحسب للمطبخ بتاريخ اليوم المحدد وحده.
 class KitchenLogScreen extends StatefulWidget {
-  const KitchenLogScreen({super.key});
+  const KitchenLogScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<KitchenLogScreen> createState() => _KitchenLogScreenState();
@@ -187,23 +189,25 @@ class _KitchenLogScreenState extends State<KitchenLogScreen> {
     }
 
     setState(() => _saving = true);
-    for (final (r, it, qty, baseQty) in out) {
-      final ent = _entOf(it.id);
-      await _daily.saveKitchenLog(
-        facilityId: _facilityId,
-        facilityName: fac?.name ?? '',
-        date: _date,
-        mealType: _meal,
-        strength: _strength,
-        itemId: it.id,
-        itemName: it.name,
-        unitName: r.unitName,
-        qty: qty,
-        baseQty: baseQty,
-        expectedBase: (ent == null || ent.qtyPerPerson == 0 || _strength == 0) ? 0 : _expectedBase(ent),
-        notes: _notes.text.trim(),
-      );
-    }
+    await _db.transaction(() async {
+      for (final (r, it, qty, baseQty) in out) {
+        final ent = _entOf(it.id);
+        await _daily.saveKitchenLog(
+          facilityId: _facilityId,
+          facilityName: fac?.name ?? '',
+          date: _date,
+          mealType: _meal,
+          strength: _strength,
+          itemId: it.id,
+          itemName: it.name,
+          unitName: r.unitName,
+          qty: qty,
+          baseQty: baseQty,
+          expectedBase: (ent == null || ent.qtyPerPerson == 0 || _strength == 0) ? 0 : _expectedBase(ent),
+          notes: _notes.text.trim(),
+        );
+      }
+    });
     if (!mounted) return;
     setState(() {
       _saving = false;
@@ -222,13 +226,15 @@ class _KitchenLogScreenState extends State<KitchenLogScreen> {
   // ───────── الواجهة ─────────
   @override
   Widget build(BuildContext context) {
-    return ImdPage(children: [
-      const ImdPageTitle(
-        title: 'سجل التشغيل والطهي اليومي',
-        icon: 'utensils',
-        subtitle: 'تسجيل الكميات المستهلكة فعليًا لكل وجبة ومقارنتها بنسب الاستحقاق المعتمدة '
-            'لكشف الهدر أو التوفير',
-      ),
+    final content = <Widget>[
+      if (!widget.embedded)
+        const ImdPageTitle(
+          title: 'سجل التشغيل والطهي اليومي',
+          icon: 'utensils',
+          subtitle:
+              'تسجيل الكميات المستهلكة فعليًا لكل وجبة ومقارنتها بنسب الاستحقاق المعتمدة '
+              'لكشف الهدر أو التوفير',
+        ),
       ImdItabs(
         value: _tab,
         onChanged: (v) => setState(() => _tab = v),
@@ -244,7 +250,13 @@ class _KitchenLogScreenState extends State<KitchenLogScreen> {
         _form()
       else
         _history(),
-    ]);
+    ];
+    return widget.embedded
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: content,
+          )
+        : ImdPage(children: content);
   }
 
   Widget _form() {

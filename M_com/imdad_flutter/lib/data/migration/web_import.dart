@@ -97,6 +97,15 @@ class WebImporter {
       await _importStocktakes(data['stocktakes'], res);
       await _importStocktakeLines(data['stocktakeLines'], res);
       await _importSensitiveReviews(data['sensitiveReviews'], res);
+      await _importAssets(data['assets'], res);
+      await _importAssetAssignments(data['assetAssignments'], res);
+      await _importRationOrders(data['rationOrders'], res);
+      await _importRationOrderLines(data['rationOrderLines'], res);
+      await _importMealPlans(data['mealPlans'], res);
+      await _importMealPlanEntries(data['mealPlanEntries'], res);
+      await _importCampLedgers(data['campLedgers'], res);
+      await _importCampStockLimits(data['campStockLimits'], res);
+      await _importSettlements(data['monthlySettlements'], res);
       await _importAuditLogs(data['auditLogs'], res);
       await _importSettings(data['settings'], res);
       await _applyTombstones(marks, res);
@@ -232,6 +241,223 @@ class WebImporter {
           ));
     }
     if (rows.isNotEmpty) _count(res, 'سجل التدقيق', rows.length);
+  }
+
+  Future<void> _importAssets(Object? raw, WebImportResult res) async {
+    final rows = _rows(raw);
+    for (final a in rows) {
+      if (!_accept('assets', _id(a))) continue;
+      await db.into(db.assets).insertOnConflictUpdate(AssetsCompanion.insert(
+            id: _id(a),
+            name: _s(a, 'name'),
+            assetType: Value(_s(a, 'assetType', 'equipment')),
+            serialNumber: Value(_s(a, 'serialNumber')),
+            facilityId: Value(_s(a, 'facilityId')),
+            facilityName: Value(_s(a, 'facilityName')),
+            beneficiaryUnitId: Value(_s(a, 'beneficiaryUnitId')),
+            beneficiaryUnitName: Value(_s(a, 'beneficiaryUnitName')),
+            warehouse: Value(_s(a, 'warehouse')),
+            status: Value(_s(a, 'status', 'NEW')),
+            acquisitionDate: Value(_s(a, 'acquisitionDate')),
+            value: Value(_d(a, 'value')),
+            lifespanMonths: Value(_i(a, 'lifespanMonths')),
+            supplierId: Value(_s(a, 'supplierId')),
+            supplierName: Value(_s(a, 'supplierName')),
+            invoiceNumber: Value(_s(a, 'invoiceNumber')),
+            notes: Value(_s(a, 'notes')),
+            createdBy: Value(_s(a, 'createdBy')),
+            createdAt: Value(_created(a)),
+          ));
+    }
+    if (rows.isNotEmpty) _count(res, 'الأصول الثابتة', rows.length);
+  }
+
+  Future<void> _importAssetAssignments(Object? raw, WebImportResult res) async {
+    final rows = _rows(raw);
+    for (final g in rows) {
+      if (!_accept('asset_assignments', _id(g))) continue;
+      await db
+          .into(db.assetAssignments)
+          .insertOnConflictUpdate(AssetAssignmentsCompanion.insert(
+            id: _id(g),
+            assetId: _s(g, 'assetId'),
+            assetName: Value(_s(g, 'assetName')),
+            beneficiaryUnitId: Value(_s(g, 'beneficiaryUnitId')),
+            beneficiaryUnitName: Value(_s(g, 'beneficiaryUnitName')),
+            assignedDate: Value(_s(g, 'assignedDate')),
+            returnedDate: Value(_s(g, 'returnedDate')),
+            assignedTo: Value(_s(g, 'assignedTo')),
+            notes: Value(_s(g, 'notes')),
+            createdBy: Value(_s(g, 'createdBy')),
+            createdAt: Value(_created(g)),
+          ));
+    }
+    if (rows.isNotEmpty) _count(res, 'عهد الأصول', rows.length);
+  }
+
+  Future<void> _importRationOrders(Object? raw, WebImportResult res) async {
+    final rows = _rows(raw);
+    for (final o in rows) {
+      if (!_accept('ration_orders', _id(o))) continue;
+      await db.into(db.rationOrders).insertOnConflictUpdate(RationOrdersCompanion.insert(
+            id: _id(o),
+            refNo: Value(_s(o, 'refNo')),
+            requestingWarehouse: Value(_s(o, 'requestingWarehouse')),
+            supplyingWarehouse: Value(_s(o, 'supplyingWarehouse')),
+            date: Value(_s(o, 'date')),
+            requiredDate: Value(_s(o, 'requiredDate')),
+            status: Value(_s(o, 'status', 'DRAFT')),
+            priority: Value(_s(o, 'priority', 'NORMAL')),
+            notes: Value(_s(o, 'notes')),
+            rejectReason: Value(_s(o, 'rejectReason')),
+            createdBy: Value(_s(o, 'createdBy')),
+            approvedBy: Value(_s(o, 'approvedBy')),
+            receivedBy: Value(_s(o, 'receivedBy')),
+            receiptRef: Value(_s(o, 'receiptRef')),
+            createdAt: Value(_created(o)),
+          ));
+    }
+    if (rows.isNotEmpty) _count(res, 'طلبيات الإعاشة', rows.length);
+  }
+
+  Future<void> _importRationOrderLines(Object? raw, WebImportResult res) async {
+    final rows = _rows(raw);
+    for (final l in rows) {
+      if (!_accept('ration_order_lines', _id(l))) continue;
+      await db
+          .into(db.rationOrderLines)
+          .insertOnConflictUpdate(RationOrderLinesCompanion.insert(
+            id: _id(l),
+            orderId: _s(l, 'orderId'),
+            itemId: Value(_s(l, 'itemId')),
+            itemCode: Value(_s(l, 'itemCode')),
+            itemName: Value(_s(l, 'itemName')),
+            unitName: Value(_s(l, 'unitName')),
+            factor: Value(_d(l, 'factor', 1)),
+            requestedQty: Value(_d(l, 'requestedQty')),
+            approvedQty: Value(_d(l, 'approvedQty')),
+            receivedQty: Value(_d(l, 'receivedQty')),
+            notes: Value(_s(l, 'notes')),
+          ));
+    }
+    if (rows.isNotEmpty) _count(res, 'سطور طلبيات الإعاشة', rows.length);
+  }
+
+  Future<void> _importMealPlans(Object? raw, WebImportResult res) async {
+    final rows = _rows(raw);
+    for (final p in rows) {
+      if (!_accept('meal_plans', _id(p))) continue;
+      await db.into(db.mealPlans).insertOnConflictUpdate(MealPlansCompanion.insert(
+            id: _id(p),
+            name: _s(p, 'name'),
+            planType: Value(_s(p, 'planType', 'WEEKLY')),
+            startDate: Value(_s(p, 'startDate')),
+            endDate: Value(_s(p, 'endDate')),
+            status: Value(_s(p, 'status', 'DRAFT')),
+            facilityId: Value(_s(p, 'facilityId')),
+            facilityName: Value(_s(p, 'facilityName')),
+            warehouse: Value(_s(p, 'warehouse')),
+            notes: Value(_s(p, 'notes')),
+            createdBy: Value(_s(p, 'createdBy')),
+            createdAt: Value(_created(p)),
+          ));
+    }
+    if (rows.isNotEmpty) _count(res, 'خطط الوجبات', rows.length);
+  }
+
+  Future<void> _importMealPlanEntries(Object? raw, WebImportResult res) async {
+    final rows = _rows(raw);
+    for (final e in rows) {
+      if (!_accept('meal_plan_entries', _id(e))) continue;
+      await db
+          .into(db.mealPlanEntries)
+          .insertOnConflictUpdate(MealPlanEntriesCompanion.insert(
+            id: _id(e),
+            planId: _s(e, 'planId'),
+            entryDate: Value(_s(e, 'entryDate')),
+            mealType: Value(_s(e, 'mealType', 'LUNCH')),
+            itemId: Value(_s(e, 'itemId')),
+            itemCode: Value(_s(e, 'itemCode')),
+            itemName: Value(_s(e, 'itemName')),
+            unitName: Value(_s(e, 'unitName')),
+            factor: Value(_d(e, 'factor', 1)),
+            qtyPerPerson: Value(_d(e, 'qtyPerPerson')),
+            notes: Value(_s(e, 'notes')),
+          ));
+    }
+    if (rows.isNotEmpty) _count(res, 'وجبات الخطط', rows.length);
+  }
+
+  Future<void> _importCampLedgers(Object? raw, WebImportResult res) async {
+    final rows = _rows(raw);
+    for (final l in rows) {
+      if (!_accept('camp_ledgers', _id(l))) continue;
+      await db.into(db.campLedgers).insertOnConflictUpdate(CampLedgersCompanion.insert(
+            id: _id(l),
+            campId: _s(l, 'campId'),
+            campName: Value(_s(l, 'campName')),
+            itemId: _s(l, 'itemId'),
+            itemName: Value(_s(l, 'itemName')),
+            unitName: Value(_s(l, 'unitName')),
+            year: _i(l, 'year'),
+            month: _i(l, 'month'),
+            openingEntitled: Value(_d(l, 'openingEntitled')),
+            openingStock: Value(_d(l, 'openingStock')),
+            entitlementTotal: Value(_d(l, 'entitlementTotal')),
+            transferredIn: Value(_d(l, 'transferredIn')),
+            issuedDirect: Value(_d(l, 'issuedDirect')),
+            returnedQty: Value(_d(l, 'returnedQty')),
+            consumedKitchen: Value(_d(l, 'consumedKitchen')),
+            strengthSum: Value(_d(l, 'strengthSum')),
+            strengthDays: Value(_i(l, 'strengthDays')),
+            status: Value(_s(l, 'status', 'OPEN')),
+            closedBy: Value(_s(l, 'closedBy')),
+            closedAt: Value(DateTime.tryParse(_s(l, 'closedAt'))),
+          ));
+    }
+    if (rows.isNotEmpty) _count(res, 'سجلات المعسكرات', rows.length);
+  }
+
+  Future<void> _importCampStockLimits(Object? raw, WebImportResult res) async {
+    final rows = _rows(raw);
+    for (final c in rows) {
+      if (!_accept('camp_stock_limits', _id(c))) continue;
+      await db
+          .into(db.campStockLimits)
+          .insertOnConflictUpdate(CampStockLimitsCompanion.insert(
+            id: _id(c),
+            campId: _s(c, 'campId'),
+            campName: Value(_s(c, 'campName')),
+            itemId: _s(c, 'itemId'),
+            itemName: Value(_s(c, 'itemName')),
+            minStock: Value(_d(c, 'minStock')),
+            maxStock: Value(_d(c, 'maxStock')),
+            alertDaysBefore: Value(_i(c, 'alertDaysBefore', 2)),
+          ));
+    }
+    if (rows.isNotEmpty) _count(res, 'حدود مخزون المعسكرات', rows.length);
+  }
+
+  Future<void> _importSettlements(Object? raw, WebImportResult res) async {
+    final rows = _rows(raw);
+    for (final m in rows) {
+      if (!_accept('monthly_settlements', _id(m))) continue;
+      await db
+          .into(db.monthlySettlements)
+          .insertOnConflictUpdate(MonthlySettlementsCompanion.insert(
+            id: _id(m),
+            year: _i(m, 'year'),
+            month: _i(m, 'month'),
+            settledBy: Value(_s(m, 'settledBy')),
+            notes: Value(_s(m, 'notes')),
+            campsCount: Value(_i(m, 'campsCount')),
+            itemsCount: Value(_i(m, 'itemsCount')),
+            totalCredit: Value(_d(m, 'totalCredit')),
+            totalDebit: Value(_d(m, 'totalDebit')),
+            settledAt: Value(DateTime.tryParse(_s(m, 'settledAt')) ?? DateTime.now()),
+          ));
+    }
+    if (rows.isNotEmpty) _count(res, 'تصفيات الشهور', rows.length);
   }
 
   // ───────── أدوات مساعدة ─────────
@@ -383,6 +609,7 @@ class WebImporter {
             manager: Value(_s(w, 'manager')),
             location: Value(_s(w, 'location')),
             feedsAllCamps: Value(_b(w, 'feedsAllCamps', true)),
+            isMain: Value(_b(w, 'isMain')),
             campIds: Value(_json(w['campIds'])),
             notes: Value(_s(w, 'notes')),
           ));
@@ -585,6 +812,8 @@ class WebImporter {
             createdBy: Value(_s(r, 'createdBy')),
             createdAt: Value(_created(r)),
             party: Value(_s(r, 'party')),
+            beneficiaryUnitId: Value(_s(r, 'beneficiaryUnitId')),
+            beneficiaryUnitName: Value(_s(r, 'beneficiaryUnitName')),
             type: Value(_s(r, 'type', 'FROM_UNIT')),
             condition: Value(_s(r, 'condition', 'صالحة')),
             origRef: Value(_s(r, 'origRef')),

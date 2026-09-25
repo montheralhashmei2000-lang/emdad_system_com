@@ -9,6 +9,7 @@ import '../../core/ui/imd_layout.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/audit_repo.dart';
+import '../../data/repos/camp_ledger_repo.dart';
 import '../../data/repos/catalog_repo.dart';
 import 'camp_link_field.dart';
 
@@ -200,6 +201,28 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
     }
   }
 
+  /// تعيين المخزن الرئيسي — منه وحده تُغذّى المعسكرات.
+  Future<void> _setMain(Warehouse w) async {
+    final current = await CampLedgerRepo(_db).mainWarehouse();
+    if (!mounted) return;
+    final ok = await imdConfirm(
+      context,
+      current == null
+          ? 'تعيين «${w.name}» مخزنًا رئيسيًا؟ تغذية المعسكرات ستكون منه وحده.'
+          : 'نقل الصفة من «${current.name}» إلى «${w.name}»؟ '
+              'تغذية المعسكرات ستكون من «${w.name}» وحده بعد ذلك.',
+      ok: 'تعيين',
+    );
+    if (!ok || !mounted) return;
+    await CampLedgerRepo(_db).setMainWarehouse(
+      w.id,
+      actor: context.read<AuthService>().currentUser?.email ?? '',
+    );
+    if (!mounted) return;
+    showImdToast(context, '✔ صار «${w.name}» المخزن الرئيسي');
+    await _render();
+  }
+
   void _newRecord() {
     _editId = null;
     _render();
@@ -306,6 +329,7 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
             const ImdCol('المسؤول'),
             const ImdCol('الموقع'),
             const ImdCol('🏕️ يغذي معسكر', flex: 2),
+            const ImdCol('رئيسي', center: true),
             const ImdCol('الاستخدام', flex: 2),
             const ImdCol('آخر حركة'),
             const ImdCol('ملاحظات'),
@@ -322,6 +346,16 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                   Text(or(x.manager)),
                   Text(or(x.location)),
                   Text(_feedsLabel(x)),
+                  x.isMain
+                      ? const ImdChip('المخزن الرئيسي', tone: ImdTone.ok)
+                      : (can
+                          ? ImdButton.outline(
+                              label: 'تعيين',
+                              icon: 'shield',
+                              small: true,
+                              onPressed: () => _setMain(x),
+                            )
+                          : const Text('—')),
                   Text((u?.count ?? 0) > 0
                       ? 'وارد ${nf(u!.receipts)} • صرف ${nf(u.issues)} • تحويل ${nf(u.transfers)}'
                       : '—'),

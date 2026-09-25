@@ -364,6 +364,47 @@ void main() {
     });
   });
 
+  group('إعادة التعيين المحلي لا تتعدّى جهازها', () {
+    test('مسح حسابات الفرع لا يحذف حساب المدير على جهاز الإدارة', () async {
+      // السيناريو الذي أوقع النظام: مسؤول فرعٍ نسي كلمة مروره فضغط «إعادة
+      // تعيين محلي»، فسافر شاهد الحذف إلى الإدارة وحذف حساب المدير هناك.
+      await AuthService(master).createAdmin(username: 'admin', password: 'Test@12345');
+      final b = await bond();
+      await b.server.stopReceiving();
+      await b.server.startReceiving(trustedOnly: true);
+      await b.client.autoSync();
+      expect(await AuthService(branch).hasAnyUser(), isTrue);
+
+      await AuthService(branch).localReset();
+      expect(await AuthService(branch).hasAnyUser(), isFalse, reason: 'لم تُمسح محليًا');
+
+      await b.client.autoSync();
+
+      expect(
+        await AuthService(master).hasAnyUser(),
+        isTrue,
+        reason: 'حُذف حساب المدير على جهاز الإدارة بسبب إعادة تعيين في فرع',
+      );
+      expect(await AuthService(master).needsBootstrap(), isFalse,
+          reason: 'عادت شاشة تهيئة حساب المدير على جهاز الإدارة');
+    });
+
+    test('وتعود الحسابات إلى الفرع في أول مزامنة بعدها', () async {
+      await AuthService(master).createAdmin(username: 'admin', password: 'Test@12345');
+      final b = await bond();
+      await b.server.stopReceiving();
+      await b.server.startReceiving(trustedOnly: true);
+      await b.client.autoSync();
+
+      await AuthService(branch).localReset();
+      await b.client.autoSync();
+
+      // بلا تصفير علامة السحب يظن الجهاز أنه استلمها فلا يطلبها مرة أخرى.
+      final res = await AuthService(branch).login('admin', 'Test@12345');
+      expect(res.isOk, isTrue, reason: 'لم تعد الحسابات بعد إعادة التعيين: ${res.message}');
+    });
+  });
+
   group('انحراف الساعات لا يوقف المزامنة', () {
     test('جهاز ساعته متأخرة ساعة كاملة يُرفض، وبضبط الفرق يُقبل', () async {
       final session = SyncSession.create();

@@ -134,16 +134,16 @@ void main() {
     });
   });
 
-  test('الترقية من v7 تضيف عمود الصلاحية ولا تمس السندات القائمة', () async {
+  test('الترقية من v11 تضيف عمود الصلاحية ولا تمس السندات القائمة', () async {
     final dir = await Directory.systemTemp.createTemp('imdad_mig');
     addTearDown(() => dir.delete(recursive: true));
     final file = File('${dir.path}/db.sqlite');
 
-    // قاعدة بصيغة v7: بلا العمود الجديد وبسند قائم.
+    // قاعدة بصيغة v11: بلا العمود الجديد وبسند قائم.
     final v8 = AppDatabase.forTesting(NativeDatabase(file));
     await v8.customStatement("INSERT INTO receipts (id, ref_no, base_qty) VALUES ('r1', 'و-000001', 4)");
     await v8.customStatement('ALTER TABLE receipts DROP COLUMN expiry_date');
-    await v8.customStatement('PRAGMA user_version = 7');
+    await v8.customStatement('PRAGMA user_version = 11');
     await v8.close();
 
     final upgraded = AppDatabase.forTesting(NativeDatabase(file));

@@ -11,11 +11,15 @@ import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../domain/access_control.dart';
+import '../catalog/assets_screen.dart';
 import '../catalog/kitchens_screen.dart';
 import '../catalog/items_screen.dart';
 import '../catalog/suppliers_screen.dart';
 import '../catalog/units_screen.dart';
 import '../catalog/warehouses_screen.dart';
+import '../daily/camp_dashboard_screen.dart';
+import '../daily/daily_operations_screen.dart';
+import '../daily/meal_plan_screen.dart';
 import '../daily/kitchen_log_screen.dart';
 import '../daily/ratios_screen.dart';
 import '../daily/strength_screen.dart';
@@ -23,6 +27,7 @@ import '../insights/activity_intel_screen.dart';
 import '../insights/executive_cmd_screen.dart';
 import '../insights/health_ops_screen.dart';
 import '../insights/sensitive_ops_screen.dart';
+import '../inventory/ration_order_screen.dart';
 import '../inventory/issue_screen.dart';
 import '../inventory/opening_screen.dart';
 import '../inventory/pending_screen.dart';
@@ -30,6 +35,10 @@ import '../inventory/receive_screen.dart';
 import '../inventory/returns_screen.dart';
 import '../inventory/transfer_screen.dart';
 import '../alerts/stock_alerts_screen.dart';
+import 'notification_bell.dart';
+import '../reports/camp_ledger_screen.dart';
+import '../reports/camp_settlement_screen.dart';
+import '../reports/actual_entitlement_screen.dart';
 import '../reports/balances_screen.dart';
 import '../reports/reports_center_screen.dart';
 import '../settings/audit_screen.dart';
@@ -78,6 +87,7 @@ const _menu = <_MenuSection>[
     _MenuItem('units', 'users', 'الوحدات المستفيدة'),
     _MenuItem('stores', 'warehouse', 'المستودعات'),
     _MenuItem('kitchens', 'utensils', 'المطابخ والأفران'),
+    _MenuItem('assets', 'package', 'الأصول الثابتة'),
   ]),
   _MenuSection('stock', 'package', 'العمليات المخزنية', [
     _MenuItem('pendingOrders', 'bell', 'أوامر التوريد المعلقة'),
@@ -86,11 +96,13 @@ const _menu = <_MenuSection>[
     _MenuItem('transfer', 'refresh', 'تحويل مخزني'),
     _MenuItem('returns', 'undo', 'المرتجعات'),
     _MenuItem('opening', 'clipboard', 'الأرصدة الافتتاحية'),
+    _MenuItem('rationOrders', 'clipboard', 'طلبيات الإعاشة'),
   ]),
   _MenuSection('daily', 'chart', 'التشغيل اليومي', [
     _MenuItem('feeding', 'calendar', 'التغذية اليومية (حصر القوة)'),
-    _MenuItem('kitchenLog', 'utensils', 'سجل التشغيل والطهي اليومي'),
+    _MenuItem('dailyOperations', 'calendar', 'التخطيط والتشغيل اليومي'),
     _MenuItem('ratios', 'scale', 'نسب الاستهلاك'),
+    _MenuItem('campDashboard', 'radio', 'لوحة المعسكرات'),
   ]),
   _MenuSection('reports', 'trending', 'التقارير والجرد', [
     _MenuItem('balances', 'calculator', 'الأرصدة الحالية'),
@@ -131,7 +143,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     // فحص دوري: الجلسة 12 ساعة، ووقف الحساب يُنهي الجلسة فورًا.
-    _sessionTimer = Timer.periodic(const Duration(minutes: 5), (_) => _checkSession());
+    _sessionTimer =
+        Timer.periodic(const Duration(minutes: 5), (_) => _checkSession());
   }
 
   @override
@@ -156,7 +169,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   void _go(String page) {
     setState(() => _page = page);
-    if (_scaffoldKey.currentState?.isEndDrawerOpen ?? false) Navigator.of(context).pop();
+    if (_scaffoldKey.currentState?.isEndDrawerOpen ?? false) {
+      Navigator.of(context).pop();
+    }
   }
 
   bool _isAdmin(AuthService auth) => auth.currentUser?.role == 'admin';
@@ -166,12 +181,21 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   bool _hasPerm(AuthService auth, String page, [String action = PermAction.view]) {
     page = _permPage[page] ?? page;
+    if (page == 'dailyOperations') {
+      return _hasPerm(auth, 'mealPlans', action) ||
+          _hasPerm(auth, 'kitchenLog', action);
+    }
     final user = auth.currentUser;
     if (user == null) return false;
     final perms = auth.permissionsOf(user).map(
-          (k, v) => MapEntry(k, (v as Map).map((a, b) => MapEntry(a.toString(), b == true))),
+          (k, v) => MapEntry(
+              k, (v as Map).map((a, b) => MapEntry(a.toString(), b == true))),
         );
-    return AccessControl.can(isAdmin: _isAdmin(auth), permissions: perms, page: page, action: action);
+    return AccessControl.can(
+        isAdmin: _isAdmin(auth),
+        permissions: perms,
+        page: page,
+        action: action);
   }
 
   Widget _pageBody(String page) {
@@ -186,6 +210,22 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return const KitchensScreen();
       case 'units':
         return const UnitsScreen();
+      case 'campDashboard':
+        return const CampDashboardScreen();
+      case 'campLedger':
+        return const CampLedgerScreen();
+      case 'campSettlement':
+        return const CampSettlementScreen();
+      case 'actualEntitlement':
+        return const ActualEntitlementScreen();
+      case 'mealPlans':
+        return const MealPlanScreen();
+      case 'dailyOperations':
+        return const DailyOperationsScreen();
+      case 'assets':
+        return const AssetsScreen();
+      case 'rationOrders':
+        return const RationOrderScreen();
       case 'stores':
         return const WarehousesScreen();
       case 'pendingOrders':
@@ -257,9 +297,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       openSec: _openSec,
       isAdmin: _isAdmin(auth),
       hasPerm: (p) => _hasPerm(auth, p),
-      userName: auth.currentUser?.name.isNotEmpty == true ? auth.currentUser!.name : (auth.currentUser?.username ?? ''),
+      userName: auth.currentUser?.name.isNotEmpty == true
+          ? auth.currentUser!.name
+          : (auth.currentUser?.username ?? ''),
       onGo: _go,
-      onToggle: (sec) => setState(() => _openSec = _openSec == sec ? null : sec),
+      onToggle: (sec) =>
+          setState(() => _openSec = _openSec == sec ? null : sec),
       onLogout: widget.onSignOut,
     );
 
@@ -280,29 +323,35 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           }
         },
         child: Scaffold(
-        key: _scaffoldKey,
-        backgroundColor: c.bg,
-        endDrawer: wide ? null : Drawer(width: ImdSizes.sideWidth, backgroundColor: c.side, child: side),
-        body: Column(
-          children: [
-            _Topbar(
-              userName: side.userName,
-              showBurger: !wide,
-              onBurger: () => _scaffoldKey.currentState?.openEndDrawer(),
-            ),
-            Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (wide) side,
-                  Expanded(
-                    child: KeyedSubtree(key: ValueKey(_page), child: body),
-                  ),
-                ],
+          key: _scaffoldKey,
+          backgroundColor: c.bg,
+          endDrawer: wide
+              ? null
+              : Drawer(
+                  width: ImdSizes.sideWidth,
+                  backgroundColor: c.side,
+                  child: side),
+          body: Column(
+            children: [
+              _Topbar(
+                userName: side.userName,
+                showBurger: !wide,
+                onBurger: () => _scaffoldKey.currentState?.openEndDrawer(),
+                onOpenPage: _go,
               ),
-            ),
-          ],
-        ),
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (wide) side,
+                    Expanded(
+                      child: KeyedSubtree(key: ValueKey(_page), child: body),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -311,11 +360,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
 /// `.topbar`
 class _Topbar extends StatelessWidget {
-  const _Topbar({required this.userName, required this.showBurger, required this.onBurger});
+  const _Topbar({
+    required this.userName,
+    required this.showBurger,
+    required this.onBurger,
+    required this.onOpenPage,
+  });
 
   final String userName;
   final bool showBurger;
   final VoidCallback onBurger;
+  final ValueChanged<String> onOpenPage;
 
   @override
   Widget build(BuildContext context) {
@@ -336,21 +391,32 @@ class _Topbar extends StatelessWidget {
           Text.rich(
             TextSpan(children: [
               const TextSpan(text: 'نظام '),
-              TextSpan(text: 'الإمداد والتموين', style: TextStyle(color: c.accent, fontWeight: FontWeight.w700)),
+              TextSpan(
+                  text: 'الإمداد والتموين',
+                  style:
+                      TextStyle(color: c.accent, fontWeight: FontWeight.w700)),
             ]),
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: c.text2),
+            style: TextStyle(
+                fontSize: 15, fontWeight: FontWeight.w600, color: c.text2),
           ),
           const Spacer(),
+          NotificationBell(onOpenPage: onOpenPage),
+          const SizedBox(width: 8),
           Container(
             height: 40,
             padding: const EdgeInsetsDirectional.fromSTEB(6, 4, 10, 4),
-            decoration: BoxDecoration(color: c.subtle, borderRadius: BorderRadius.circular(99)),
+            decoration: BoxDecoration(
+                color: c.subtle, borderRadius: BorderRadius.circular(99)),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 _Avatar(name: userName, size: 32, fontSize: 14),
                 const SizedBox(width: 10),
-                Text(userName, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: c.text)),
+                Text(userName,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: c.text)),
                 const SizedBox(width: 10),
                 const _StatusPill(label: 'IAM محمي'),
                 if (MediaQuery.sizeOf(context).width > 560) ...[
@@ -385,10 +451,16 @@ class _StatusPill extends StatelessWidget {
         Container(
           width: 8,
           height: 8,
-          decoration: const BoxDecoration(color: Color(0xFF35C978), shape: BoxShape.circle),
+          decoration: const BoxDecoration(
+              color: Color(0xFF35C978), shape: BoxShape.circle),
         ),
         const SizedBox(width: 6),
-        Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: c.text2, height: 1.6)),
+        Text(label,
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: c.text2,
+                height: 1.6)),
       ]),
     );
   }
@@ -396,7 +468,8 @@ class _StatusPill extends StatelessWidget {
 
 /// `.avatar`
 class _Avatar extends StatelessWidget {
-  const _Avatar({required this.name, required this.size, required this.fontSize});
+  const _Avatar(
+      {required this.name, required this.size, required this.fontSize});
   final String name;
   final double size;
   final double fontSize;
@@ -408,7 +481,9 @@ class _Avatar extends StatelessWidget {
       width: size,
       height: size,
       alignment: Alignment.center,
-      decoration: BoxDecoration(color: c.isDark ? c.accent : const Color(0xFF0F766E), shape: BoxShape.circle),
+      decoration: BoxDecoration(
+          color: c.isDark ? c.accent : const Color(0xFF0F766E),
+          shape: BoxShape.circle),
       child: Text(
         name.isEmpty ? '؟' : name.characters.first.toUpperCase(),
         style: TextStyle(
@@ -469,10 +544,14 @@ class _Sidebar extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.only(top: 6, bottom: 12),
                     margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.sideLine))),
+                    decoration: BoxDecoration(
+                        border: Border(bottom: BorderSide(color: c.sideLine))),
                     child: const Text('نظام الإمداد والتموين',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white)),
                   ),
                   _SideTile(
                     icon: 'home',
@@ -497,7 +576,8 @@ class _Sidebar extends StatelessWidget {
                           ? Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                for (final i in s.items.where((i) => hasPerm(i.id)))
+                                for (final i
+                                    in s.items.where((i) => hasPerm(i.id)))
                                   _SideTile(
                                     icon: i.icon,
                                     label: i.name,
@@ -524,7 +604,8 @@ class _Sidebar extends StatelessWidget {
                   Container(
                     margin: const EdgeInsets.only(top: 14),
                     padding: const EdgeInsets.only(top: 14),
-                    decoration: BoxDecoration(border: Border(top: BorderSide(color: c.sideLine))),
+                    decoration: BoxDecoration(
+                        border: Border(top: BorderSide(color: c.sideLine))),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -545,14 +626,18 @@ class _Sidebar extends StatelessWidget {
                                 children: [
                                   Text(userName,
                                       style: const TextStyle(
-                                          fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
+                                          fontSize: 13.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.white)),
                                   Row(children: [
-                                    ImdIcon(mobile ? 'phone' : 'monitor', size: 12, color: c.sideMuted),
+                                    ImdIcon(mobile ? 'phone' : 'monitor',
+                                        size: 12, color: c.sideMuted),
                                     const SizedBox(width: 4),
                                     Flexible(
                                       child: Text(
                                         '${mobile ? 'جوال' : 'كمبيوتر'} • ${isAdmin ? 'مدير النظام' : 'مستخدم'}',
-                                        style: TextStyle(fontSize: 11, color: c.sideMuted),
+                                        style: TextStyle(
+                                            fontSize: 11, color: c.sideMuted),
                                       ),
                                     ),
                                   ]),
@@ -561,7 +646,11 @@ class _Sidebar extends StatelessWidget {
                             ),
                           ]),
                         ),
-                        _SideTile(icon: 'lock', label: 'تسجيل خروج', kind: _SideKind.logout, onTap: onLogout),
+                        _SideTile(
+                            icon: 'lock',
+                            label: 'تسجيل خروج',
+                            kind: _SideKind.logout,
+                            onTap: onLogout),
                       ],
                     ),
                   ),
@@ -635,7 +724,8 @@ class _SideTileState extends State<_SideTile> {
         bg = widget.on ? c.sideActive : (_hover ? c.sideHover : Colors.transparent);
         fg = (widget.on || _hover) ? Colors.white : c.sideText.withValues(alpha: .86);
         iconColor = widget.on ? const Color(0xFF5EEAD4) : null;
-        pad = const EdgeInsetsDirectional.fromSTEB(14, 11, 10, 11).resolve(TextDirection.rtl);
+        pad = const EdgeInsetsDirectional.fromSTEB(14, 11, 10, 11)
+            .resolve(TextDirection.rtl);
         margin = const EdgeInsets.only(left: 4, top: 1, bottom: 1);
         fs = 13.5;
         fw = FontWeight.w500;
@@ -667,26 +757,35 @@ class _SideTileState extends State<_SideTile> {
           ),
           foregroundDecoration: isItem && widget.on
               ? const BoxDecoration(
-                  border: Border(right: BorderSide(color: Color(0xFF2DD4BF), width: 2)),
+                  border: Border(
+                      right: BorderSide(color: Color(0xFF2DD4BF), width: 2)),
                 )
               : null,
           padding: pad,
           child: Row(
-            mainAxisAlignment:
-                widget.kind == _SideKind.logout ? MainAxisAlignment.center : MainAxisAlignment.start,
+            mainAxisAlignment: widget.kind == _SideKind.logout
+                ? MainAxisAlignment.center
+                : MainAxisAlignment.start,
             children: [
               ImdIcon(widget.icon, size: fs * 1.1, color: iconColor ?? fg),
-              SizedBox(width: widget.kind == _SideKind.header ? 8 : (widget.kind == _SideKind.logout ? 6 : 10)),
+              SizedBox(
+                  width: widget.kind == _SideKind.header
+                      ? 8
+                      : (widget.kind == _SideKind.logout ? 6 : 10)),
               if (widget.kind == _SideKind.logout)
-                Text(widget.label, style: TextStyle(fontSize: fs, fontWeight: fw, color: fg, height: 1.6))
+                Text(widget.label,
+                    style: TextStyle(
+                        fontSize: fs, fontWeight: fw, color: fg, height: 1.6))
               else
                 Expanded(
                   child: Text(widget.label,
-                      style: TextStyle(fontSize: fs, fontWeight: fw, color: fg, height: 1.6),
+                      style: TextStyle(
+                          fontSize: fs, fontWeight: fw, color: fg, height: 1.6),
                       overflow: TextOverflow.ellipsis),
                 ),
               if (widget.kind == _SideKind.header) ...[
-                ImdIcon(widget.open ? 'chevron-down' : 'chevron-left', size: 12, color: c.sideMuted),
+                ImdIcon(widget.open ? 'chevron-down' : 'chevron-left',
+                    size: 12, color: c.sideMuted),
               ],
             ],
           ),
@@ -706,7 +805,8 @@ class _NoAccess extends StatelessWidget {
       children: [
         ImdPageTitle(title: 'صلاحية غير متاحة', icon: 'lock'),
         ImdPanel(
-          child: Text('لا تملك صلاحية الوصول إلى هذه الشاشة. اطلب من مدير النظام منحك الصلاحية المناسبة.'),
+          child: Text(
+              'لا تملك صلاحية الوصول إلى هذه الشاشة. اطلب من مدير النظام منحك الصلاحية المناسبة.'),
         ),
       ],
     );
@@ -720,7 +820,10 @@ class _Soon extends StatelessWidget {
   Widget build(BuildContext context) {
     return const ImdPage(
       children: [
-        ImdPageTitle(title: 'قريبًا', icon: 'alert', subtitle: 'هذه الشاشة ستُبنى في خطوة قادمة'),
+        ImdPageTitle(
+            title: 'قريبًا',
+            icon: 'alert',
+            subtitle: 'هذه الشاشة ستُبنى في خطوة قادمة'),
       ],
     );
   }

@@ -24,6 +24,7 @@ class ImdWindow {
 
   /// نافذة الدخول المدمجة.
   static Future<void> login() => _guard(() async {
+        await _leaveFullScreen();
         if (await windowManager.isMaximized()) await windowManager.unmaximize();
         await windowManager.setTitleBarStyle(TitleBarStyle.hidden, windowButtonVisibility: false);
         await windowManager.setMinimumSize(loginSize);
@@ -35,6 +36,7 @@ class ImdWindow {
 
   /// النافذة الرئيسية: شريط العنوان ظاهر والنافذة مكبَّرة على الشاشة.
   static Future<void> main() => _guard(() async {
+        await _leaveFullScreen();
         await windowManager.setTitleBarStyle(TitleBarStyle.normal);
         await windowManager.setResizable(true);
         await windowManager.setMaximizable(true);
@@ -42,6 +44,12 @@ class ImdWindow {
         await windowManager.setMinimumSize(const Size(360, 600));
         await windowManager.maximize();
       });
+
+  /// ويندوز يستعيد وضع النافذة السابق: إن تُركت في ملء الشاشة فُتحت كذلك،
+  /// بلا شريط عنوان ولا أزرار. فكل وضع يبدأ بالخروج منه.
+  static Future<void> _leaveFullScreen() async {
+    if (await windowManager.isFullScreen()) await windowManager.setFullScreen(false);
+  }
 
   /// إغلاق التطبيق مباشرة (زر «خروج» في نافذة الدخول: لا شيء يضيع هناك).
   static Future<void> exit() => _guard(() => windowManager.destroy());

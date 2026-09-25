@@ -1,3 +1,5 @@
+import 'package:drift/drift.dart';
+
 import '../../core/ui/imd_format.dart';
 import '../db/app_database.dart';
 import 'catalog_repo.dart';
@@ -8,7 +10,17 @@ import 'movements_repo.dart';
 /// لكل تقرير فلاتره الخاصة وأعمدته وملخّصه، مع احترام نطاق مستودعات المستخدم.
 
 /// معرّفات التقارير بترتيب قائمة الويب.
-enum ReportId { moves, unitAccount, stock, consumption, strength, kitchen, supplier, returns, daily }
+enum ReportId {
+  moves,
+  unitAccount,
+  stock,
+  consumption,
+  strength,
+  kitchen,
+  supplier,
+  returns,
+  daily
+}
 
 /// بطاقة التقرير في القائمة الجانبية (`REPORTS`).
 class ReportInfo {
@@ -20,15 +32,24 @@ class ReportInfo {
 }
 
 const kReports = <ReportInfo>[
-  ReportInfo(ReportId.moves, 'repeat', 'حركة المخزون اليومية', 'كل الحركات حسب الفترة والمستودع والنوع'),
-  ReportInfo(ReportId.unitAccount, 'file', 'كشف حساب وحدة مستفيدة', 'المصروف والمرتجع لوحدة وفروعها'),
-  ReportInfo(ReportId.stock, 'package', 'تقرير أرصدة المخزون', 'الرصيد وحالة كل صنف، إجمالي أو لكل مستودع'),
-  ReportInfo(ReportId.consumption, 'chart', 'تحليل الاستهلاك', 'المصروف مجمّعًا حسب الصنف أو الوحدة أو المستودع'),
-  ReportInfo(ReportId.strength, 'users', 'تقرير حصر القوة', 'القوة الأساسية والزيادة لكل معسكر ووحدة'),
-  ReportInfo(ReportId.kitchen, 'utensils', 'أداء المطابخ والأفران', 'الاستهلاك الفعلي مقابل المتوقع لكل وجبة'),
-  ReportInfo(ReportId.supplier, 'truck', 'ملخص توريدات الموردين', 'تفصيلي حسب السند أو مجمّع بالكميات'),
-  ReportInfo(ReportId.returns, 'undo', 'تقرير المرتجعات', 'المرتجع من الوحدات وإلى الموردين'),
-  ReportInfo(ReportId.daily, 'clipboard', 'تقرير العمل اليومي', 'ملخص وحركات يوم واحد'),
+  ReportInfo(ReportId.moves, 'repeat', 'حركة المخزون اليومية',
+      'كل الحركات حسب الفترة والمستودع والنوع'),
+  ReportInfo(ReportId.unitAccount, 'file', 'كشف حساب وحدة مستفيدة',
+      'المصروف والمرتجع لوحدة وفروعها'),
+  ReportInfo(ReportId.stock, 'package', 'تقرير أرصدة المخزون',
+      'الرصيد وحالة كل صنف، إجمالي أو لكل مستودع'),
+  ReportInfo(ReportId.consumption, 'chart', 'تحليل الاستهلاك',
+      'المصروف مجمّعًا حسب الصنف أو الوحدة أو المستودع'),
+  ReportInfo(ReportId.strength, 'users', 'تقرير حصر القوة',
+      'القوة الأساسية والزيادة لكل معسكر ووحدة'),
+  ReportInfo(ReportId.kitchen, 'utensils', 'أداء المطابخ والأفران',
+      'الاستهلاك الفعلي مقابل المتوقع لكل وجبة'),
+  ReportInfo(ReportId.supplier, 'truck', 'ملخص توريدات الموردين',
+      'تفصيلي حسب السند أو مجمّع بالكميات'),
+  ReportInfo(ReportId.returns, 'undo', 'تقرير المرتجعات',
+      'المرتجع من الوحدات وإلى الموردين'),
+  ReportInfo(ReportId.daily, 'clipboard', 'تقرير العمل اليومي',
+      'ملخص وحركات يوم واحد'),
 ];
 
 const kMoveTypes = <String, String>{
@@ -110,7 +131,8 @@ class MoveRow {
 
 /// عمود في جدول التقرير (`C(k,t,o)`).
 class ReportColumn {
-  const ReportColumn(this.title, {this.numeric = false, this.sum = false, this.chip = false});
+  const ReportColumn(this.title,
+      {this.numeric = false, this.sum = false, this.chip = false});
 
   final String title;
   final bool numeric;
@@ -173,7 +195,8 @@ class ReportFilterDef {
   final String label;
 
   /// خيارات القائمة، وقد تعتمد على قيم فلاتر أخرى (الوحدة الفرعية تتبع الرئيسية).
-  final List<(String, String)> Function(ReportData data, Map<String, String> f)? options;
+  final List<(String, String)> Function(ReportData data, Map<String, String> f)?
+      options;
   final int fromDaysAgo;
 
   /// «تحديد فترة» مفعّلة ابتداءً.
@@ -194,6 +217,8 @@ class ReportData {
     required this.moves,
     required this.balances,
     required this.scoped,
+    this.from = '',
+    this.to = '',
   });
 
   final List<Item> items;
@@ -211,6 +236,20 @@ class ReportData {
 
   /// المستخدم محصور بنطاق مستودعات.
   final bool scoped;
+
+  /// النافذة الزمنية التي حُمّلت بها [moves] — فارغة تعني «كل التاريخ».
+  ///
+  /// تقرأها الشاشة لتعرف أن ما بين يديها يكفي الفلتر المطلوب أم يلزم تحميل
+  /// أوسع؛ بغيرها إمّا تُعيد التحميل في كل نقرة أو ترشّح على بيانات ناقصة.
+  final String from;
+  final String to;
+
+  /// هل تغطّي هذه البيانات المدى المطلوب؟
+  bool covers(String wantFrom, String wantTo) {
+    if (from.isEmpty && to.isEmpty) return true;
+    if (wantFrom.isEmpty || wantTo.isEmpty) return false;
+    return from.compareTo(wantFrom) <= 0 && to.compareTo(wantTo) >= 0;
+  }
 
   Item? itemById(String id) {
     for (final i in items) {
@@ -233,23 +272,76 @@ class ReportsRepo {
   final AppDatabase db;
 
   static String today() => _iso(DateTime.now());
-  static String daysAgo(int n) => _iso(DateTime.now().subtract(Duration(days: n)));
+  static String daysAgo(int n) =>
+      _iso(DateTime.now().subtract(Duration(days: n)));
   static String _iso(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  /// اليوم التالي لـ[day] — حدٌّ أعلى حصريّ.
+  ///
+  /// `date <= to` يُسقط سطور اليوم الأخير إن حملت وقتًا بعد تاريخها
+  /// (`'2026-06-30T08:00' > '2026-06-30'`)، و`substr(date,1,10)` يُبطل الفهرس.
+  /// الحدّ الحصريّ يسلم من الاثنين.
+  static String _dayAfter(String day) {
+    final d = DateTime.tryParse(day);
+    return d == null ? '' : _iso(d.add(const Duration(days: 1)));
+  }
+
+  /// شرط النافذة على عمود التاريخ، أو «صحيح» حين لا نافذة.
+  static Expression<bool> _window(
+      Expression<String> date, String from, String upper) {
+    Expression<bool> e = const Constant(true);
+    if (from.isNotEmpty) e = e & date.isBiggerOrEqualValue(from);
+    if (upper.isNotEmpty) e = e & date.isSmallerThanValue(upper);
+    return e;
+  }
+
   /// `loadAll()`
-  Future<ReportData> load({List<String>? scope}) async {
+  ///
+  /// [from] و[to] نافذةٌ زمنية **تُطبَّق في SQLite لا في الذاكرة**: بدونها
+  /// تُقرأ سندات النظام كلها وتُبنى كائناتٍ ثم يُرمى أكثرها عند الترشيح —
+  /// كلفةٌ تنمو مع عمر القاعدة لا مع حجم التقرير المعروض.
+  ///
+  /// تقرير الأرصدة وحده يلزمه التاريخ كاملًا، لأن رصيد اليوم حصيلةُ كل ما
+  /// سبقه؛ فيُحمَّل بلا نافذة.
+  Future<ReportData> load({
+    List<String>? scope,
+    String from = '',
+    String to = '',
+  }) async {
+    final upper = _dayAfter(to);
     final catalog = CatalogRepo(db);
     final daily = DailyRepo(db);
-    final items = await catalog.items();
-    final units = await catalog.units();
-    final warehouses = await catalog.warehouses(scope: scope);
-    final categories = await catalog.categories();
-    final suppliers = await catalog.suppliers();
-    final facilities = await catalog.facilities();
-    final strengths = await daily.strengths();
-    final logs = await daily.kitchenLogs();
-    final balances = await MovementsRepo(db).balances(scope: scope);
+    // These reads are independent. Run them together to avoid serial database
+    // round trips when opening or refreshing the report center.
+    final loaded = await Future.wait<dynamic>([
+      catalog.items(),
+      catalog.units(),
+      catalog.warehouses(scope: scope),
+      catalog.categories(),
+      catalog.suppliers(),
+      catalog.facilities(),
+      daily.strengths(),
+      daily.kitchenLogs(),
+      MovementsRepo(db).balances(scope: scope),
+      (db.select(db.receipts)..where((t) => _window(t.date, from, upper))).get(),
+      (db.select(db.issues)..where((t) => _window(t.date, from, upper))).get(),
+      (db.select(db.transfers)..where((t) => _window(t.date, from, upper)))
+          .get(),
+      (db.select(db.returns)..where((t) => _window(t.date, from, upper))).get(),
+      (db.select(db.openingBalances)
+            ..where((t) => _window(t.date, from, upper)))
+          .get(),
+    ]);
+    final items = loaded[0] as List<Item>;
+    final units = loaded[1] as List<BeneficiaryUnit>;
+    final warehouses = loaded[2] as List<Warehouse>;
+    final categories = loaded[3] as List<Category>;
+    final suppliers = loaded[4] as List<Supplier>;
+    final facilities = loaded[5] as List<Facility>;
+    final strengths = loaded[6] as List<Strength>;
+    final logs = loaded[7] as List<KitchenLog>;
+    final balances = loaded[8] as Map<String, double>;
 
     final byId = {for (final i in items) i.id: i};
     final moves = <MoveRow>[];
@@ -266,14 +358,22 @@ class ReportsRepo {
     }) {
       final it = byId[r.itemId as String? ?? ''];
       moves.add(MoveRow(
-        date: (r.date as String).isEmpty ? '' : (r.date as String).substring(0, 10),
+        date: (r.date as String).isEmpty
+            ? ''
+            : (r.date as String).substring(0, 10),
         type: type,
         refNo: r.refNo as String,
         itemId: r.itemId as String,
-        itemCode: (r.itemCode as String).isNotEmpty ? r.itemCode as String : (it?.code ?? ''),
-        itemName: (r.itemName as String).isNotEmpty ? r.itemName as String : (it?.name ?? ''),
+        itemCode: (r.itemCode as String).isNotEmpty
+            ? r.itemCode as String
+            : (it?.code ?? ''),
+        itemName: (r.itemName as String).isNotEmpty
+            ? r.itemName as String
+            : (it?.name ?? ''),
         qty: (r.qty as num).toDouble(),
-        unitName: (r.unitName as String).isNotEmpty ? r.unitName as String : (it?.baseUnit ?? ''),
+        unitName: (r.unitName as String).isNotEmpty
+            ? r.unitName as String
+            : (it?.baseUnit ?? ''),
         baseQty: (r.baseQty as num).toDouble(),
         baseUnit: it?.baseUnit ?? (r.unitName as String),
         warehouse: warehouse,
@@ -287,28 +387,32 @@ class ReportsRepo {
       ));
     }
 
-    for (final r in await db.select(db.receipts).get()) {
+    for (final r in loaded[9] as List<Receipt>) {
       push(r, 'IN', r.warehouse, r.supplier);
     }
-    for (final r in await db.select(db.issues).get()) {
+    for (final r in loaded[10] as List<Issue>) {
       push(
         r,
         'OUT',
         r.warehouse,
-        r.beneficiaryUnitName.isNotEmpty ? r.beneficiaryUnitName : r.recipientDisplay,
+        r.beneficiaryUnitName.isNotEmpty
+            ? r.beneficiaryUnitName
+            : r.recipientDisplay,
         unitId: r.beneficiaryUnitId.isNotEmpty ? r.beneficiaryUnitId : r.unitId,
         facilityId: r.facilityId,
       );
     }
-    for (final r in await db.select(db.transfers).get()) {
-      push(r, 'TRANSFER', r.warehouse, 'إلى: ${r.destWarehouse.isEmpty ? '—' : r.destWarehouse}',
+    for (final r in loaded[11] as List<Transfer>) {
+      push(r, 'TRANSFER', r.warehouse,
+          'إلى: ${r.destWarehouse.isEmpty ? '—' : r.destWarehouse}',
           destWarehouse: r.destWarehouse);
     }
-    for (final r in await db.select(db.returns).get()) {
-      push(r, r.type == 'TO_SUPPLIER' ? 'RETURN_OUT' : 'RETURN_IN', r.warehouse, r.party,
-          condition: r.condition);
+    for (final r in loaded[12] as List<Return>) {
+      push(r, r.type == 'TO_SUPPLIER' ? 'RETURN_OUT' : 'RETURN_IN', r.warehouse,
+          r.party,
+          condition: r.condition, unitId: r.beneficiaryUnitId);
     }
-    for (final r in await db.select(db.openingBalances).get()) {
+    for (final r in loaded[13] as List<OpeningBalance>) {
       final it = byId[r.itemId];
       moves.add(MoveRow(
         date: r.date,
@@ -349,6 +453,8 @@ class ReportsRepo {
       moves: visible,
       balances: balances,
       scoped: scoped,
+      from: from,
+      to: upper.isEmpty ? '' : to,
     );
   }
 
@@ -356,7 +462,8 @@ class ReportsRepo {
   static List<ReportFilterDef> filtersFor(ReportId id) {
     List<(String, String)> whOpts(ReportData d, Map<String, String> f) => [
           ('', 'الكل'),
-          for (final w in d.warehouses) (w.name, w.code.isEmpty ? w.name : '${w.code} — ${w.name}'),
+          for (final w in d.warehouses)
+            (w.name, w.code.isEmpty ? w.name : '${w.code} — ${w.name}'),
         ];
     List<(String, String)> typeOpts(ReportData d, Map<String, String> f) =>
         [('', 'الكل'), for (final e in kMoveTypes.entries) (e.key, e.value)];
@@ -365,8 +472,13 @@ class ReportsRepo {
       case ReportId.moves:
         return [
           const ReportFilterDef(key: 'range', type: 'range', defaultOn: true),
-          ReportFilterDef(key: 'wh', type: 'select', label: 'المستودع', options: whOpts),
-          ReportFilterDef(key: 'type', type: 'select', label: 'نوع الحركة', options: typeOpts),
+          ReportFilterDef(
+              key: 'wh', type: 'select', label: 'المستودع', options: whOpts),
+          ReportFilterDef(
+              key: 'type',
+              type: 'select',
+              label: 'نوع الحركة',
+              options: typeOpts),
         ];
       case ReportId.unitAccount:
         return [
@@ -376,7 +488,8 @@ class ReportsRepo {
             label: 'الوحدة الرئيسية',
             options: (d, f) => [
               ('', '— اختر —'),
-              for (final u in d.units.where((x) => x.parentId.isEmpty)) (u.id, _unitLabel(u)),
+              for (final u in d.units.where((x) => x.parentId.isEmpty))
+                (u.id, _unitLabel(u)),
             ],
           ),
           ReportFilterDef(
@@ -385,7 +498,8 @@ class ReportsRepo {
             label: 'الوحدة الفرعية',
             options: (d, f) => [
               ('', 'الكل (مع الفروع)'),
-              for (final u in d.units.where((x) => f['parent'] != null && x.parentId == f['parent']))
+              for (final u in d.units.where(
+                  (x) => f['parent'] != null && x.parentId == f['parent']))
                 (u.id, _unitLabel(u)),
             ],
           ),
@@ -393,12 +507,14 @@ class ReportsRepo {
         ];
       case ReportId.stock:
         return [
-          ReportFilterDef(key: 'wh', type: 'select', label: 'المستودع', options: whOpts),
+          ReportFilterDef(
+              key: 'wh', type: 'select', label: 'المستودع', options: whOpts),
           ReportFilterDef(
             key: 'cat',
             type: 'select',
             label: 'التصنيف',
-            options: (d, f) => [('', 'الكل'), for (final c in d.categories) (c.id, c.name)],
+            options: (d, f) =>
+                [('', 'الكل'), for (final c in d.categories) (c.id, c.name)],
           ),
           ReportFilterDef(
             key: 'status',
@@ -435,7 +551,9 @@ class ReportsRepo {
             label: 'المعسكر',
             options: (d, f) => [
               ('', 'الكل'),
-              for (final u in d.units.where((x) => x.isCamp || x.type == 'camp')) (u.id, _unitLabel(u)),
+              for (final u
+                  in d.units.where((x) => x.isCamp || x.type == 'camp'))
+                (u.id, _unitLabel(u)),
             ],
           ),
           ReportFilterDef(
@@ -456,13 +574,17 @@ class ReportsRepo {
             key: 'fac',
             type: 'select',
             label: 'المنشأة',
-            options: (d, f) => [('', 'الكل'), for (final x in d.facilities) (x.id, x.name)],
+            options: (d, f) =>
+                [('', 'الكل'), for (final x in d.facilities) (x.id, x.name)],
           ),
           ReportFilterDef(
             key: 'meal',
             type: 'select',
             label: 'الوجبة',
-            options: (d, f) => [('', 'الكل'), for (final e in kMeals.entries) (e.key, e.value)],
+            options: (d, f) => [
+              ('', 'الكل'),
+              for (final e in kMeals.entries) (e.key, e.value)
+            ],
           ),
         ];
       case ReportId.supplier:
@@ -472,7 +594,8 @@ class ReportsRepo {
             key: 'sup',
             type: 'select',
             label: 'المورد',
-            options: (d, f) => [('', 'الكل'), for (final s in d.suppliers) (s.name, s.name)],
+            options: (d, f) =>
+                [('', 'الكل'), for (final s in d.suppliers) (s.name, s.name)],
           ),
           ReportFilterDef(
             key: 'view',
@@ -497,13 +620,19 @@ class ReportsRepo {
               ('RETURN_IN', 'مرتجع من وحدة'),
             ],
           ),
-          ReportFilterDef(key: 'wh', type: 'select', label: 'المستودع', options: whOpts),
+          ReportFilterDef(
+              key: 'wh', type: 'select', label: 'المستودع', options: whOpts),
         ];
       case ReportId.daily:
         return [
           const ReportFilterDef(key: 'day', type: 'date', label: 'تاريخ اليوم'),
-          ReportFilterDef(key: 'wh', type: 'select', label: 'المستودع', options: whOpts),
-          ReportFilterDef(key: 'type', type: 'select', label: 'نوع الحركة', options: typeOpts),
+          ReportFilterDef(
+              key: 'wh', type: 'select', label: 'المستودع', options: whOpts),
+          ReportFilterDef(
+              key: 'type',
+              type: 'select',
+              label: 'نوع الحركة',
+              options: typeOpts),
         ];
     }
   }
@@ -545,16 +674,21 @@ class ReportsRepo {
     return true;
   }
 
-  static List<(String, num)> _countBy(List<MoveRow> rows, String Function(MoveRow) key) {
+  static List<(String, num)> _countBy(
+      List<MoveRow> rows, String Function(MoveRow) key) {
     final counts = <String, int>{};
     for (final r in rows) {
       counts.update(key(r), (v) => v + 1, ifAbsent: () => 1);
     }
-    return [('إجمالي السطور', rows.length), for (final e in counts.entries) (e.key, e.value)];
+    return [
+      ('إجمالي السطور', rows.length),
+      for (final e in counts.entries) (e.key, e.value)
+    ];
   }
 
   /// خلية رقمية: تُعرض بأرقام ar-EG كما في `fmt()` وتحتفظ بقيمتها للفرز والجمع.
-  static ReportCell _n(num v) => ReportCell(nf((v * 100).round() / 100), value: v.toDouble());
+  static ReportCell _n(num v) =>
+      ReportCell(nf((v * 100).round() / 100), value: v.toDouble());
   static ReportCell _t(String v) => ReportCell(v.isEmpty ? '—' : v);
 
   ReportResult _moves(ReportData d, Map<String, String> f) {
@@ -599,9 +733,11 @@ class ReportsRepo {
   }
 
   ReportResult _unitAccount(ReportData d, Map<String, String> f) {
-    final root = (f['child'] ?? '').isNotEmpty ? f['child']! : (f['parent'] ?? '');
+    final root =
+        (f['child'] ?? '').isNotEmpty ? f['child']! : (f['parent'] ?? '');
     if (root.isEmpty) {
-      return const ReportResult(message: 'اختر الوحدة الرئيسية لعرض كشف الحساب.');
+      return const ReportResult(
+          message: 'اختر الوحدة الرئيسية لعرض كشف الحساب.');
     }
     // الوحدة وكل فروعها في الشجرة.
     final ids = <String>{};
@@ -621,10 +757,13 @@ class ReportsRepo {
     final rows = d.moves
         .where((m) =>
             _inRange(m.date, f) &&
-            ((m.type == 'OUT' && (ids.contains(m.unitId) || names.contains(m.party))) ||
+            ((m.type == 'OUT' &&
+                    (ids.contains(m.unitId) || names.contains(m.party))) ||
                 (m.type == 'RETURN_IN' && names.contains(m.party))))
         .toList();
-    final items = <String>{for (final r in rows) r.itemId.isEmpty ? r.itemName : r.itemId};
+    final items = <String>{
+      for (final r in rows) r.itemId.isEmpty ? r.itemName : r.itemId
+    };
     final u = d.unitById(root);
 
     return ReportResult(
@@ -677,7 +816,9 @@ class ReportsRepo {
     const labels = {'OK': 'طبيعي', 'LOW': 'منخفض', 'EMPTY': 'نفد'};
     const tones = {'OK': 'ok', 'LOW': 'pend', 'EMPTY': 'err'};
 
-    final items = d.items.where((it) => cat.isEmpty || it.categoryId == cat).toList()
+    final items = d.items
+        .where((it) => cat.isEmpty || it.categoryId == cat)
+        .toList()
       ..sort((a, b) => a.code.compareTo(b.code));
     final rows = <List<ReportCell>>[];
     var low = 0, empty = 0, count = 0;
@@ -694,7 +835,9 @@ class ReportsRepo {
       rows.add([
         _t(it.code),
         _t(it.name),
-        _t(it.categoryName.isNotEmpty ? it.categoryName : (cats[it.categoryId] ?? '')),
+        _t(it.categoryName.isNotEmpty
+            ? it.categoryName
+            : (cats[it.categoryId] ?? '')),
         _n(shownMin.qty),
         _n(shown.qty),
         _t(shown.unit),
@@ -732,7 +875,9 @@ class ReportsRepo {
           out[m.itemId] = (out[m.itemId] ?? 0) - m.baseQty;
         }
       }
-      if (m.type == 'TRANSFER' && m.destWarehouse == warehouse && m.status == 'RECEIVED') {
+      if (m.type == 'TRANSFER' &&
+          m.destWarehouse == warehouse &&
+          m.status == 'RECEIVED') {
         out[m.itemId] = (out[m.itemId] ?? 0) + m.baseQty;
       }
     }
@@ -741,9 +886,18 @@ class ReportsRepo {
 
   ReportResult _consumption(ReportData d, Map<String, String> f) {
     final group = (f['group'] ?? 'item').isEmpty ? 'item' : f['group']!;
-    final src = d.moves.where((m) => m.type == 'OUT' && m.active && _inRange(m.date, f)).toList();
+    final src = d.moves
+        .where((m) => m.type == 'OUT' && m.active && _inRange(m.date, f))
+        .toList();
 
-    final g = <String, ({String label, String unit, double qty, Set<String> refs, Set<String> items})>{};
+    final g = <String,
+        ({
+      String label,
+      String unit,
+      double qty,
+      Set<String> refs,
+      Set<String> items
+    })>{};
     var total = 0.0;
     for (final m in src) {
       final key = switch (group) {
@@ -757,9 +911,21 @@ class ReportsRepo {
       };
       final e = g.putIfAbsent(
         key,
-        () => (label: label, unit: group == 'item' ? m.baseUnit : '', qty: 0, refs: <String>{}, items: <String>{}),
+        () => (
+          label: label,
+          unit: group == 'item' ? m.baseUnit : '',
+          qty: 0,
+          refs: <String>{},
+          items: <String>{}
+        ),
       );
-      g[key] = (label: e.label, unit: e.unit, qty: e.qty + m.baseQty, refs: e.refs..add(m.refNo), items: e.items..add(m.itemId));
+      g[key] = (
+        label: e.label,
+        unit: e.unit,
+        qty: e.qty + m.baseQty,
+        refs: e.refs..add(m.refNo),
+        items: e.items..add(m.itemId)
+      );
       total += m.baseQty;
     }
 
@@ -853,14 +1019,31 @@ class ReportsRepo {
   ReportResult _kitchen(ReportData d, Map<String, String> f) {
     final fac = f['fac'] ?? '';
     final meal = f['meal'] ?? '';
-    final g = <String, ({String date, String fac, String meal, double strength, int lines, double actual, double expected})>{};
+    final g = <String,
+        ({
+      String date,
+      String fac,
+      String meal,
+      double strength,
+      int lines,
+      double actual,
+      double expected
+    })>{};
     for (final r in d.kitchenLogs) {
       if (!_inRange(r.date, f)) continue;
       if (fac.isNotEmpty && r.facilityId != fac) continue;
       if (meal.isNotEmpty && r.mealType != meal) continue;
       final k = '${r.date}|${r.facilityId}|${r.mealType}';
       final e = g[k] ??
-          (date: r.date, fac: r.facilityName, meal: kMeals[r.mealType] ?? r.mealType, strength: r.strength, lines: 0, actual: 0.0, expected: 0.0);
+          (
+            date: r.date,
+            fac: r.facilityName,
+            meal: kMeals[r.mealType] ?? r.mealType,
+            strength: r.strength,
+            lines: 0,
+            actual: 0.0,
+            expected: 0.0
+          );
       g[k] = (
         date: e.date,
         fac: e.fac,
@@ -877,9 +1060,12 @@ class ReportsRepo {
     final cells = <List<ReportCell>>[];
     for (final x in rows) {
       final variance = x.actual - x.expected;
-      final vpct = x.expected == 0 ? 0.0 : (variance / x.expected * 1000).round() / 10;
+      final vpct =
+          x.expected == 0 ? 0.0 : (variance / x.expected * 1000).round() / 10;
       if (x.expected != 0 && vpct.abs() > 10) over++;
-      final flag = x.expected == 0 ? '—' : (vpct.abs() <= 10 ? 'ضمن الحد' : (vpct > 0 ? 'زيادة' : 'نقص'));
+      final flag = x.expected == 0
+          ? '—'
+          : (vpct.abs() <= 10 ? 'ضمن الحد' : (vpct > 0 ? 'زيادة' : 'نقص'));
       cells.add([
         _t(x.date),
         _t(x.fac),
@@ -911,7 +1097,8 @@ class ReportsRepo {
       ],
       rows: cells,
       summary: [('وجبات مسجلة', rows.length), ('تجاوز ±10%', over)],
-      note: 'الكميات بوحدة الأساس لكل صنف؛ المتوقع محسوب من نسب الاستحقاق × القوة.',
+      note:
+          'الكميات بوحدة الأساس لكل صنف؛ المتوقع محسوب من نسب الاستحقاق × القوة.',
     );
   }
 
@@ -919,15 +1106,39 @@ class ReportsRepo {
     final sup = f['sup'] ?? '';
     final view = (f['view'] ?? 'detail').isEmpty ? 'detail' : f['view']!;
     final src = d.moves
-        .where((m) => m.type == 'IN' && m.active && _inRange(m.date, f) && (sup.isEmpty || m.party == sup))
+        .where((m) =>
+            m.type == 'IN' &&
+            m.active &&
+            _inRange(m.date, f) &&
+            (sup.isEmpty || m.party == sup))
         .toList();
 
     if (view == 'summary') {
-      final g = <String, ({String sup, String item, String unit, double qty, Set<String> refs})>{};
+      final g = <String,
+          ({
+        String sup,
+        String item,
+        String unit,
+        double qty,
+        Set<String> refs
+      })>{};
       for (final m in src) {
         final k = '${m.party}|${m.itemId.isEmpty ? m.itemName : m.itemId}';
-        final e = g[k] ?? (sup: m.party.isEmpty ? '—' : m.party, item: m.itemName, unit: m.baseUnit, qty: 0.0, refs: <String>{});
-        g[k] = (sup: e.sup, item: e.item, unit: e.unit, qty: e.qty + m.baseQty, refs: e.refs..add(m.refNo));
+        final e = g[k] ??
+            (
+              sup: m.party.isEmpty ? '—' : m.party,
+              item: m.itemName,
+              unit: m.baseUnit,
+              qty: 0.0,
+              refs: <String>{}
+            );
+        g[k] = (
+          sup: e.sup,
+          item: e.item,
+          unit: e.unit,
+          qty: e.qty + m.baseQty,
+          refs: e.refs..add(m.refNo)
+        );
       }
       final rows = g.values.toList()
         ..sort((a, b) {
@@ -943,7 +1154,8 @@ class ReportsRepo {
           ReportColumn('عدد السندات', numeric: true, sum: true),
         ],
         rows: [
-          for (final e in rows) [_t(e.sup), _t(e.item), _n(e.qty), _t(e.unit), _n(e.refs.length)],
+          for (final e in rows)
+            [_t(e.sup), _t(e.item), _n(e.qty), _t(e.unit), _n(e.refs.length)],
         ],
         summary: [
           ('الموردون', {for (final e in rows) e.sup}.length),
@@ -1036,7 +1248,8 @@ class ReportsRepo {
             (type.isEmpty || m.type == type))
         .toList();
     final meals = {
-      for (final r in d.kitchenLogs.where((r) => r.date == day)) '${r.facilityId}|${r.mealType}',
+      for (final r in d.kitchenLogs.where((r) => r.date == day))
+        '${r.facilityId}|${r.mealType}',
     };
     final strengths = d.strengths.where((s) => s.strengthDate == day).length;
 
