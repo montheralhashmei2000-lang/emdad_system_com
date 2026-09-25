@@ -321,7 +321,7 @@ class WebImporter {
             saltHex: hasSecret ? Value(salt) : const Value.absent(),
             hashHex: hasSecret ? Value(hash) : const Value.absent(),
             iterations: hasSecret
-                ? Value(_i(u, 'iterations', Pbkdf2.iterations))
+                ? Value(_i(u, 'iterations', Pbkdf2.legacyIterations))
                 : const Value.absent(),
             active: Value(_b(u, 'active', true)),
             approved: Value(_b(u, 'approved', true)),

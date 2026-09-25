@@ -76,7 +76,8 @@ void main() {
 
   /// جهاز فيه حسابات يعمل اليوم — يجب ألّا يُقفل بأثر رجعي بعد التحديث.
   testWidgets('الجهاز العامل لا يُقفل ويعرض شاشة الدخول', (tester) async {
-    await AuthService(db).createAdmin(username: 'admin', password: 'Test@12345', name: 'admin');
+    // التجزئة تعمل في Isolate حقيقي، والوقت داخل testWidgets وهمي حتى runAsync.
+    await tester.runAsync(() => AuthService(db).createAdmin(username: 'admin', password: 'Test@12345', name: 'admin'));
 
     await tester.pumpWidget(ImdadApp(db: db, auth: AuthService(db), signedIn: false));
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 150)));

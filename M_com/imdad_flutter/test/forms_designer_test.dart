@@ -36,7 +36,8 @@ void main() {
     addTearDown(tester.view.reset);
 
     final auth = AuthService(db);
-    await auth.createAdmin(username: 'admin', password: 'Test@12345', name: 'admin');
+    // التجزئة تعمل في Isolate حقيقي، والوقت داخل testWidgets وهمي حتى runAsync.
+    await tester.runAsync(() => auth.createAdmin(username: 'admin', password: 'Test@12345', name: 'admin'));
 
     await tester.pumpWidget(MultiProvider(
       providers: [
