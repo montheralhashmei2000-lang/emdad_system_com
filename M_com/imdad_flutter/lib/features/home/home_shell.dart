@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/security/auth_service.dart';
 import '../../core/ui/imd_icon.dart';
@@ -12,6 +13,8 @@ import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_window.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../domain/access_control.dart';
+import '../../domain/app_space.dart';
+import 'space_chooser_screen.dart';
 import '../catalog/assets_screen.dart';
 import '../fuel/fuel_allocations_screen.dart';
 import '../fuel/fuel_dashboard_screen.dart';
@@ -70,10 +73,19 @@ class ImdNav {
 
 /// عنصر في القائمة الجانبية — نفس `MENU` في `index.html`.
 class _MenuItem {
-  const _MenuItem(this.id, this.icon, this.name);
+  const _MenuItem(this.id, this.icon, this.name,
+      {this.space = AppSpace.supply});
+
   final String id;
   final String icon;
   final String name;
+
+  /// مساحة البند: `supply` أو `fuel` أو `both` لما يخدم القسمين.
+  ///
+  /// الأدلة المشتركة (المستودعات والوحدات) والإعدادات والتدقيق تظهر في
+  /// القسمين: الوقود يُخزَّن في نفس المستودعات ويُصرف لنفس الوحدات، ومنعُ
+  /// أمين المحروقات من دليلٍ يحتاجه في كل سند أغلى من تكرار بندٍ في قائمة.
+  final String space;
 }
 
 class _MenuSection {
@@ -88,8 +100,8 @@ const _menu = <_MenuSection>[
   _MenuSection('basic', 'settings', 'البيانات الأساسية', [
     _MenuItem('items', 'package', 'إدارة الأصناف'),
     _MenuItem('suppliers', 'truck', 'الموردون'),
-    _MenuItem('units', 'users', 'الوحدات المستفيدة'),
-    _MenuItem('stores', 'warehouse', 'المستودعات'),
+    _MenuItem('units', 'users', 'الوحدات المستفيدة', space: AppSpace.both),
+    _MenuItem('stores', 'warehouse', 'المستودعات', space: AppSpace.both),
     _MenuItem('kitchens', 'utensils', 'المطابخ والأفران'),
     _MenuItem('assets', 'package', 'الأصول الثابتة'),
   ]),
@@ -103,10 +115,10 @@ const _menu = <_MenuSection>[
     _MenuItem('rationOrders', 'clipboard', 'طلبيات الإعاشة'),
   ]),
   _MenuSection('fuel', 'zap', 'المحروقات', [
-    _MenuItem('fuelDashboard', 'zap', 'لوحة المحروقات'),
-    _MenuItem('fuelAllocations', 'sliders', 'تفريدة المحروقات'),
-    _MenuItem('fuelMoves', 'swap', 'حركة المحروقات'),
-    _MenuItem('fuelStocktake', 'clipboard', 'جرد المحروقات'),
+    _MenuItem('fuelDashboard', 'zap', 'لوحة المحروقات', space: AppSpace.fuel),
+    _MenuItem('fuelAllocations', 'sliders', 'تفريدة المحروقات', space: AppSpace.fuel),
+    _MenuItem('fuelMoves', 'swap', 'حركة المحروقات', space: AppSpace.fuel),
+    _MenuItem('fuelStocktake', 'clipboard', 'جرد المحروقات', space: AppSpace.fuel),
   ]),
   _MenuSection('daily', 'chart', 'التشغيل اليومي', [
     _MenuItem('feeding', 'calendar', 'التغذية اليومية (حصر القوة)'),
@@ -118,14 +130,14 @@ const _menu = <_MenuSection>[
     _MenuItem('stockAlerts', 'alert', 'تنبيهات المخزون'),
     _MenuItem('stocktake', 'clipboard', 'جرد المخزون'),
     _MenuItem('reports', 'chart', 'التقارير'),
-    _MenuItem('auditTrail', 'scan', 'سجل النشاط والتدقيق'),
+    _MenuItem('auditTrail', 'scan', 'سجل النشاط والتدقيق', space: AppSpace.both),
     _MenuItem('activityIntel', 'bulb', 'ذكاء النشاط والانحرافات'),
     _MenuItem('executiveCmd', 'target', 'مركز القيادة التنفيذية'),
     _MenuItem('sensitiveOps', 'alert', 'التغييرات الحساسة والمراجعة'),
     _MenuItem('healthOps', 'shield', 'صحة النظام والعمليات'),
   ]),
   _MenuSection('settings', 'wrench', 'الإعدادات', [
-    _MenuItem('settings', 'settings', 'الإعدادات'),
+    _MenuItem('settings', 'settings', 'الإعدادات', space: AppSpace.both),
   ]),
 ];
 
@@ -143,6 +155,10 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   String _page = 'dash';
   String? _openSec = 'basic';
+
+  /// مساحة العمل الحالية — `null` تعني أن المستخدم يملك الاثنتين ولم يختر.
+  String? _space;
+  bool _spaceReady = false;
   Timer? _sessionTimer;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   late final ImdNav _nav = ImdNav(_go, () => _page);
@@ -154,7 +170,40 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     // فحص دوري: الجلسة 12 ساعة، ووقف الحساب يُنهي الجلسة فورًا.
     _sessionTimer =
         Timer.periodic(const Duration(minutes: 5), (_) => _checkSession());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _restoreSpace());
   }
+
+  /// مفتاح الاختيار لكل مستخدم على حدة: جهازٌ يتشاركه أمين المستودع وأمين
+  /// المحروقات لا يفرض اختيار أحدهما على الآخر.
+  String _spaceKey(AuthService auth) =>
+      'imdad.space.${auth.currentUser?.id ?? ''}';
+
+  Future<void> _restoreSpace() async {
+    final auth = context.read<AuthService>();
+    final available = AppSpace.availableFor((p) => _hasPerm(auth, p));
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_spaceKey(auth));
+    if (!mounted) return;
+    setState(() {
+      _space = AppSpace.resolve(available: available, saved: saved);
+      _spaceReady = true;
+    });
+  }
+
+  Future<void> _pickSpace(String space) async {
+    final auth = context.read<AuthService>();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_spaceKey(auth), space);
+    if (!mounted) return;
+    setState(() {
+      _space = space;
+      _page = 'dash';
+      _openSec = space == AppSpace.fuel ? 'fuel' : 'basic';
+    });
+  }
+
+  /// العودة إلى الاختيار — لا يُمسح المحفوظ حتى لا يُنسى تفضيله إن تراجع.
+  void _switchSpace() => setState(() => _space = null);
 
   @override
   void dispose() {
@@ -304,11 +353,33 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final c = context.imd;
     final wide = MediaQuery.sizeOf(context).width > 920;
 
+    // قبل أن تُقرأ المساحة المحفوظة لا تُرسم قائمةٌ قد تتبدّل بعد لحظة.
+    if (!_spaceReady) {
+      return Scaffold(
+        backgroundColor: c.bg,
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    final available = AppSpace.availableFor((p) => _hasPerm(auth, p));
+    if (_space == null && available.length > 1) {
+      return SpaceChooserScreen(
+        spaces: available,
+        userName: auth.currentUser?.name.isNotEmpty == true
+            ? auth.currentUser!.name
+            : (auth.currentUser?.username ?? ''),
+        onPick: _pickSpace,
+      );
+    }
+    final space = _space ?? AppSpace.supply;
+
     final allowed = _page == 'dash' || _hasPerm(auth, _page);
     final body = allowed ? _pageBody(_page) : const _NoAccess();
 
     final side = _Sidebar(
       page: _page,
+      space: space,
+      canSwitch: available.length > 1,
+      onSwitchSpace: _switchSpace,
       openSec: _openSec,
       isAdmin: _isAdmin(auth),
       hasPerm: (p) => _hasPerm(auth, p),
@@ -521,6 +592,9 @@ class _Avatar extends StatelessWidget {
 class _Sidebar extends StatelessWidget {
   const _Sidebar({
     required this.page,
+    required this.space,
+    required this.canSwitch,
+    required this.onSwitchSpace,
     required this.openSec,
     required this.isAdmin,
     required this.hasPerm,
@@ -531,6 +605,13 @@ class _Sidebar extends StatelessWidget {
   });
 
   final String page;
+
+  /// مساحة العمل الحالية — تُرشَّح بها بنود القائمة.
+  final String space;
+
+  /// زر التبديل لا يظهر لمن يملك مساحةً واحدة: تبديلٌ إلى لا شيء.
+  final bool canSwitch;
+  final VoidCallback onSwitchSpace;
   final String? openSec;
   final bool isAdmin;
   final bool Function(String page) hasPerm;
@@ -568,12 +649,54 @@ class _Sidebar extends StatelessWidget {
                     margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
                         border: Border(bottom: BorderSide(color: c.sideLine))),
-                    child: const Text('نظام الإمداد والتموين',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white)),
+                    child: Column(children: [
+                      const Text('نظام الإمداد والتموين',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white)),
+                      const SizedBox(height: 8),
+                      // القسم الحالي معروضٌ دائمًا: من يعمل في قسمين يحتاج أن
+                      // يعرف في أيّهما هو قبل أن يكتب سندًا في الخطأ.
+                      MouseRegion(
+                        cursor: canSwitch
+                            ? SystemMouseCursors.click
+                            : MouseCursor.defer,
+                        child: GestureDetector(
+                          onTap: canSwitch ? onSwitchSpace : null,
+                          behavior: HitTestBehavior.opaque,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: c.sideHover,
+                              border: Border.all(color: c.sideBorder),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  ImdIcon(
+                                      AppSpace.icons[space] ?? 'package',
+                                      size: 13,
+                                      color: c.sideText),
+                                  const SizedBox(width: 6),
+                                  Text(AppSpace.label(space),
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: c.sideText)),
+                                  if (canSwitch) ...[
+                                    const SizedBox(width: 6),
+                                    ImdIcon('swap',
+                                        size: 12, color: c.sideMuted),
+                                  ],
+                                ]),
+                          ),
+                        ),
+                      ),
+                    ]),
                   ),
                   _SideTile(
                     icon: 'home',
@@ -582,7 +705,9 @@ class _Sidebar extends StatelessWidget {
                     on: page == 'dash',
                     onTap: () => onGo('dash'),
                   ),
-                  for (final s in _menu) ...[
+                  for (final s in _menu)
+                    if (s.items.any((i) =>
+                        AppSpace.shows(i.space, space) && hasPerm(i.id))) ...[
                     _SideTile(
                       icon: s.icon,
                       label: s.name,
@@ -599,7 +724,9 @@ class _Sidebar extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 for (final i
-                                    in s.items.where((i) => hasPerm(i.id)))
+                                    in s.items.where((i) =>
+                                        AppSpace.shows(i.space, space) &&
+                                        hasPerm(i.id)))
                                   _SideTile(
                                     icon: i.icon,
                                     label: i.name,
