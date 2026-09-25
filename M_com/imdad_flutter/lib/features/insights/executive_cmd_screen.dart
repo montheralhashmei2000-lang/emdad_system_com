@@ -14,6 +14,7 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/movements_repo.dart';
+import '../../domain/stock_ledger.dart';
 import '../home/home_shell.dart';
 import '../inventory/doc_kit.dart';
 
@@ -153,19 +154,25 @@ class _ExecutiveCmdScreenState extends State<ExecutiveCmdScreen> {
         .length;
 
     // ───── توقّع ضغط المخزون من حركة آخر ١٤ يومًا
+    // المعتمد وحده وضمن نطاق المستخدم: المسودة والأمر والملغى لم تمسّ الرصيد،
+    // والرصيد المقارَن به هو رصيد مستودعات النطاق فقط.
+    bool counts(String status, String warehouse, String date) =>
+        !MovementRecord.inactiveStatuses.contains(status) &&
+        (_perm.scope == null || _perm.scope!.contains(warehouse)) &&
+        date.compareTo(d14) >= 0;
     final use = <String, double>{};
     final inflow = <String, double>{};
-    for (final r in issues.where((r) => r.date.compareTo(d14) >= 0)) {
+    for (final r in issues.where((r) => counts(r.status, r.warehouse, r.date))) {
       use[r.itemId] = (use[r.itemId] ?? 0) + r.baseQty;
     }
-    for (final r in returns.where((r) => r.date.compareTo(d14) >= 0)) {
+    for (final r in returns.where((r) => counts(r.status, r.warehouse, r.date))) {
       if (r.type == 'TO_SUPPLIER') {
         use[r.itemId] = (use[r.itemId] ?? 0) + r.baseQty;
       } else {
         inflow[r.itemId] = (inflow[r.itemId] ?? 0) + r.baseQty;
       }
     }
-    for (final r in receipts.where((r) => r.date.compareTo(d14) >= 0)) {
+    for (final r in receipts.where((r) => counts(r.status, r.warehouse, r.date))) {
       inflow[r.itemId] = (inflow[r.itemId] ?? 0) + r.baseQty;
     }
     final byId = {for (final it in items) it.id: it};

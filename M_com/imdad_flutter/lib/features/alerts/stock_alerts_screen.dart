@@ -9,8 +9,10 @@ import '../../data/db/app_database.dart';
 import '../../data/repos/alerts_repo.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../domain/stock_alerts.dart';
+import '../../domain/stock_forecast.dart';
 
-/// تنبيهات المخزون: الأصناف تحت حدها الأدنى، والدفعات القريبة من انتهاء صلاحيتها.
+/// تنبيهات المخزون: الأصناف تحت حدها الأدنى، والدفعات القريبة من انتهاء صلاحيتها،
+/// وتوقّع نفاد الأصناف من الاستهلاك والمقررات.
 class StockAlertsScreen extends StatefulWidget {
   const StockAlertsScreen({super.key});
 
@@ -28,6 +30,8 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
   Map<String, Item> _items = const {};
   List<LowStockAlert> _low = const [];
   List<ExpiryAlert> _expiry = const [];
+  List<StockForecast> _forecast = const [];
+  bool _wholeForce = true;
 
   @override
   void initState() {
@@ -41,8 +45,11 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
     final items = {for (final i in await _db.select(_db.items).get()) i.id: i};
     final low = await _repo.lowStock(scope: scope);
     final expiry = await _repo.expiring(scope: scope, withinDays: _days);
+    final forecast = await _repo.forecast(scope: scope);
     if (!mounted) return;
     setState(() {
+      _forecast = forecast;
+      _wholeForce = scope == null;
       _items = items;
       _low = low;
       _expiry = expiry;
@@ -72,6 +79,7 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
         ImdChip('نافدة: ${nf(_low.where((l) => l.outOfStock).length)}', tone: ImdTone.err),
         ImdChip('تنتهي خلال $_days يومًا: ${nf(_expiry.length - expired)}', tone: ImdTone.pend),
         ImdChip('منتهية: ${nf(expired)}', tone: ImdTone.err),
+        ImdChip('تنفد خلال أسبوع: ${nf(_forecast.where((f) => f.daysLeft <= 7).length)}', tone: ImdTone.err),
       ]),
       ImdPillTabs<String>(
         value: _tab,
@@ -79,14 +87,17 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
         tabs: const [
           ImdTab('low', 'تحت الحد الأدنى', icon: 'package'),
           ImdTab('expiry', 'قرب انتهاء الصلاحية', icon: 'calendar'),
+          ImdTab('forecast', 'توقّع النفاد', icon: 'trending'),
         ],
       ),
       if (_loading)
         const ImdLd('⏳ جارٍ التحميل…')
       else if (_tab == 'low')
         _lowView()
+      else if (_tab == 'expiry')
+        _expiryView()
       else
-        _expiryView(),
+        _forecastView(),
     ]);
   }
 
@@ -152,6 +163,44 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
                     ? ImdChip('منتهية منذ ${nf(-e.daysLeft)} يوم', tone: ImdTone.err)
                     : ImdChip(e.daysLeft == 0 ? 'تنتهي اليوم' : 'بعد ${nf(e.daysLeft)} يوم',
                         tone: e.daysLeft <= 7 ? ImdTone.err : ImdTone.pend),
+              ],
+          ],
+        ),
+      ]);
+
+  Widget _forecastView() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ImdICard(
+          child: Text(
+            'الاستهلاك اليومي = الأكبر بين متوسط الصرف المعتمد في آخر 30 يومًا، والحاجة المقررة '
+            '(المقرر الشهري ÷ 30 × القوة في آخر يوم حُصرت فيه).'
+            '${_wholeForce ? '' : ' الحاجة المقررة تخص القوة كلها، فلا تُحسب لنطاق مستودعات محدود — التوقّع هنا من الصرف الفعلي وحده.'}',
+            style: const TextStyle(fontSize: 13),
+          ),
+        ),
+        const SizedBox(height: 10),
+        ImdTable(
+          columns: const [
+            ImdCol('الصنف'),
+            ImdCol('الرصيد', numeric: true),
+            ImdCol('الصرف اليومي الفعلي', numeric: true),
+            ImdCol('الحاجة اليومية المقررة', numeric: true),
+            ImdCol('يكفي لـ', numeric: true),
+            ImdCol('النفاد المتوقع'),
+          ],
+          empty: 'لا صرف معتمد في آخر 30 يومًا ولا مقررات مع قوة محصورة — لا توقّع بعد',
+          rows: [
+            for (final f in _forecast)
+              [
+                Text(_items[f.itemId]?.name ?? f.itemId, style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text(_qty(f.itemId, f.balance)),
+                Text(_qty(f.itemId, f.actualDaily), style: TextStyle(fontWeight: f.fromPlan ? null : FontWeight.w900)),
+                Text(f.plannedDaily == null ? '—' : _qty(f.itemId, f.plannedDaily!),
+                    style: TextStyle(fontWeight: f.fromPlan ? FontWeight.w900 : null)),
+                Text(f.daysLeft <= 0 ? 'نافد' : '${nf(f.daysLeft)} يوم'),
+                ImdChip(
+                  f.daysLeft <= 0 ? 'نافد الآن' : isoDay(f.stockoutDate),
+                  tone: f.daysLeft <= 7 ? ImdTone.err : (f.daysLeft <= 14 ? ImdTone.pend : ImdTone.ok),
+                ),
               ],
           ],
         ),

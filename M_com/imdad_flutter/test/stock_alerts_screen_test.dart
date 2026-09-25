@@ -70,5 +70,10 @@ void main() {
     await tester.tap(find.text('قرب انتهاء الصلاحية'));
     await tester.pump();
     expect(find.text('بعد ٥ يوم').evaluate().isNotEmpty || find.text('بعد 5 يوم').evaluate().isNotEmpty, isTrue);
+
+    await tester.tap(find.text('توقّع النفاد'));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('لا توقّع بعد'), findsOneWidget, reason: 'لا صرف معتمد بعد');
   });
 }

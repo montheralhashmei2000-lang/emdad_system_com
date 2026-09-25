@@ -1,8 +1,10 @@
 import 'package:drift/drift.dart';
 
 import '../../domain/stock_alerts.dart';
+import '../../domain/stock_forecast.dart';
 import '../../domain/stock_ledger.dart';
 import '../db/app_database.dart';
+import 'daily_repo.dart';
 import 'movements_repo.dart';
 
 /// بيانات شاشة التنبيهات، محصورة بنطاق مستودعات المستخدم.
@@ -54,4 +56,64 @@ class AlertsRepo {
       withinDays: withinDays,
     );
   }
+
+  /// توقّع نفاد الأصناف من صرف آخر [windowDays] يومًا ومن المقررات والقوة.
+  ///
+  /// الحاجة المقررة تخص القوة كلها، فلا تُحسب إلا لمن نطاقه كل المستودعات:
+  /// مقارنتها برصيد مستودع واحد تنذر بنفاد لا وجود له. والأصناف القابلة للتعبئة
+  /// أصول تدور لا تُستهلك، فلا توقّع لها.
+  Future<List<StockForecast>> forecast({List<String>? scope, int windowDays = 30, DateTime? today}) async {
+    final now = today ?? DateTime.now();
+    final day = DateTime(now.year, now.month, now.day);
+    final from = _iso(day.subtract(Duration(days: windowDays - 1)));
+    final to = _iso(day);
+
+    final items = await (db.select(db.items)..where((t) => t.isRefillable.equals(false))).get();
+    final issues = await (db.select(db.issues)
+          ..where((t) =>
+              t.status.isNotIn(MovementRecord.inactiveStatuses) &
+              t.date.isBetweenValues(from, to)))
+        .get();
+    final consumed = <String, double>{};
+    for (final r in issues) {
+      if (scope != null && !scope.contains(r.warehouse)) continue;
+      consumed[r.itemId] = (consumed[r.itemId] ?? 0) + r.baseQty;
+    }
+
+    // نظام عمره أقل من الفترة: القسمة على عمره لا على الفترة كلها.
+    final first = await db.customSelect("SELECT MIN(date) AS d FROM issues WHERE date <> ''").getSingle();
+    final firstDay = DateTime.tryParse('${first.data['d'] ?? ''}');
+    final age = firstDay == null ? windowDays : day.difference(firstDay).inDays + 1;
+    final days = age.clamp(1, windowDays);
+
+    final planned = <String, double>{};
+    if (scope == null) {
+      final strength = StockForecasting.currentStrength(await DailyRepo(db).calculator(), to);
+      if (strength > 0) {
+        for (final e in await db.select(db.entitlements).get()) {
+          if (e.qtyPerPerson <= 0) continue;
+          planned[e.itemId] = StockForecasting.plannedDaily(
+            monthlyPerPerson: e.qtyPerPerson,
+            measureFactor: e.measureFactor,
+            strength: strength,
+          );
+        }
+      }
+    }
+
+    final balances = await _moves.balances(scope: scope);
+    return StockForecasting.forecast([
+      for (final it in items)
+        ForecastInput(
+          itemId: it.id,
+          balance: balances[it.id] ?? 0,
+          consumed: consumed[it.id] ?? 0,
+          windowDays: days,
+          plannedDaily: planned[it.id],
+        ),
+    ], day);
+  }
+
+  static String _iso(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }
