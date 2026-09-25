@@ -21,7 +21,9 @@ import '../../domain/meal_plan.dart';
 /// ومقارنتها عملٌ واحد يجري في جلسة واحدة، وتفريقه على مسارات يجعل كل انتقال
 /// إعادة تحميل.
 class MealPlanScreen extends StatefulWidget {
-  const MealPlanScreen({super.key});
+  const MealPlanScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<MealPlanScreen> createState() => _MealPlanScreenState();
@@ -339,6 +341,23 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) {
+      if (_loading) return const ImdLd('⏳ جارٍ تحميل الخطط…');
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ImdItabs(
+          value: _tab,
+          onChanged: (v) => setState(() => _tab = v),
+          tabs: const [
+            ImdTab('plans', 'الخطط', icon: 'clipboard'),
+            ImdTab('menu', 'قائمة الطعام', icon: 'utensils'),
+            ImdTab('compare', 'مقارنة خطتين', icon: 'scale'),
+          ],
+        ),
+        if (_tab == 'plans') ..._plansTab(),
+        if (_tab == 'menu') ..._menuTab(),
+        if (_tab == 'compare') ..._compareTab(),
+      ]);
+    }
     if (_loading) {
       return const ImdPage(children: [
         ImdPageTitle(title: 'خطط الوجبات', icon: 'utensils'),

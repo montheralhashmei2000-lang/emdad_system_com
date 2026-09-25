@@ -54,19 +54,23 @@ class CampLedgerRepo {
   // ───────────────────────── المخزن الرئيسي
 
   Future<Warehouse?> mainWarehouse() async {
-    final rows =
-        await (db.select(db.warehouses)..where((t) => t.isMain.equals(true))).get();
+    final rows = await (db.select(db.warehouses)
+          ..where((t) => t.isMain.equals(true)))
+        .get();
     return rows.isEmpty ? null : rows.first;
   }
 
   /// تعيين المخزن الرئيسي — واحد لا أكثر، فيُلغى السابق في المعاملة نفسها.
   Future<void> setMainWarehouse(String warehouseId, {String actor = ''}) async {
     await db.transaction(() async {
-      await db.update(db.warehouses).write(const WarehousesCompanion(isMain: Value(false)));
+      await db
+          .update(db.warehouses)
+          .write(const WarehousesCompanion(isMain: Value(false)));
       await (db.update(db.warehouses)..where((t) => t.id.equals(warehouseId)))
           .write(const WarehousesCompanion(isMain: Value(true)));
     });
-    final w = await (db.select(db.warehouses)..where((t) => t.id.equals(warehouseId)))
+    final w = await (db.select(db.warehouses)
+          ..where((t) => t.id.equals(warehouseId)))
         .getSingleOrNull();
     await AuditRepo(db).log(
       action: 'warehouse.setMain',
@@ -92,7 +96,9 @@ class CampLedgerRepo {
     if (status.isNotEmpty) q.where((t) => t.status.equals(status));
     final rows = await q.get();
     rows.sort((a, b) => a.itemName.compareTo(b.itemName));
-    return [for (final r in rows) CampLedgerRow(ledger: r, amounts: _amountsOf(r))];
+    return [
+      for (final r in rows) CampLedgerRow(ledger: r, amounts: _amountsOf(r))
+    ];
   }
 
   /// تاريخ صنف في معسكر عبر الشهور — منه يُقرأ اتجاه الرصيد.
@@ -109,7 +115,9 @@ class CampLedgerRepo {
           ])
           ..limit(limit))
         .get();
-    return [for (final r in rows) CampLedgerRow(ledger: r, amounts: _amountsOf(r))];
+    return [
+      for (final r in rows) CampLedgerRow(ledger: r, amounts: _amountsOf(r))
+    ];
   }
 
   static LedgerAmounts _amountsOf(CampLedger r) => LedgerAmounts(
@@ -148,17 +156,79 @@ class CampLedgerRepo {
     final facilities = await db.select(db.facilities).get();
 
     // المصادر تُقرأ مرة واحدة لا مرة لكل معسكر وصنف.
-    final transfers = await _inSpan(db.select(db.transfers).get(), span);
-    final issues = await _inSpan(db.select(db.issues).get(), span);
-    final returns = await _inSpan(db.select(db.returns).get(), span);
-    final logs = (await db.select(db.kitchenLogs).get())
-        .where((l) => span.contains(l.date))
-        .toList();
-    final strengths = (await db.select(db.strengths).get())
-        .where((s) => span.contains(s.strengthDate))
-        .toList();
+    // Apply the period in SQLite, then aggregate once. The previous nested
+    // filtering scanned every movement for every camp/item pair.
+    final transfers = await (db.select(db.transfers)
+          ..where((t) => t.date.isBetweenValues(span.start, span.end)))
+        .get();
+    final issues = await (db.select(db.issues)
+          ..where((t) => t.date.isBetweenValues(span.start, span.end)))
+        .get();
+    final returns = await (db.select(db.returns)
+          ..where((t) => t.date.isBetweenValues(span.start, span.end)))
+        .get();
+    final logs = await (db.select(db.kitchenLogs)
+          ..where((t) => t.date.isBetweenValues(span.start, span.end)))
+        .get();
+    final strengths = await (db.select(db.strengths)
+          ..where((t) => t.strengthDate.isBetweenValues(span.start, span.end)))
+        .get();
+
+    final existingRows = await (db.select(db.campLedgers)
+          ..where((t) => t.year.equals(year) & t.month.equals(month)))
+        .get();
+    final existingByKey = {
+      for (final row in existingRows) '${row.campId}/${row.itemId}': row,
+    };
+    final previousYear = month == 1 ? year - 1 : year;
+    final previousMonth = month == 1 ? 12 : month - 1;
+    final previousRows = await (db.select(db.campLedgers)
+          ..where((t) =>
+              t.year.equals(previousYear) &
+              t.month.equals(previousMonth) &
+              t.status.equals('CLOSED')))
+        .get();
+    final previousByKey = {
+      for (final row in previousRows) '${row.campId}/${row.itemId}': row,
+    };
+
+    final transferTotals = <String, double>{};
+    for (final row in transfers) {
+      final key = '${row.campId}/${row.itemId}';
+      transferTotals.update(key, (v) => v + row.baseQty,
+          ifAbsent: () => row.baseQty);
+    }
+    final issueTotals = <String, double>{};
+    for (final row in issues) {
+      final unitId =
+          row.beneficiaryUnitId.isNotEmpty ? row.beneficiaryUnitId : row.unitId;
+      final key = '$unitId/${row.itemId}';
+      issueTotals.update(key, (v) => v + row.baseQty,
+          ifAbsent: () => row.baseQty);
+    }
+    final returnTotals = <String, double>{};
+    final legacyReturnTotals = <String, double>{};
+    for (final row in returns) {
+      if (row.type != 'FROM_UNIT') continue;
+      if (row.beneficiaryUnitId.isNotEmpty) {
+        final key = '${row.beneficiaryUnitId}/${row.itemId}';
+        returnTotals.update(key, (v) => v + row.baseQty,
+            ifAbsent: () => row.baseQty);
+      } else {
+        final key = '${row.party.trim()}/${row.itemId}';
+        legacyReturnTotals.update(key, (v) => v + row.baseQty,
+            ifAbsent: () => row.baseQty);
+      }
+    }
+    final kitchenTotals = <String, double>{};
+    for (final row in logs) {
+      final key = '${row.facilityId}/${row.itemId}';
+      kitchenTotals.update(key, (v) => v + row.baseQty,
+          ifAbsent: () => row.baseQty);
+    }
 
     var written = 0;
+    final ledgerWrites = <CampLedgersCompanion>[];
     for (final camp in camps) {
       final memberIds = _membersOf(camp, units);
       final memberNames = {
@@ -178,27 +248,26 @@ class CampLedgerRepo {
           strengthSum: strengthSum,
         );
 
-        final transferredIn = transfers
-            .where((t) => t.campId == camp.id && t.itemId == scale.itemId)
-            .fold<double>(0, (s, t) => s + t.baseQty);
-        final issuedDirect = issues
-            .where((i) =>
-                i.itemId == scale.itemId &&
-                (memberIds.contains(i.beneficiaryUnitId) || memberIds.contains(i.unitId)))
-            .fold<double>(0, (s, i) => s + i.baseQty);
+        final transferredIn = transferTotals['${camp.id}/${scale.itemId}'] ?? 0;
+        final issuedDirect = memberIds.fold<double>(
+          0,
+          (sum, id) => sum + (issueTotals['$id/${scale.itemId}'] ?? 0),
+        );
         // المرتجع يُنسب بمعرّف وحدته. والسطور التي سبقت العمود (v11) لا معرّف
         // لها، فتُطابق بالاسم — احتياطٌ للقديم لا أساسٌ للجديد.
-        final returned = returns
-            .where((r) =>
-                r.itemId == scale.itemId &&
-                r.type == 'FROM_UNIT' &&
-                (r.beneficiaryUnitId.isNotEmpty
-                    ? memberIds.contains(r.beneficiaryUnitId)
-                    : memberNames.contains(r.party.trim())))
-            .fold<double>(0, (s, r) => s + r.baseQty);
-        final consumed = logs
-            .where((l) => l.itemId == scale.itemId && facilityIds.contains(l.facilityId))
-            .fold<double>(0, (s, l) => s + l.baseQty);
+        final returned = memberIds.fold<double>(
+              0,
+              (sum, id) => sum + (returnTotals['$id/${scale.itemId}'] ?? 0),
+            ) +
+            memberNames.fold<double>(
+              0,
+              (sum, name) =>
+                  sum + (legacyReturnTotals['$name/${scale.itemId}'] ?? 0),
+            );
+        final consumed = facilityIds.fold<double>(
+          0,
+          (sum, id) => sum + (kitchenTotals['$id/${scale.itemId}'] ?? 0),
+        );
 
         final nothing = entitlement == 0 &&
             transferredIn == 0 &&
@@ -206,35 +275,42 @@ class CampLedgerRepo {
             returned == 0 &&
             consumed == 0;
 
-        final existing = await _find(camp.id, scale.itemId, year, month);
+        final key = '${camp.id}/${scale.itemId}';
+        final existing = existingByKey[key];
         if (existing != null && existing.status == 'CLOSED') continue;
         // سطرٌ بلا أي حركة ولا استحقاق لا يُنشأ: جدولٌ بمعسكرات × أصناف يمتلئ
         // بآلاف الأصفار فلا يُقرأ.
         if (nothing && existing == null) continue;
 
-        final opening = await _openingOf(camp.id, scale.itemId, year, month);
-        await db.into(db.campLedgers).insertOnConflictUpdate(CampLedgersCompanion.insert(
-              id: existing?.id ?? Ids.next('cld'),
-              campId: camp.id,
-              campName: Value(camp.name),
-              itemId: scale.itemId,
-              itemName: Value(item?.name ?? scale.itemName),
-              unitName: Value(item?.baseUnit ?? ''),
-              year: year,
-              month: month,
-              openingEntitled: Value(opening.entitled),
-              openingStock: Value(opening.stock),
-              entitlementTotal: Value(entitlement),
-              transferredIn: Value(CampLedgerCalc.round(transferredIn)),
-              issuedDirect: Value(CampLedgerCalc.round(issuedDirect)),
-              returnedQty: Value(CampLedgerCalc.round(returned)),
-              consumedKitchen: Value(CampLedgerCalc.round(consumed)),
-              strengthSum: Value(CampLedgerCalc.round(strengthSum)),
-              strengthDays: Value(strengthByDay.length),
-              updatedAt: Value(DateTime.now()),
-            ));
+        final previous = previousByKey[key];
+        final previousAmounts = previous == null ? null : _amountsOf(previous);
+        ledgerWrites.add(CampLedgersCompanion.insert(
+          id: existing?.id ?? Ids.next('cld'),
+          campId: camp.id,
+          campName: Value(camp.name),
+          itemId: scale.itemId,
+          itemName: Value(item?.name ?? scale.itemName),
+          unitName: Value(item?.baseUnit ?? ''),
+          year: year,
+          month: month,
+          openingEntitled: Value(previousAmounts?.entitlementBalance ?? 0),
+          openingStock: Value(previousAmounts?.stockBalance ?? 0),
+          entitlementTotal: Value(entitlement),
+          transferredIn: Value(CampLedgerCalc.round(transferredIn)),
+          issuedDirect: Value(CampLedgerCalc.round(issuedDirect)),
+          returnedQty: Value(CampLedgerCalc.round(returned)),
+          consumedKitchen: Value(CampLedgerCalc.round(consumed)),
+          strengthSum: Value(CampLedgerCalc.round(strengthSum)),
+          strengthDays: Value(strengthByDay.length),
+          updatedAt: Value(DateTime.now()),
+        ));
         written++;
       }
+    }
+
+    if (ledgerWrites.isNotEmpty) {
+      await db.batch((batch) =>
+          batch.insertAllOnConflictUpdate(db.campLedgers, ledgerWrites));
     }
 
     if (written > 0 && actor.isNotEmpty) {
@@ -249,13 +325,10 @@ class CampLedgerRepo {
     return written;
   }
 
-  Future<List<T>> _inSpan<T>(Future<List<T>> future, DateSpan span) async {
-    final rows = await future;
-    return rows.where((r) => span.contains((r as dynamic).date as String)).toList();
-  }
-
   /// المعسكر ووحداته الفرعية — الصرف يقع على الوحدة لا على المعسكر غالبًا.
-  static Set<String> _membersOf(BeneficiaryUnit camp, List<BeneficiaryUnit> units) => {
+  static Set<String> _membersOf(
+          BeneficiaryUnit camp, List<BeneficiaryUnit> units) =>
+      {
         camp.id,
         for (final u in units)
           if (u.parentId == camp.id) u.id,
@@ -292,7 +365,8 @@ class CampLedgerRepo {
       final belongs = s.campId == campId || memberIds.contains(s.unitId);
       if (!belongs) continue;
       final bucket = s.mode == 'camp' ? camp : detail;
-      bucket.update(s.strengthDate, (v) => v + s.total, ifAbsent: () => s.total);
+      bucket.update(s.strengthDate, (v) => v + s.total,
+          ifAbsent: () => s.total);
     }
     final out = <String, double>{...camp};
     // التفصيل أدقّ، فيغلب سطر المعسكر في اليوم الذي سُجّل فيه الاثنان.
@@ -300,7 +374,8 @@ class CampLedgerRepo {
     return out;
   }
 
-  Future<CampLedger?> _find(String campId, String itemId, int year, int month) async {
+  Future<CampLedger?> _find(
+      String campId, String itemId, int year, int month) async {
     final rows = await (db.select(db.campLedgers)
           ..where((t) =>
               t.campId.equals(campId) &
@@ -309,24 +384,6 @@ class CampLedgerRepo {
               t.month.equals(month)))
         .get();
     return rows.isEmpty ? null : rows.first;
-  }
-
-  /// رصيدا الترحيل من الشهر السابق — من سجله المُغلق وحده.
-  ///
-  /// شهرٌ سابق لم يُصفَّ لا يُرحَّل منه شيء: الترحيل من أرقام قد تتغيّر يجعل
-  /// رصيد هذا الشهر يتبدّل من تلقاء نفسه كلما عُدّل ما قبله.
-  Future<({double entitled, double stock})> _openingOf(
-    String campId,
-    String itemId,
-    int year,
-    int month,
-  ) async {
-    final prevYear = month == 1 ? year - 1 : year;
-    final prevMonth = month == 1 ? 12 : month - 1;
-    final prev = await _find(campId, itemId, prevYear, prevMonth);
-    if (prev == null || prev.status != 'CLOSED') return (entitled: 0.0, stock: 0.0);
-    final a = _amountsOf(prev);
-    return (entitled: a.entitlementBalance, stock: a.stockBalance);
   }
 
   // ───────────────────────── تصفية الشهر
@@ -349,7 +406,8 @@ class CampLedgerRepo {
           ..where((t) => t.year.equals(year) & t.month.equals(month)))
         .get();
     if (already.isNotEmpty) {
-      return const SettlementResult(ok: false, error: '✖ هذا الشهر مُصفّى سلفًا');
+      return const SettlementResult(
+          ok: false, error: '✖ هذا الشهر مُصفّى سلفًا');
     }
 
     // إعادة بناء قبل الإغلاق: التصفية تُثبّت الأرقام، فلتُثبّت أحدثها.
@@ -357,7 +415,8 @@ class CampLedgerRepo {
 
     final rows = await ledgers(year: year, month: month, status: 'OPEN');
     if (rows.isEmpty) {
-      return SettlementResult(ok: false, error: '✖ لا سجلات مفتوحة لشهر $month/$year');
+      return SettlementResult(
+          ok: false, error: '✖ لا سجلات مفتوحة لشهر $month/$year');
     }
 
     final camps = <String>{};
@@ -378,7 +437,9 @@ class CampLedgerRepo {
           debit += -b;
         }
 
-        await (db.update(db.campLedgers)..where((t) => t.id.equals(r.ledger.id))).write(
+        await (db.update(db.campLedgers)
+              ..where((t) => t.id.equals(r.ledger.id)))
+            .write(
           CampLedgersCompanion(
             status: const Value('CLOSED'),
             closedBy: Value(actor),
@@ -388,8 +449,11 @@ class CampLedgerRepo {
         );
 
         // فتح الشهر التالي بالرصيدين المُرحَّلين.
-        final next = await _find(r.ledger.campId, r.ledger.itemId, nextYear, nextMonth);
-        await db.into(db.campLedgers).insertOnConflictUpdate(CampLedgersCompanion.insert(
+        final next =
+            await _find(r.ledger.campId, r.ledger.itemId, nextYear, nextMonth);
+        await db
+            .into(db.campLedgers)
+            .insertOnConflictUpdate(CampLedgersCompanion.insert(
               id: next?.id ?? Ids.next('cld'),
               campId: r.ledger.campId,
               campName: Value(r.ledger.campName),
@@ -409,7 +473,9 @@ class CampLedgerRepo {
             ));
       }
 
-      await db.into(db.monthlySettlements).insert(MonthlySettlementsCompanion.insert(
+      await db
+          .into(db.monthlySettlements)
+          .insert(MonthlySettlementsCompanion.insert(
             id: Ids.next('stl'),
             year: year,
             month: month,
@@ -425,7 +491,8 @@ class CampLedgerRepo {
     await AuditRepo(db).log(
       action: 'campLedger.settle',
       entityType: 'تصفية شهر',
-      summary: 'تصفية $month/$year — ${camps.length} معسكرًا و${items.length} صنفًا',
+      summary:
+          'تصفية $month/$year — ${camps.length} معسكرًا و${items.length} صنفًا',
       details: {
         'year': year,
         'month': month,
@@ -456,7 +523,8 @@ class CampLedgerRepo {
 
   Future<void> setAutoSettle(bool on) async {
     final settings = SettingsRepo(db);
-    final map = await settings.read(_settingsKey)..['autoSettle'] = on;
+    final map = await settings.read(_settingsKey)
+      ..['autoSettle'] = on;
     await settings.write(_settingsKey, map);
   }
 
@@ -467,7 +535,8 @@ class CampLedgerRepo {
   /// المدير لا معالجةً صامتة.
   Future<SettlementResult> autoSettleIfDue({String actor = 'تلقائي'}) async {
     if (!await isAutoSettle()) {
-      return const SettlementResult(ok: false, error: 'التصفية التلقائية مطفأة');
+      return const SettlementResult(
+          ok: false, error: 'التصفية التلقائية مطفأة');
     }
     final now = DateTime.now();
     final year = now.month == 1 ? now.year - 1 : now.year;
@@ -475,13 +544,16 @@ class CampLedgerRepo {
 
     final done = await settlements();
     if (done.any((s) => s.year == year && s.month == month)) {
-      return const SettlementResult(ok: false, error: 'الشهر المنقضي مُصفّى سلفًا');
+      return const SettlementResult(
+          ok: false, error: 'الشهر المنقضي مُصفّى سلفًا');
     }
     final open = await ledgers(year: year, month: month, status: 'OPEN');
     if (open.isEmpty) {
-      return const SettlementResult(ok: false, error: 'لا سجلات مفتوحة للشهر المنقضي');
+      return const SettlementResult(
+          ok: false, error: 'لا سجلات مفتوحة للشهر المنقضي');
     }
-    return closeMonth(year: year, month: month, actor: actor, notes: 'تصفية تلقائية');
+    return closeMonth(
+        year: year, month: month, actor: actor, notes: 'تصفية تلقائية');
   }
 
   Future<List<MonthlySettlement>> settlements() =>
@@ -534,14 +606,16 @@ class CampLedgerRepo {
   /// المخزون من سجل الشهر الجاري، ومعدل الاستهلاك من سجل الطهي في آخر أسبوع.
   Future<List<StockAlert>> alerts({String campId = ''}) async {
     final now = DateTime.now();
-    final rows = await ledgers(year: now.year, month: now.month, campId: campId);
+    final rows =
+        await ledgers(year: now.year, month: now.month, campId: campId);
     if (rows.isEmpty) return const [];
 
     final defs = await limits(campId: campId);
     if (defs.isEmpty) return const [];
 
     final window = DateSpan(
-      DateSpan.ymd(now.subtract(const Duration(days: StockAlertEngine.defaultWindowDays))),
+      DateSpan.ymd(now
+          .subtract(const Duration(days: StockAlertEngine.defaultWindowDays))),
       DateSpan.ymd(now),
     );
     final units = await CatalogRepo(db).units();
@@ -554,7 +628,8 @@ class CampLedgerRepo {
     final out = <StockAlert>[];
     for (final def in defs) {
       final row = rows
-          .where((r) => r.ledger.campId == def.campId && r.ledger.itemId == def.itemId)
+          .where((r) =>
+              r.ledger.campId == def.campId && r.ledger.itemId == def.itemId)
           .firstOrNull;
       if (row == null) continue;
 
@@ -593,7 +668,8 @@ class CampLedgerRepo {
     required int year,
     required int month,
   }) async {
-    final scale = await (db.select(db.entitlements)..where((t) => t.itemId.equals(itemId)))
+    final scale = await (db.select(db.entitlements)
+          ..where((t) => t.itemId.equals(itemId)))
         .getSingleOrNull();
     if (scale == null) return const [];
 

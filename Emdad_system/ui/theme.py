@@ -171,18 +171,25 @@ QComboBox QAbstractItemView { background: #FFFFFF; border: 1px solid #E5E7EB; bo
 # ================ التوافق ================
 apply_theme = setup_theme
 COLORS = {
-    "green_primary": PRIMARY_COLOR,
-    "green_light": PRIMARY_LIGHT,
-    "green_dark": PRIMARY_DARK,
-    "blue_primary": SECONDARY_COLOR,
-    "orange": ACCENT_COLOR,
-    "danger": DANGER_COLOR,
-    "success": SUCCESS_COLOR,
-    "warning": WARNING_COLOR,
-    "info": INFO_COLOR,
+    "green_primary": "#10B981",
+    "green_light": "#34D399",
+    "green_dark": "#059669",
+    "blue_primary": "#3B82F6",
+    "orange": "#F59E0B",
+    "danger": "#EF4444",
+    "success": "#22C55E",
+    "warning": "#EAB308",
+    "info": "#3B82F6",
     "gold": "#D4A017",
-    "bg": BG_COLOR,
-    "card": CARD_BG,
+    "bg": "#F9FAFB",
+    "card": "#FFFFFF",
+    # Extended keys for inventory_count_view
+    "bg_card": "#FFFFFF",
+    "border": "#E5E7EB",
+    "text": "#111827",
+    "PRIMARY": "#10B981",
+    "DANGER": "#EF4444",
+    "green_hover": "#06B6D4",
 }
 SIDEBAR_GROUPS = {
     "الرئيسية": [("لوحة القيادة", "fa5s.home")],

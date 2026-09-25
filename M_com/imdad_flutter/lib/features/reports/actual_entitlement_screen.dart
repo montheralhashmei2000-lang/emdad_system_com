@@ -69,11 +69,9 @@ class _ActualEntitlementScreenState extends State<ActualEntitlementScreen> {
 
   Future<void> _boot() async {
     final scope = Perm.of(context).scope;
-    final data = await ReportsRepo(_db).load(scope: scope);
     final plans = await MealPlanRepo(_db).plans(scope: scope);
     if (!mounted) return;
     setState(() {
-      _data = data;
       _plans = plans;
       _loading = false;
     });
@@ -81,14 +79,20 @@ class _ActualEntitlementScreenState extends State<ActualEntitlementScreen> {
   }
 
   Future<void> _compute() async {
-    final data = _data;
-    if (data == null) return;
     final span = _span;
     if (!span.isValid) {
       setState(() => _rows = const []);
       return;
     }
     setState(() => _busy = true);
+
+    // الحركات تُقرأ بمدى الفترة المعروضة. الشاشة لا تعرض إلا ما بداخلها،
+    // فقراءةُ ما قبلها وما بعدها كلفةٌ بلا مقابل تنمو مع عمر القاعدة.
+    final scope = Perm.of(context).scope;
+    final data = await ReportsRepo(_db)
+        .load(scope: scope, from: span.start, to: span.end);
+    if (!mounted) return;
+    setState(() => _data = data);
 
     final persons = await MealPlanRepo(_db).personsByDay(span);
     final items = await CatalogRepo(_db).items();

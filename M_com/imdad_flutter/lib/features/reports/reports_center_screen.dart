@@ -13,6 +13,9 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/reports_repo.dart';
 import '../../data/repos/settings_repo.dart';
+import 'actual_entitlement_screen.dart';
+import 'camp_ledger_screen.dart';
+import 'camp_settlement_screen.dart';
 
 /// مركز التقارير — نقل `reports-center.js`: قائمة جانبية بتسعة تقارير،
 /// فلاتر مخصصة لكل تقرير، ملخّص برقائق، جدول قابل للفرز بسطر إجمالي،
@@ -34,6 +37,18 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
   ReportData? _data;
   ReportResult _out = const ReportResult();
   int _idx = 0;
+  static const _tools = <(String, String, String, String)>[
+    (
+      'actualEntitlement',
+      'calculator',
+      'حساب الاستحقاق الفعلي',
+      'actualEntitlement'
+    ),
+    ('campLedger', 'calculator', 'سجل حساب المعسكر', 'campLedger'),
+    ('campSettlement', 'lock', 'تصفية الشهر', 'campSettlement'),
+  ];
+  List<(String, String, String, String)> get _visibleTools =>
+      _tools.where((tool) => _perm.has(tool.$4)).toList();
 
   /// حالة فلاتر كل تقرير على حدة (`RC.f`).
   final Map<ReportId, Map<String, String>> _filters = {};
@@ -44,6 +59,7 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
   bool _loading = true;
 
   ReportInfo get _report => kReports[_idx];
+  int get _sectionCount => kReports.length + _visibleTools.length;
 
   @override
   void initState() {
@@ -57,19 +73,56 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
     super.dispose();
   }
 
+  /// المدى الذي يكفي التقرير الحالي — فارغٌ يعني «كل التاريخ».
+  ///
+  /// تقرير الأرصدة لا يُقتطع مداه: رصيد اليوم حصيلةُ كل ما سبقه، فاقتطاعُ
+  /// الشهور الأولى يُظهر أرصدةً سالبة لا وجود لها.
+  (String, String) get _need {
+    if (_report.id == ReportId.stock) return ('', '');
+    final f = _state();
+    if (_report.id == ReportId.daily) {
+      final day = (f['day'] ?? '').isEmpty ? ReportsRepo.today() : f['day']!;
+      return (day, day);
+    }
+    if (f['dateOn'] != '1') return ('', '');
+    final from = f['from'] ?? '';
+    final to = f['to'] ?? '';
+    return from.isEmpty || to.isEmpty ? ('', '') : (from, to);
+  }
+
+  /// مدى أول تحميل — من تعريف الفلاتر لا من حالتها، لأن [_state] يحتاج
+  /// البيانات التي لم تُحمَّل بعد.
+  static (String, String) _initialNeed(ReportId id) {
+    for (final x in ReportsRepo.filtersFor(id)) {
+      if (x.type == 'range' && x.defaultOn) {
+        return (ReportsRepo.daysAgo(x.fromDaysAgo), ReportsRepo.today());
+      }
+    }
+    return ('', '');
+  }
+
   Future<void> _load() async {
-    final data = await _repo.load(scope: _perm.scope);
+    final (from, to) = _initialNeed(_report.id);
+    final data = await _repo.load(scope: _perm.scope, from: from, to: to);
     if (!mounted) return;
     setState(() {
       _data = data;
       _loading = false;
     });
-    _run();
+    await _run();
   }
 
   /// زر «تحديث البيانات».
   Future<void> _refresh() async {
-    await _load();
+    final (from, to) = _need;
+    setState(() => _loading = true);
+    final data = await _repo.load(scope: _perm.scope, from: from, to: to);
+    if (!mounted) return;
+    setState(() {
+      _data = data;
+      _loading = false;
+    });
+    await _run();
     if (mounted) showImdToast(context, '✔ تم تحديث البيانات');
   }
 
@@ -96,9 +149,20 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
     return s;
   }
 
-  /// `run()`
-  void _run() {
-    if (_data == null) return;
+  /// `run()` — يوسّع نافذة البيانات أولًا إن لم تعد تكفي الفلتر المطلوب.
+  Future<void> _run() async {
+    if (_data == null || _idx >= kReports.length) return;
+    final (from, to) = _need;
+    if (!_data!.covers(from, to)) {
+      setState(() => _loading = true);
+      final data = await _repo.load(scope: _perm.scope, from: from, to: to);
+      if (!mounted) return;
+      setState(() {
+        _data = data;
+        _loading = false;
+      });
+    }
+    if (!mounted) return;
     setState(() => _out = _repo.run(_report.id, _data!, _state()));
   }
 
@@ -128,7 +192,9 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
     final q = _q.text.trim().toLowerCase();
     var rows = _out.rows;
     if (q.isNotEmpty) {
-      rows = rows.where((r) => r.any((c) => c.text.toLowerCase().contains(q))).toList();
+      rows = rows
+          .where((r) => r.any((c) => c.text.toLowerCase().contains(q)))
+          .toList();
     }
     final sc = _sortCol;
     if (sc != null && sc < _out.columns.length) {
@@ -147,13 +213,15 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
 
   bool _hasRows() {
     if (_out.message.isNotEmpty || _rows().isEmpty) {
-      showImdToast(context, '✖ لا توجد بيانات — اعرض التقرير أولًا', error: true);
+      showImdToast(context, '✖ لا توجد بيانات — اعرض التقرير أولًا',
+          error: true);
       return false;
     }
     return true;
   }
 
-  String get _title => _report.name + (_out.title.isEmpty ? '' : ' — ${_out.title}');
+  String get _title =>
+      _report.name + (_out.title.isEmpty ? '' : ' — ${_out.title}');
 
   List<String> get _headers => ['م', for (final c in _out.columns) c.title];
 
@@ -192,7 +260,8 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
       rows: _exportRows(),
     );
     if (!mounted) return;
-    final name = 'تقرير_${_report.name}_${ReportsRepo.today()}'.replaceAll(' ', '_');
+    final name =
+        'تقرير_${_report.name}_${ReportsRepo.today()}'.replaceAll(' ', '_');
     final path = await ImdFiles.saveBytes(context, '$name.xlsx', bytes);
     if (path != null && mounted) showImdToast(context, '✔ صُدِّر الملف');
   }
@@ -205,7 +274,8 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
       ImdPageTitle(
         title: 'مركز التقارير',
         icon: 'chart',
-        subtitle: 'تقارير تفصيلية بفلاتر مخصصة لكل تقرير، مع الطباعة والتصدير إلى Excel',
+        subtitle:
+            'تقارير تفصيلية بفلاتر مخصصة لكل تقرير، مع الطباعة والتصدير إلى Excel',
         trailing: narrow
             ? null
             : ImdButton.outline(
@@ -234,7 +304,8 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
   Widget _nav({required bool horizontal}) {
     final c = context.imd;
     final buttons = [
-      for (final (i, r) in kReports.indexed) _navButton(i, r, horizontal: horizontal),
+      for (var i = 0; i < _sectionCount; i++)
+        _navButton(i, horizontal: horizontal)
     ];
     return Container(
       padding: EdgeInsets.all(horizontal ? 6 : 8),
@@ -247,16 +318,25 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
           ? SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(children: [
-                for (final b in buttons) Padding(padding: const EdgeInsets.only(left: 4), child: b),
+                for (final b in buttons)
+                  Padding(padding: const EdgeInsets.only(left: 4), child: b),
               ]),
             )
-          : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: buttons),
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: buttons),
     );
   }
 
-  Widget _navButton(int i, ReportInfo r, {required bool horizontal}) {
+  Widget _navButton(int i, {required bool horizontal}) {
     final c = context.imd;
     final on = i == _idx;
+    final tool =
+        i >= kReports.length ? _visibleTools[i - kReports.length] : null;
+    final icon = tool?.$2 ?? kReports[i].icon;
+    final title = tool?.$3 ?? kReports[i].name;
+    final description =
+        tool == null ? kReports[i].desc : 'أداة ضمن مركز التقارير';
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
@@ -276,41 +356,60 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
             color: on ? c.accentSoft : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 3),
-              child: ImdIcon(r.icon, size: 16, color: c.accent),
-            ),
-            const SizedBox(width: 10),
-            ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: horizontal ? 200 : 210),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text(r.name,
-                    style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                        color: on ? c.accentHover : c.text)),
-                if (!horizontal)
-                  Text(r.desc, style: TextStyle(fontSize: 11.5, color: c.muted, height: 1.5)),
+          child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: ImdIcon(icon, size: 16, color: c.accent),
+                ),
+                const SizedBox(width: 10),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: horizontal ? 200 : 210),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(title,
+                            style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w600,
+                                color: on ? c.accentHover : c.text)),
+                        if (!horizontal)
+                          Text(description,
+                              style: TextStyle(
+                                  fontSize: 11.5, color: c.muted, height: 1.5)),
+                      ]),
+                ),
               ]),
-            ),
-          ]),
         ),
       ),
     );
   }
 
   Widget _body() {
+    if (_idx >= kReports.length) {
+      return switch (_visibleTools[_idx - kReports.length].$1) {
+        'actualEntitlement' => const ActualEntitlementScreen(),
+        'campLedger' => const CampLedgerScreen(),
+        _ => const CampSettlementScreen(),
+      };
+    }
     final rows = _rows();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       ImdPanel(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             ImdIcon(_report.icon, size: 18, color: context.imd.accent),
             const SizedBox(width: 8),
             Expanded(
               child: Text(_report.name,
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: context.imd.text)),
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: context.imd.text)),
             ),
             Flexible(
               child: Text(
@@ -323,39 +422,48 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
           const SizedBox(height: 12),
           _filtersBar(),
           const SizedBox(height: 14),
-          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            ImdButton(label: 'عرض التقرير', icon: 'search', onPressed: _run),
-            ImdButton.outline(label: 'طباعة', icon: 'printer', onPressed: _print),
-            ImdButton.outline(label: 'تصدير Excel', icon: 'download', onPressed: _export),
-            ImdButton.outline(
-              label: 'إعادة تعيين',
-              icon: 'eraser',
-              small: true,
-              onPressed: () {
-                _filters.remove(_report.id);
-                _q.clear();
-                setState(() => _sortCol = null);
-                _run();
-              },
-            ),
-            SizedBox(
-              width: 240,
-              child: ImdFld(
-                controller: _q,
-                hint: 'بحث داخل النتائج…',
-                dense: true,
-                onChanged: (_) => setState(() {}),
-              ),
-            ),
-          ]),
+          Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                ImdButton(
+                    label: 'عرض التقرير', icon: 'search', onPressed: _run),
+                ImdButton.outline(
+                    label: 'طباعة', icon: 'printer', onPressed: _print),
+                ImdButton.outline(
+                    label: 'تصدير Excel', icon: 'download', onPressed: _export),
+                ImdButton.outline(
+                  label: 'إعادة تعيين',
+                  icon: 'eraser',
+                  small: true,
+                  onPressed: () {
+                    _filters.remove(_report.id);
+                    _q.clear();
+                    setState(() => _sortCol = null);
+                    _run();
+                  },
+                ),
+                SizedBox(
+                  width: 240,
+                  child: ImdFld(
+                    controller: _q,
+                    hint: 'بحث داخل النتائج…',
+                    dense: true,
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
+              ]),
         ]),
       ),
       if (_out.summary.isNotEmpty)
         ImdChipsRow(children: [
           for (final (i, s) in _out.summary.indexed)
-            ImdChip('${s.$1}: ${nf(s.$2)}', tone: i == 0 ? ImdTone.ok : ImdTone.code),
+            ImdChip('${s.$1}: ${nf(s.$2)}',
+                tone: i == 0 ? ImdTone.ok : ImdTone.code),
         ]),
-      if (_out.note.isNotEmpty) ImdNote(_out.note, margin: const EdgeInsets.only(bottom: 10)),
+      if (_out.note.isNotEmpty)
+        ImdNote(_out.note, margin: const EdgeInsets.only(bottom: 10)),
       if (_out.message.isNotEmpty)
         ImdEmptyBox(_out.message)
       else
@@ -415,7 +523,9 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
 
   /// سطر الإجمالي للأعمدة المجمَّعة (`rc-sum`).
   List<Widget>? _totals(List<List<ReportCell>> rows) {
-    if (rows.length < 2 || !_out.columns.any((c) => c.numeric && c.sum)) return null;
+    if (rows.length < 2 || !_out.columns.any((c) => c.numeric && c.sum)) {
+      return null;
+    }
     return [
       const Text('الإجمالي', style: TextStyle(fontWeight: FontWeight.w700)),
       for (final (i, c) in _out.columns.indexed)
@@ -439,44 +549,48 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
         case 'range':
           fields.add(SizedBox(
             width: double.infinity,
-            child: Wrap(spacing: 12, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.end, children: [
-              ImdCheckbox(
-                value: f['dateOn'] == '1',
-                label: 'تحديد فترة',
-                onChanged: (v) {
-                  f['dateOn'] = v ? '1' : '';
-                  _run();
-                },
-              ),
-              SizedBox(
-                width: 170,
-                child: ImdLabeled(
-                  'من تاريخ',
-                  ImdDateField(
-                    value: f['from'] ?? '',
-                    enabled: f['dateOn'] == '1',
+            child: Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.end,
+                children: [
+                  ImdCheckbox(
+                    value: f['dateOn'] == '1',
+                    label: 'تحديد فترة',
                     onChanged: (v) {
-                      f['from'] = v;
+                      f['dateOn'] = v ? '1' : '';
                       _run();
                     },
                   ),
-                ),
-              ),
-              SizedBox(
-                width: 170,
-                child: ImdLabeled(
-                  'إلى تاريخ',
-                  ImdDateField(
-                    value: f['to'] ?? '',
-                    enabled: f['dateOn'] == '1',
-                    onChanged: (v) {
-                      f['to'] = v;
-                      _run();
-                    },
+                  SizedBox(
+                    width: 170,
+                    child: ImdLabeled(
+                      'من تاريخ',
+                      ImdDateField(
+                        value: f['from'] ?? '',
+                        enabled: f['dateOn'] == '1',
+                        onChanged: (v) {
+                          f['from'] = v;
+                          _run();
+                        },
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ]),
+                  SizedBox(
+                    width: 170,
+                    child: ImdLabeled(
+                      'إلى تاريخ',
+                      ImdDateField(
+                        value: f['to'] ?? '',
+                        enabled: f['dateOn'] == '1',
+                        onChanged: (v) {
+                          f['to'] = v;
+                          _run();
+                        },
+                      ),
+                    ),
+                  ),
+                ]),
           ));
         case 'date':
           fields.add(SizedBox(
@@ -494,7 +608,9 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
           ));
         default:
           final opts = x.options?.call(_data!, f) ?? const [];
-          if (!opts.any((o) => o.$1 == f[x.key])) f[x.key] = opts.isEmpty ? '' : opts.first.$1;
+          if (!opts.any((o) => o.$1 == f[x.key])) {
+            f[x.key] = opts.isEmpty ? '' : opts.first.$1;
+          }
           fields.add(SizedBox(
             width: 220,
             child: ImdLabeled(

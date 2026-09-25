@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../repos/audit_repo.dart';
 import '../repos/signatures_repo.dart';
 import '../sync/sync_marks.dart';
 import 'connection/connection.dart';
@@ -819,6 +820,8 @@ class AppDatabase extends _$AppDatabase {
           await SignaturesRepo.install(this);
           // شواهد الحذف تنمو بلا حد لو تُركت: تُنظَّف القديمة عند كل تشغيل.
           await SyncMarks(this).pruneTombstones();
+          // وكذلك سجل التدقيق العادي — وعالي الخطورة يبقى.
+          await AuditRepo(this).prune();
         },
       );
 }
