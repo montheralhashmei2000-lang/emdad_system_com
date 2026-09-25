@@ -380,3 +380,167 @@ class FuelAlerts {
     );
   }
 }
+
+/// سطرٌ مجمَّع في تقرير الاستهلاك.
+class FuelConsumptionRow {
+  const FuelConsumptionRow({
+    required this.key,
+    required this.label,
+    required this.liters,
+    required this.count,
+    this.petrol = 0,
+    this.diesel = 0,
+  });
+
+  final String key;
+  final String label;
+
+  /// الإجمالي بكل الأنواع.
+  final double liters;
+
+  /// عدد سندات الصرف.
+  final int count;
+  final double petrol;
+  final double diesel;
+
+  /// حصّة هذا السطر من الإجمالي (0..1).
+  double shareOf(double total) => total <= 0 ? 0 : liters / total;
+}
+
+/// محاور تجميع تقرير الاستهلاك.
+class FuelGroupBy {
+  static const String unit = 'unit';
+  static const String vehicle = 'vehicle';
+  static const String warehouse = 'warehouse';
+  static const String fuelType = 'fuelType';
+
+  static const List<String> all = [unit, vehicle, warehouse, fuelType];
+
+  static const Map<String, String> labels = {
+    unit: 'الجهة المستفيدة',
+    vehicle: 'المركبة (الشاصي)',
+    warehouse: 'المستودع',
+    fuelType: 'نوع الوقود',
+  };
+
+  static String label(String v) => labels[v] ?? v;
+}
+
+/// حركة صرف كما يراها التقرير — بلا ارتباط بجدول، فيُختبر وحده.
+class FuelConsumptionMove {
+  const FuelConsumptionMove({
+    required this.date,
+    required this.fuelType,
+    required this.warehouse,
+    required this.liters,
+    this.beneficiary = '',
+    this.chassisNo = '',
+    this.vehicleType = '',
+  });
+
+  final String date;
+  final String fuelType;
+  final String warehouse;
+  final double liters;
+  final String beneficiary;
+  final String chassisNo;
+  final String vehicleType;
+}
+
+class FuelConsumption {
+  const FuelConsumption._();
+
+  /// ترشيح الحركات بمدى وبمستودع وبنوع.
+  ///
+  /// المدى شاملٌ طرفيه: من يكتب «من ١ إلى ٣٠» يقصد الشهر كاملًا بيوميه.
+  static List<FuelConsumptionMove> filter(
+    List<FuelConsumptionMove> moves, {
+    String from = '',
+    String to = '',
+    String warehouse = '',
+    String fuelType = '',
+  }) =>
+      [
+        for (final m in moves)
+          if ((from.isEmpty || m.date.compareTo(from) >= 0) &&
+              (to.isEmpty || m.date.compareTo(to) <= 0) &&
+              (warehouse.isEmpty || m.warehouse == warehouse) &&
+              (fuelType.isEmpty || m.fuelType == fuelType))
+            m,
+      ];
+
+  /// تجميع الحركات على محور.
+  ///
+  /// الأكبر أولًا: التقرير يُقرأ ليُعرف **من يشرب أكثر**، لا ليُتصفّح أبجديًّا.
+  static List<FuelConsumptionRow> group(
+    List<FuelConsumptionMove> moves,
+    String by,
+  ) {
+    final acc = <String, ({String label, double liters, int count, double petrol, double diesel})>{};
+    for (final m in moves) {
+      final (key, label) = switch (by) {
+        FuelGroupBy.vehicle => (
+            m.chassisNo.trim().isEmpty ? '—' : m.chassisNo.trim(),
+            m.chassisNo.trim().isEmpty
+                ? 'بلا رقم شاصي'
+                : '${m.chassisNo.trim()}'
+                    '${m.vehicleType.trim().isEmpty ? '' : ' · ${m.vehicleType.trim()}'}',
+          ),
+        FuelGroupBy.warehouse => (m.warehouse, m.warehouse),
+        FuelGroupBy.fuelType => (m.fuelType, FuelType.label(m.fuelType)),
+        _ => (
+            m.beneficiary.trim().isEmpty ? '—' : m.beneficiary.trim(),
+            m.beneficiary.trim().isEmpty ? 'بلا جهة' : m.beneficiary.trim(),
+          ),
+      };
+      final prev = acc[key];
+      acc[key] = (
+        label: label,
+        liters: (prev?.liters ?? 0) + m.liters,
+        count: (prev?.count ?? 0) + 1,
+        petrol: (prev?.petrol ?? 0) +
+            (m.fuelType == FuelType.petrol ? m.liters : 0),
+        diesel: (prev?.diesel ?? 0) +
+            (m.fuelType == FuelType.diesel ? m.liters : 0),
+      );
+    }
+    final rows = [
+      for (final e in acc.entries)
+        FuelConsumptionRow(
+          key: e.key,
+          label: e.value.label,
+          liters: Fuel.round(e.value.liters),
+          count: e.value.count,
+          petrol: Fuel.round(e.value.petrol),
+          diesel: Fuel.round(e.value.diesel),
+        ),
+    ];
+    rows.sort((a, b) => b.liters.compareTo(a.liters));
+    return rows;
+  }
+
+  static double total(List<FuelConsumptionMove> moves) =>
+      Fuel.round(moves.fold<double>(0, (sum, m) => sum + m.liters));
+
+  static double totalOf(List<FuelConsumptionMove> moves, String fuelType) =>
+      Fuel.round(moves
+          .where((m) => m.fuelType == fuelType)
+          .fold<double>(0, (sum, m) => sum + m.liters));
+
+  /// متوسط الصرف اليومي خلال المدى — يُقاس بأيام المدى لا بأيام الصرف.
+  ///
+  /// القسمة على أيام الصرف وحدها تُخفي السكون: مَن صرف ألفًا في يومٍ واحد من
+  /// ثلاثين يبدو صارفًا ألفًا يوميًّا، وهو ليس كذلك.
+  static double dailyAverage(
+    List<FuelConsumptionMove> moves, {
+    required String from,
+    required String to,
+  }) {
+    final start = DateTime.tryParse(from);
+    final end = DateTime.tryParse(to);
+    if (start == null || end == null) return 0;
+    final days = end.difference(start).inDays + 1;
+    if (days <= 0) return 0;
+    return Fuel.round(total(moves) / days);
+  }
+}

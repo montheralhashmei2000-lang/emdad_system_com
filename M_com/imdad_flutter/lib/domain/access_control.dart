@@ -44,6 +44,7 @@ class AccessControl {
   static const List<String> fuelPages = [
     'fuelDashboard', 'fuelAllocations', 'fuelMoves', 'fuelStocktake',
     'fuelWarehouses', 'fuelUnits', 'fuelSettings',
+    'fuelVehicles', 'fuelReports', 'fuelConsumption',
   ];
 
   static const List<String> opsPages = [

@@ -51,6 +51,9 @@ class AppSpace {
       'fuelStocktake',
       'fuelWarehouses',
       'fuelUnits',
+      'fuelVehicles',
+      'fuelReports',
+      'fuelConsumption',
     ],
     supply: [
       'items',

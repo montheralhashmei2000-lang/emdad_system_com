@@ -8,7 +8,11 @@ import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/repos/fuel_repo.dart';
 import 'package:imdad/domain/fuel.dart';
 import 'package:imdad/features/fuel/fuel_allocations_screen.dart';
+import 'package:imdad/features/fuel/fuel_consumption_screen.dart';
 import 'package:imdad/features/fuel/fuel_dashboard_screen.dart';
+import 'package:imdad/features/fuel/fuel_directories_screen.dart';
+import 'package:imdad/features/fuel/fuel_reports_screen.dart';
+import 'package:imdad/features/fuel/fuel_settings_screen.dart';
 import 'package:imdad/features/fuel/fuel_moves_screen.dart';
 import 'package:imdad/features/fuel/fuel_stocktake_screen.dart';
 import 'package:provider/provider.dart';
@@ -79,8 +83,10 @@ void main() {
       startDate: '2026-01-01',
     );
     final id = (await repo.allocations()).single.allocation.id;
+    // السند بتاريخ اليوم: تقرير الاستهلاك يفتح على الشهر الحالي، فسندٌ قديم
+    // يُرشَّح خارجه بحق.
     await repo.saveIssue(
-      date: '2026-01-05',
+      date: DateTime.now().toIso8601String().substring(0, 10),
       fuelType: FuelType.diesel,
       warehouse: 'مستودع الوقود',
       quantityLiters: 300,
@@ -96,6 +102,12 @@ void main() {
     'تفريدة المحروقات': () => const FuelAllocationsScreen(),
     'حركة المحروقات': () => const FuelMovesScreen(),
     'جرد المحروقات': () => const FuelStocktakeScreen(),
+    'مستودعات المحروقات': () => const FuelWarehousesScreen(),
+    'وحدات المحروقات': () => const FuelUnitsScreen(),
+    'سجل المركبات': () => const FuelVehiclesScreen(),
+    'تقارير المحروقات': () => const FuelReportsScreen(),
+    'تقرير الاستهلاك': () => const FuelConsumptionScreen(),
+    'إعدادات المحروقات': () => const FuelSettingsScreen(),
   };
 
   group('كل شاشة تُبنى بقاعدة فارغة', () {
@@ -128,16 +140,47 @@ void main() {
     expect(find.textContaining('نفاد بترول'), findsWidgets);
   });
 
-  testWidgets('اللوحة تنتقل إلى سجل المركبات', (tester) async {
+  testWidgets('سجل المركبات يجمع صرف الشاصي ويفتح سنداته', (tester) async {
     await seed();
-    await show(tester, const FuelDashboardScreen());
-    final tab = find.text('سجل المركبات');
-    await tester.ensureVisible(tab);
-    await tester.pumpAndSettle();
-    await tester.tap(tab, warnIfMissed: false);
-    await tester.pumpAndSettle();
+    await show(tester, const FuelVehiclesScreen());
     expect(tester.takeException(), isNull);
     expect(find.text('SH-77'), findsWidgets);
+
+    await tester.tap(find.text('SH-77').first);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('سندات المركبة'), findsWidgets);
+  });
+
+  testWidgets('تقرير الاستهلاك يجمّع ويبدّل محوره', (tester) async {
+    await seed();
+    await show(tester, const FuelConsumptionScreen());
+    expect(tester.takeException(), isNull);
+    expect(find.text('الكتيبة الأولى'), findsWidgets);
+
+    final axis = find.text('المركبة (الشاصي)').first;
+    await tester.ensureVisible(axis);
+    await tester.pumpAndSettle();
+    await tester.tap(axis, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('SH-77'), findsWidgets,
+        reason: 'التبديل إلى محور المركبة لم يُغيّر التجميع');
+  });
+
+  testWidgets('تقارير المحروقات تعرض الأرصدة والاستحقاق', (tester) async {
+    await seed();
+    await show(tester, const FuelReportsScreen());
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('أرصدة المستودعات'), findsWidgets);
+
+    final plan = find.text('الاستحقاق مقابل الصرف').first;
+    await tester.ensureVisible(plan);
+    await tester.pumpAndSettle();
+    await tester.tap(plan, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('المتبقي'), findsWidgets);
   });
 
   testWidgets('شاشة الحركة تُظهر المتاح وتتنقّل بين تبويباتها',

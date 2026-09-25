@@ -19,7 +19,9 @@ import '../../domain/app_space.dart';
 import 'space_chooser_screen.dart';
 import '../catalog/assets_screen.dart';
 import '../fuel/fuel_allocations_screen.dart';
+import '../fuel/fuel_consumption_screen.dart';
 import '../fuel/fuel_directories_screen.dart';
+import '../fuel/fuel_reports_screen.dart';
 import '../fuel/fuel_settings_screen.dart';
 import '../fuel/fuel_dashboard_screen.dart';
 import '../fuel/fuel_moves_screen.dart';
@@ -126,6 +128,11 @@ const _menu = <_MenuSection>[
     _MenuItem('fuelWarehouses', 'warehouse', 'مستودعات المحروقات',
         space: AppSpace.fuel),
     _MenuItem('fuelUnits', 'users', 'وحدات المحروقات', space: AppSpace.fuel),
+    _MenuItem('fuelVehicles', 'truck', 'سجل المركبات', space: AppSpace.fuel),
+    _MenuItem('fuelReports', 'chart', 'تقارير المحروقات',
+        space: AppSpace.fuel),
+    _MenuItem('fuelConsumption', 'trending', 'تقرير الاستهلاك',
+        space: AppSpace.fuel),
     _MenuItem('fuelSettings', 'settings', 'إعدادات المحروقات',
         space: AppSpace.fuel),
   ]),
@@ -301,6 +308,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return const FuelWarehousesScreen();
       case 'fuelUnits':
         return const FuelUnitsScreen();
+      case 'fuelVehicles':
+        return const FuelVehiclesScreen();
+      case 'fuelReports':
+        return const FuelReportsScreen();
+      case 'fuelConsumption':
+        return const FuelConsumptionScreen();
       case 'fuelSettings':
         return const FuelSettingsScreen();
       case 'rationOrders':

@@ -28,8 +28,7 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
 
   List<FuelStock> _stocks = const [];
   List<FuelAlert> _alerts = const [];
-  List<FuelChassisLog> _chassis = const [];
-  String _tab = 'stock';
+  int _vehicles = 0;
   bool _loading = true;
 
   @override
@@ -41,12 +40,12 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
   Future<void> _load() async {
     final stocks = await _repo.stocks();
     final alerts = await _repo.alerts();
-    final chassis = await _repo.chassisLogs();
+    final vehicles = (await _repo.chassisLogs()).length;
     if (!mounted) return;
     setState(() {
       _stocks = stocks;
       _alerts = alerts;
-      _chassis = chassis;
+      _vehicles = vehicles;
       _loading = false;
     });
   }
@@ -87,7 +86,7 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
               ? null
               : const ImdChip('يحتاج إجراء', tone: ImdTone.err),
         ),
-        ImdKpi(label: 'مركبات مسجّلة', value: nf(_chassis.length)),
+        ImdKpi(label: 'مركبات مسجّلة', value: nf(_vehicles)),
       ]),
       ImdICard(
         child: Wrap(spacing: 10, runSpacing: 10, children: [
@@ -110,20 +109,9 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
               (a.tone == 'danger' ? 'err' : 'warn', a.title, a.hint),
           ]),
         ),
-      ImdItabs(
-        value: _tab,
-        onChanged: (v) => setState(() => _tab = v),
-        tabs: const [
-          ImdTab('stock', 'أرصدة المستودعات', icon: 'package'),
-          ImdTab('chassis', 'سجل المركبات', icon: 'truck'),
-        ],
-      ),
-      const SizedBox(height: 4),
-      if (_tab == 'stock')
-        ImdPanel(title: 'رصيد كل مستودع', icon: 'package', child: _stockTable())
-      else
-        ImdPanel(
-            title: 'ما صرفته كل مركبة', icon: 'truck', child: _chassisTable()),
+      // سجل المركبات صار شاشةً مستقلة: تكراره هنا يعني جدولين يفترقان عند
+      // أول تعديل، ويُقرأ أحدهما ويُنسى الآخر.
+      ImdPanel(title: 'رصيد كل مستودع', icon: 'package', child: _stockTable()),
     ]);
   }
 
@@ -205,30 +193,4 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
       ]),
     );
   }
-
-  Widget _chassisTable() => ImdTable(
-        empty: 'لا مركبات بعد — يظهر هنا كل شاصي صُرف له وقود',
-        minWidth: 720,
-        columns: const [
-          ImdCol('رقم الشاصي'),
-          ImdCol('نوع المركبة'),
-          ImdCol('آخر سائق'),
-          ImdCol('آخر صرف'),
-          ImdCol('عدد المرات', numeric: true),
-          ImdCol('الإجمالي', numeric: true),
-        ],
-        rows: [
-          for (final v in _chassis)
-            [
-              Text(v.chassisNo,
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
-              Text(v.vehicleType.isEmpty ? '—' : v.vehicleType),
-              Text(v.lastDriver.isEmpty ? '—' : v.lastDriver),
-              Text(arDigits(v.lastDate)),
-              Text(nf(v.count)),
-              Text('${nf(v.liters)} ${Fuel.unit}',
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
-            ],
-        ],
-      );
 }
