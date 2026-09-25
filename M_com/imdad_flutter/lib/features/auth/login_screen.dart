@@ -1,19 +1,30 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../core/security/auth_service.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_tokens.dart';
-import '../../core/ui/imd_widgets.dart';
+import '../../core/ui/imd_window.dart';
 
-/// شاشة الدخول — مطابقة لـ `#loginScreen` في نسخة الويب (`lg-*` في ui-theme.css + auth-ux.js):
-/// الشعار، العنوان، رسالة الخطأ، اسم المستخدم، كلمة المرور بزر الإظهار، زر الدخول،
-/// «نسيت كلمة المرور» مع لوحة إعادة التعيين المحلية، وقسم «تهيئة حساب المدير الأول» القابل للطي.
+/// شاشة الدخول: الشعار والعنوان، رسالة الخطأ، اسم المستخدم، كلمة المرور بزر
+/// الإظهار، ثم «دخول» و«خروج» جنبًا إلى جنب.
+///
+/// على ويندوز تُعرض في نافذة صغيرة بمقاس البطاقة بلا شريط عنوان ([ImdWindow.login])،
+/// فتُسحب النافذة من منطقة الشعار، ويغلق «خروج» التطبيق.
 /// الشاشة فاتحة دائمًا في كل الأوضاع كما في الويب.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.onSignedIn});
 
   final VoidCallback onSignedIn;
+
+  /// يُظهر زر «خروج» على منصة لا يظهر فيها (الاختبارات وأداة اللقطات على لينكس).
+  @visibleForTesting
+  static bool? debugShowExit;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -22,22 +33,17 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   static const _text = Color(0xFF202123);
   static const _text2 = Color(0xFF343541);
-  static const _muted = Color(0xFF5B5E6B);
-  static const _faint = Color(0xFF8E8EA0);
 
   final _user = TextEditingController();
   final _pass = TextEditingController();
 
   bool _showPass = false;
   bool _busy = false;
-  bool _resetPanel = false;
   String _error = '';
-  String _msg = '';
 
-  @override
-  void initState() {
-    super.initState();
-  }
+  /// زر «خروج» حيث يمكن للتطبيق أن يغلق نفسه (ويندوز وأندرويد).
+  static bool get _canExit =>
+      LoginScreen.debugShowExit ?? (!kIsWeb && (Platform.isWindows || Platform.isAndroid));
 
   @override
   void dispose() {
@@ -47,10 +53,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
 
-  void _lErr(String m) => setState(() {
-        _error = m;
-        _msg = '';
-      });
+  void _lErr(String m) => setState(() => _error = m);
 
 
 
@@ -61,7 +64,6 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       _busy = true;
       _error = '';
-      _msg = '';
     });
     final res = await context.read<AuthService>().login(_user.text.trim(), _pass.text);
     if (!mounted) return;
@@ -73,20 +75,12 @@ class _LoginScreenState extends State<LoginScreen> {
     _lErr(res.message);
   }
 
-  Future<void> _localReset() async {
-    final ok = await imdConfirm(
-      context,
-      'سيتم مسح بيانات الدخول المحلية. سيظهر خيار تهيئة حساب مدير جديد. '
-      '(حساب Firebase القديم يبقى — استخدم اسم مستخدم جديدًا). متابعة؟',
-      ok: 'متابعة',
-      danger: true,
-    );
-    if (!ok || !mounted) return;
-    await context.read<AuthService>().localReset();
-    if (!mounted) return;
-    // إعادة التعيين تمحو الحسابات المحلية؛ البوابة في جذر التطبيق ستطلب
-    // تفعيل الجهاز من جديد، ولا يُنشأ حساب من هنا.
-    showImdToast(context, '✔ تمت إعادة التعيين المحلية — أعد تشغيل التطبيق');
+  Future<void> _exit() async {
+    if (ImdWindow.supported) {
+      await ImdWindow.exit();
+    } else {
+      await SystemNavigator.pop();
+    }
   }
 
   @override
@@ -129,13 +123,11 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _card(bool narrow) {
-    final inputH = narrow ? 52.0 : 48.0;
-    final inputFs = narrow ? 16.0 : 15.0;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+    final inputH = narrow ? 50.0 : 48.0;
+    final inputFs = narrow ? 15.5 : 15.0;
+    final header = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // .lg-brand
         Center(
           child: SizedBox(
             width: narrow ? 112 : 132,
@@ -143,15 +135,20 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Image.asset('assets/logo.png', fit: BoxFit.contain),
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
         Text('نظام الإمداد والتموين',
             textAlign: TextAlign.center,
             style: TextStyle(
                 fontSize: narrow ? 22 : 24, fontWeight: FontWeight.w700, color: _text, height: 1.35)),
-        const SizedBox(height: 8),
-        const Text('سجّل الدخول للمتابعة',
-            textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: _muted)),
-        const SizedBox(height: 26),
+        const SizedBox(height: 22),
+      ],
+    );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // نافذة الدخول بلا شريط عنوان: تُسحب من منطقة الشعار.
+        ImdWindow.supported ? DragToMoveArea(child: header) : header,
         // #lErr
         if (_error.isNotEmpty)
           Container(
@@ -186,71 +183,31 @@ class _LoginScreenState extends State<LoginScreen> {
           ltr: true,
           onSubmitted: (_) => _login(),
           eye: true,
+          bottom: 22,
         ),
-        _PrimaryBtn(
-          label: _busy ? 'جارٍ التحقق…' : 'دخول إلى النظام',
-          busy: _busy,
-          height: inputH,
-          fontSize: inputFs,
-          onTap: _login,
-          topMargin: 6,
-        ),
-        Padding(
-          padding: const EdgeInsets.only(top: 10),
-          child: SizedBox(
-            height: 18,
-            child: _msg.isEmpty
-                ? null
-                : ImdEmojiText(_msg,
-                    textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: _muted)),
-          ),
-        ),
-        _LinkBtn(
-          label: 'نسيت كلمة المرور أو لا أستطيع الدخول؟',
-          onTap: () => setState(() => _resetPanel = !_resetPanel),
-        ),
-        if (_resetPanel)
-          Container(
-            margin: const EdgeInsets.only(top: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F7F8),
-              border: Border.all(color: const Color(0xFFE3E3E8)),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text.rich(
-                  TextSpan(children: [
-                    TextSpan(text: 'استرجاع الدخول\n', style: TextStyle(fontWeight: FontWeight.w700)),
-                    TextSpan(
-                        text: '1) إذا كان حسابك موجودًا لدى Firebase، أدخل اسم المستخدم (أو البريد كاملًا) '
-                            'مع كلمة المرور نفسها.\n'
-                            '2) إذا لم يتذكر أحد كلمة المرور: اضغط «إعادة تعيين محلي» ثم أعد تهيئة حساب مدير '
-                            'جديد باسم مستخدم مختلف.'),
-                  ]),
-                  style: TextStyle(fontSize: 13, color: _text2, height: 1.7),
-                ),
-                const SizedBox(height: 10),
-                Center(child: _SecBtn(label: 'إعادة تعيين محلي', icon: 'rotate-ccw', onTap: _localReset)),
-              ],
+        Row(children: [
+          Expanded(
+            flex: 3,
+            child: _PrimaryBtn(
+              label: _busy ? 'جارٍ التحقق…' : 'دخول',
+              icon: 'log-in',
+              busy: _busy,
+              height: inputH,
+              fontSize: inputFs,
+              onTap: _login,
             ),
           ),
-        Container(height: 1, color: const Color(0xFFECECF1), margin: const EdgeInsets.only(top: 18, bottom: 12)),
-        const SizedBox(height: 20),
-        const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ImdIcon('lock', size: 14, color: _faint),
-            SizedBox(width: 6),
-            Text('جلسة مُؤمَّنة · محاولات محدودة', style: TextStyle(fontSize: 12, color: _faint)),
+          if (_canExit) ...[
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 2,
+              child: _ExitBtn(height: inputH, fontSize: inputFs, onTap: _exit),
+            ),
           ],
-        ),
+        ]),
       ],
     );
   }
-
 
   Widget _label(String t) => Padding(
         padding: const EdgeInsets.only(bottom: 6),
@@ -438,19 +395,19 @@ class _EyeBtnState extends State<_EyeBtn> {
 class _PrimaryBtn extends StatefulWidget {
   const _PrimaryBtn({
     required this.label,
+    this.icon,
     required this.busy,
     required this.height,
     required this.fontSize,
     required this.onTap,
-    this.topMargin = 0,
   });
 
   final String label;
+  final String? icon;
   final bool busy;
   final double height;
   final double fontSize;
   final VoidCallback onTap;
-  final double topMargin;
 
   @override
   State<_PrimaryBtn> createState() => _PrimaryBtnState();
@@ -462,7 +419,7 @@ class _PrimaryBtnState extends State<_PrimaryBtn> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(top: widget.topMargin),
+      padding: EdgeInsets.zero,
       child: MouseRegion(
         cursor: widget.busy ? SystemMouseCursors.progress : SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hover = true),
@@ -487,6 +444,9 @@ class _PrimaryBtnState extends State<_PrimaryBtn> {
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white, backgroundColor: Color(0x66FFFFFF)),
                   ),
                   const SizedBox(width: 8),
+                ] else if (widget.icon != null) ...[
+                  ImdIcon(widget.icon!, size: widget.fontSize + 2, color: Colors.white),
+                  const SizedBox(width: 8),
                 ],
                 Flexible(
                   child: Text(widget.label,
@@ -502,73 +462,45 @@ class _PrimaryBtnState extends State<_PrimaryBtn> {
   }
 }
 
-/// `.lg-link`
-class _LinkBtn extends StatefulWidget {
-  const _LinkBtn({required this.label, required this.onTap});
-  final String label;
+/// زر «خروج»: ثانوي بإطار، ويتلوّن بلون التحذير عند المرور لأنه يغلق التطبيق.
+class _ExitBtn extends StatefulWidget {
+  const _ExitBtn({required this.height, required this.fontSize, required this.onTap});
+  final double height;
+  final double fontSize;
   final VoidCallback onTap;
 
   @override
-  State<_LinkBtn> createState() => _LinkBtnState();
+  State<_ExitBtn> createState() => _ExitBtnState();
 }
 
-class _LinkBtnState extends State<_LinkBtn> {
+class _ExitBtnState extends State<_ExitBtn> {
   bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 2),
+    final fg = _hover ? const Color(0xFFB42318) : const Color(0xFF343541);
+    return Tooltip(
+      message: 'إغلاق النظام',
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
         child: GestureDetector(
           onTap: widget.onTap,
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 40),
-            padding: const EdgeInsets.all(8),
-            alignment: Alignment.center,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            height: widget.height,
             decoration: BoxDecoration(
-              color: _hover ? const Color(0xFFE6F4F2) : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
+              color: _hover ? const Color(0xFFFEF3F2) : Colors.white,
+              border: Border.all(color: _hover ? const Color(0xFFFECDCA) : const Color(0xFFD1D1DB)),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Text(widget.label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Color(0xFF0F766E))),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              ImdIcon('log-out', size: widget.fontSize + 2, color: fg),
+              const SizedBox(width: 8),
+              Text('خروج', style: TextStyle(fontSize: widget.fontSize, fontWeight: FontWeight.w600, color: fg)),
+            ]),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// `.lg-btn-sec`
-class _SecBtn extends StatelessWidget {
-  const _SecBtn({required this.label, required this.icon, required this.onTap});
-  final String label;
-  final String icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: const Color(0xFFD1D1DB)),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            ImdIcon(icon, size: 15, color: const Color(0xFF202123)),
-            const SizedBox(width: 6),
-            Text(label,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF202123))),
-          ]),
         ),
       ),
     );

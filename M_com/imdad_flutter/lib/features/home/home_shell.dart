@@ -449,8 +449,13 @@ class _Sidebar extends StatelessWidget {
     return Container(
       width: ImdSizes.sideWidth,
       decoration: BoxDecoration(
-        color: c.side,
-        border: const BorderDirectional(start: BorderSide(color: Color(0xFF26272B))),
+        // تدرّج خفيف من لون الشريط إلى أغمق منه أسفلًا.
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [c.side, Color.lerp(c.side, Colors.black, .22)!],
+        ),
+        border: BorderDirectional(start: BorderSide(color: c.sideLine)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       child: LayoutBuilder(
@@ -628,7 +633,7 @@ class _SideTileState extends State<_SideTile> {
         radius = 8;
       case _SideKind.item:
         bg = widget.on ? c.sideActive : (_hover ? c.sideHover : Colors.transparent);
-        fg = (widget.on || _hover) ? Colors.white : const Color(0xFFD4D4D8);
+        fg = (widget.on || _hover) ? Colors.white : c.sideText.withValues(alpha: .86);
         iconColor = widget.on ? const Color(0xFF5EEAD4) : null;
         pad = const EdgeInsetsDirectional.fromSTEB(14, 11, 10, 11).resolve(TextDirection.rtl);
         margin = const EdgeInsets.only(left: 4, top: 1, bottom: 1);
@@ -637,8 +642,8 @@ class _SideTileState extends State<_SideTile> {
         radius = 8;
       case _SideKind.logout:
         bg = _hover ? c.sideHover : Colors.transparent;
-        fg = const Color(0xFFF4F4F5);
-        border = Border.all(color: _hover ? const Color(0xFF52525B) : const Color(0xFF3F3F46));
+        fg = c.sideText;
+        border = Border.all(color: _hover ? c.sideMuted : c.sideBorder);
         pad = const EdgeInsets.all(13);
         margin = EdgeInsets.zero;
         fs = 14;

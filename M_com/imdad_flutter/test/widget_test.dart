@@ -83,7 +83,10 @@ void main() {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 150)));
     await tester.pumpAndSettle();
 
-    expect(find.text('دخول إلى النظام'), findsOneWidget);
+    expect(find.text('دخول'), findsOneWidget);
     expect(find.text('إدخال رمز التفعيل'), findsNothing);
+    // واجهة الدخول مختصرة: الشعار والحقول وزرّاها فقط.
+    expect(find.textContaining('نسيت كلمة المرور'), findsNothing);
+    expect(find.text('جلسة مُؤمَّنة · محاولات محدودة'), findsNothing);
   });
 }
