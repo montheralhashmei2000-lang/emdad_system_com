@@ -451,10 +451,20 @@ class ImdChip extends StatelessWidget {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (icon != null) ...[ImdIcon(icon!, size: 13, color: fg), const SizedBox(width: 6)],
         // الرموز التعبيرية داخل الشارات تُحوَّل أيقونات كما يفعل `ui-icons.js` في الويب.
-        ImdEmojiText(label,
-            iconSize: 13,
-            gap: 4,
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fg, height: 1.6)),
+        //
+        // و[Flexible] هنا ليس زينة: [IntrinsicWidth] أعلاه يجعل أصغر عرضٍ
+        // للشارة عرضَ نصها كاملًا، فإن ضاق أبوها عن ذلك — شارةٌ طويلة في
+        // عمودٍ ثابت العرض مثلًا — رسمت نفسها خارجه بفارق العرض بالضبط.
+        // فبه يتقلّص النص ويُقصّ بنقاط بدل أن يفيض على جاره.
+        Flexible(
+          child: ImdEmojiText(label,
+              iconSize: 13,
+              gap: 4,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600, color: fg, height: 1.6)),
+        ),
       ]),
     ));
     if (onTap == null) return chip;

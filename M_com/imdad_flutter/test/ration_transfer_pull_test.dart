@@ -179,10 +179,7 @@ void main() {
 
     // موضعها الحقيقي: قسمٌ داخل الإعدادات لا شاشةٌ في قائمة العمليات.
     await show(tester, const SettingsScreen());
-    // قسم «نظرة عامة» يفيض 36 بكسل بصفٍّ ثابت العرض، وهو عطلٌ سابق لهذا
-    // القسم ومستقلٌّ عن عرض الشاشة. يُستنزف هنا كي لا يُحاسَب عليه ما ليس
-    // منه — ويبقى قائمًا حتى يُصلَح في موضعه.
-    tester.takeException();
+    expect(tester.takeException(), isNull);
 
     final section = find.text('جهات الاعتمادات');
     expect(section, findsWidgets, reason: 'القسم غائب عن قائمة الإعدادات');

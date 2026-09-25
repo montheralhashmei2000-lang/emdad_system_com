@@ -69,13 +69,24 @@ class ImdIcon extends StatelessWidget {
 
 /// نص قد يبدأ برمز تعبيري (كما في نصوص الويب) ⇒ يُعرض أيقونة + نص كما يفعل `ui-icons.js`.
 class ImdEmojiText extends StatelessWidget {
-  const ImdEmojiText(this.text, {super.key, this.style, this.gap = 6, this.iconSize, this.textAlign});
+  const ImdEmojiText(this.text,
+      {super.key,
+      this.style,
+      this.gap = 6,
+      this.iconSize,
+      this.textAlign,
+      this.maxLines,
+      this.overflow});
 
   final String text;
   final TextStyle? style;
   final double gap;
   final double? iconSize;
   final TextAlign? textAlign;
+
+  /// يمرّران إلى [Text.rich]: بهما يقصّ النص بدل أن يفيض حين يضيق أبوه.
+  final int? maxLines;
+  final TextOverflow? overflow;
 
   static final RegExp _re = () {
     final keys = kImdEmojiIcons.keys.toList()..sort((a, b) => b.length.compareTo(a.length));
@@ -99,6 +110,10 @@ class ImdEmojiText extends StatelessWidget {
       last = m.end;
     }
     if (last < text.length) spans.add(TextSpan(text: text.substring(last)));
-    return Text.rich(TextSpan(children: spans), style: style, textAlign: textAlign);
+    return Text.rich(TextSpan(children: spans),
+        style: style,
+        textAlign: textAlign,
+        maxLines: maxLines,
+        overflow: overflow);
   }
 }
