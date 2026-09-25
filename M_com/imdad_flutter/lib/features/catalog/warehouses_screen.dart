@@ -11,6 +11,7 @@ import '../../data/db/app_database.dart';
 import '../../data/repos/audit_repo.dart';
 import '../../data/repos/camp_ledger_repo.dart';
 import '../../data/repos/catalog_repo.dart';
+import 'warehouse_dashboard_view.dart';
 import 'camp_link_field.dart';
 
 /// المستودعات — نقل مطابق لـ `renderStores()`: بحث وإحصاءات، نموذج إضافة/تعديل مع حقل «يغذي معسكر»،
@@ -228,6 +229,9 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
     _render();
   }
 
+  /// dir | board
+  String _tab = 'dir';
+
   @override
   Widget build(BuildContext context) {
     final can = Perm.of(context).admin;
@@ -244,8 +248,22 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
       const ImdPageTitle(
         title: 'المستودعات',
         icon: 'warehouse',
-        subtitle: 'تعريف المستودعات المستخدمة في الواردات والصرف والتحويلات والمرتجعات والجرد',
+        subtitle: 'تعريف المستودعات وحدود مخزونها — ما تحت الحد الأدنى وما فوق الأعلى',
       ),
+      ImdItabs(
+        value: _tab,
+        onChanged: (v) => setState(() => _tab = v),
+        tabs: const [
+          ImdTab('dir', 'دليل المستودعات', icon: 'warehouse'),
+          ImdTab('board', 'لوحة المستودعات', icon: 'radio'),
+        ],
+      ),
+      const SizedBox(height: 4),
+      // اللوحة حيث يقع الرصيد لا في شاشةٍ أخرى تُبحث عنها: من يعرّف المستودع
+      // هو من يضبط حدوده ويقرأ نقصها.
+      if (_tab == 'board')
+        WarehouseDashboardView(warehouses: _items)
+      else ...[
       ImdICard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ImdSearchBar(
@@ -377,6 +395,7 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
               }(),
           ],
         ),
+      ],
     ]);
   }
 }

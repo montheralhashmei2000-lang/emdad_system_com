@@ -7,7 +7,6 @@ import 'package:imdad/core/theme/app_theme.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/repos/catalog_repo.dart';
 import 'package:imdad/features/catalog/assets_screen.dart';
-import 'package:imdad/features/daily/camp_dashboard_screen.dart';
 import 'package:imdad/features/daily/meal_plan_screen.dart';
 import 'package:imdad/features/inventory/ration_order_screen.dart';
 import 'package:imdad/features/reports/actual_entitlement_screen.dart';
@@ -91,7 +90,6 @@ void main() {
     'الأصول الثابتة': () => const AssetsScreen(),
     'طلبيات الإعاشة': () => const RationOrderScreen(),
     'خطط الوجبات': () => const MealPlanScreen(),
-    'لوحة المعسكرات': () => const CampDashboardScreen(),
     'حساب الاستحقاق الفعلي': () => const ActualEntitlementScreen(),
     'سجل حساب المعسكر': () => const CampLedgerScreen(),
     'تصفية الشهر': () => const CampSettlementScreen(),
@@ -130,14 +128,6 @@ void main() {
     await tester.tap(find.text('مقارنة خطتين').first);
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('لوحة المعسكرات تُظهر حالة كل معسكر', (tester) async {
-    await seed();
-    await show(tester, const CampDashboardScreen());
-    expect(find.text('المعسكر الأول'), findsWidgets);
-    expect(find.text('بلا حدود'), findsWidgets,
-        reason: 'معسكر بلا حدود مخزون يجب أن يُقال ذلك صراحةً');
   });
 
   testWidgets('تصفية شهر لم ينتهِ معطَّلة', (tester) async {

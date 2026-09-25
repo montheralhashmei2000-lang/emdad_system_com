@@ -412,6 +412,7 @@ class DataExporter {
           .map((a) => {
                 'id': a.id,
                 'name': a.name,
+                'quantity': a.quantity,
                 'assetType': a.assetType,
                 'serialNumber': a.serialNumber,
                 'facilityId': a.facilityId,
@@ -470,6 +471,22 @@ class DataExporter {
                 'fulfillKind': o.fulfillKind,
                 'fulfillDate': o.fulfillDate,
                 'createdAt': o.createdAt.toIso8601String(),
+              })
+          .toList(),
+      'warehouseStockLimits': (await _rows(
+              db.warehouseStockLimits, ids('warehouse_stock_limits'), (t) => t.id))
+          .map((l) => {
+                'id': l.id,
+                'warehouseId': l.warehouseId,
+                'warehouseName': l.warehouseName,
+                'itemId': l.itemId,
+                'itemName': l.itemName,
+                'unitName': l.unitName,
+                'factor': l.factor,
+                'minStock': l.minStock,
+                'maxStock': l.maxStock,
+                'notes': l.notes,
+                'updatedAt': l.updatedAt.toIso8601String(),
               })
           .toList(),
       'supplyAuthorities':

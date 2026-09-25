@@ -379,6 +379,13 @@ class AuditLogs extends Table {
 class Assets extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
+
+  /// v16: عدد القطع في هذا السطر.
+  ///
+  /// أصلٌ مسلسل قطعةٌ واحدة برقمها، أما خمسون كرسيًّا متطابقًا فسطرٌ واحد
+  /// بكمية. وإجبار كلٍّ منها على سطر يجعل إدخال دفعةٍ عملَ ساعة، ويملأ
+  /// السجل بخمسين سطرًا لا يفرّق بينها شيء.
+  RealColumn get quantity => real().withDefault(const Constant(1))();
   TextColumn get assetType => text().withDefault(const Constant('equipment'))();
   TextColumn get serialNumber => text().withDefault(const Constant(''))();
   TextColumn get facilityId => text().withDefault(const Constant(''))();
@@ -616,6 +623,36 @@ class CampLedgers extends Table {
 }
 
 /// حدّا المخزون لصنف في معسكر — منهما يُحسب التنبيه قبل النفاد.
+/// v16: حدود مخزون الصنف في **مستودع**.
+///
+/// كانت الحدود معلّقةً بالمعسكرات، والمعسكر جهةٌ مستفيدة لا مكان تخزين:
+/// الرصيد الذي يُقارَن بالحد يقع في مستودع، ومن المستودع يُطلب التعويض.
+/// فربطُها بالمستودع يجعل السؤال والجواب في مكانٍ واحد.
+///
+/// **[minStock] و[maxStock] بوحدة الأساس**، وبها تُقارن الأرصدة مهما اختلفت
+/// وحدة الإدخال. و[unitName] و[factor] يحفظان ما أدخله المستخدم فعلًا، فيُعاد
+/// عرضه كما كتبه: من أدخل «٥ كراتين» يرى ٥ كراتين لا ١٢٠ حبة.
+class WarehouseStockLimits extends Table {
+  TextColumn get id => text()();
+  TextColumn get warehouseId => text()();
+  TextColumn get warehouseName => text().withDefault(const Constant(''))();
+  TextColumn get itemId => text()();
+  TextColumn get itemName => text().withDefault(const Constant(''))();
+
+  /// وحدة الإدخال ومعاملها إلى وحدة الأساس.
+  TextColumn get unitName => text().withDefault(const Constant(''))();
+  RealColumn get factor => real().withDefault(const Constant(1))();
+
+  /// بوحدة الأساس دائمًا.
+  RealColumn get minStock => real().withDefault(const Constant(0))();
+  RealColumn get maxStock => real().withDefault(const Constant(0))();
+  TextColumn get notes => text().withDefault(const Constant(''))();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class CampStockLimits extends Table {
   TextColumn get id => text()();
   TextColumn get campId => text()();
@@ -661,6 +698,7 @@ class AppSettings extends Table {
 
 @DriftDatabase(tables: [
   SupplyAuthorities,
+  WarehouseStockLimits,
   Users,
   Categories,
   Items,
@@ -697,7 +735,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 16;
 
   /// الفهارس المخدومة فعليًا بالاستعلامات: البحث بالمرجع (فتح سند من سجل
   /// المستندات)، وبالحالة (الأوامر المعلقة والمسودات)، وبالمستودع والصنف
@@ -740,6 +778,7 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS ix_returns_unit ON returns (beneficiary_unit_id)',
       'CREATE INDEX IF NOT EXISTS ix_ration_kind ON ration_orders (order_kind, status)',
       'CREATE INDEX IF NOT EXISTS ix_ration_supply ON ration_orders (supplying_warehouse, status)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS ux_wh_limit ON warehouse_stock_limits (warehouse_id, item_id)',
     ];
     for (final sql in statements) {
       await customStatement(sql);
@@ -984,6 +1023,11 @@ class AppDatabase extends _$AppDatabase {
               "UPDATE ration_orders SET fulfill_ref = receipt_ref, "
               "fulfill_kind = 'RECEIPT' WHERE receipt_ref <> ''",
             );
+          }
+          // v16: كمية الأصل، وحدود المخزون بالمستودع لا بالمعسكر.
+          if (from < 16) {
+            await _addCol(m, assets, assets.quantity);
+            await _createIfMissing(m, warehouseStockLimits);
           }
           // v15: إصلاح ما خلّفه تنقّل القاعدة بين نسختين مختلفتي المخطط.
           //

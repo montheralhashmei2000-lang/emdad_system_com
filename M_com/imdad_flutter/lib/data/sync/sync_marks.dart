@@ -96,6 +96,7 @@ class SyncMarks {
     'assets': 'id',
     'asset_assignments': 'id',
     'supply_authorities': 'id',
+    'warehouse_stock_limits': 'id',
     'ration_orders': 'id',
     'ration_order_lines': 'id',
     'meal_plans': 'id',

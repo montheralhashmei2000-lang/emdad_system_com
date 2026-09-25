@@ -100,6 +100,7 @@ class WebImporter {
       await _importAssets(data['assets'], res);
       await _importAssetAssignments(data['assetAssignments'], res);
       await _importSupplyAuthorities(data['supplyAuthorities'], res);
+      await _importWarehouseLimits(data['warehouseStockLimits'], res);
       await _importRationOrders(data['rationOrders'], res);
       await _importRationOrderLines(data['rationOrderLines'], res);
       await _importMealPlans(data['mealPlans'], res);
@@ -251,6 +252,7 @@ class WebImporter {
       await db.into(db.assets).insertOnConflictUpdate(AssetsCompanion.insert(
             id: _id(a),
             name: _s(a, 'name'),
+            quantity: Value(_d(a, 'quantity', 1)),
             assetType: Value(_s(a, 'assetType', 'equipment')),
             serialNumber: Value(_s(a, 'serialNumber')),
             facilityId: Value(_s(a, 'facilityId')),
@@ -343,6 +345,29 @@ class WebImporter {
           ));
     }
     if (rows.isNotEmpty) _count(res, 'جهات الإمداد', rows.length);
+  }
+
+  Future<void> _importWarehouseLimits(Object? raw, WebImportResult res) async {
+    final rows = _rows(raw);
+    for (final l in rows) {
+      if (!_accept('warehouse_stock_limits', _id(l))) continue;
+      await db
+          .into(db.warehouseStockLimits)
+          .insertOnConflictUpdate(WarehouseStockLimitsCompanion.insert(
+            id: _id(l),
+            warehouseId: _s(l, 'warehouseId'),
+            warehouseName: Value(_s(l, 'warehouseName')),
+            itemId: _s(l, 'itemId'),
+            itemName: Value(_s(l, 'itemName')),
+            unitName: Value(_s(l, 'unitName')),
+            factor: Value(_d(l, 'factor', 1)),
+            minStock: Value(_d(l, 'minStock')),
+            maxStock: Value(_d(l, 'maxStock')),
+            notes: Value(_s(l, 'notes')),
+            updatedAt: Value(DateTime.tryParse(_s(l, 'updatedAt')) ?? DateTime.now()),
+          ));
+    }
+    if (rows.isNotEmpty) _count(res, 'حدود مخزون المستودعات', rows.length);
   }
 
   Future<void> _importRationOrderLines(Object? raw, WebImportResult res) async {

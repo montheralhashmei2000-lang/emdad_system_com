@@ -79,9 +79,101 @@ class AssetsRepo {
 
   // ───────────────────────── كتابة
 
+  /// حفظ دفعة أصول تتشارك بياناتها العامة وتختلف في الاسم والكمية.
+  ///
+  /// أكثر ما يُدخَل من الأصول يأتي دفعةً واحدة: فاتورةٌ واحدة، ومورّدٌ واحد،
+  /// وتاريخُ اقتناءٍ واحد، ومستودعٌ واحد — ويختلف السطور في الاسم والعدد.
+  /// فتُفصل البيانات المشتركة عن المتغيّرة بدل إعادة كتابتها في كل سطر.
+  ///
+  /// والدفعة تُحفظ كلّها أو لا شيء: نصفُ دفعةٍ محفوظ يترك المستخدم لا يدري
+  /// أيّ سطرٍ وصل، فيعيد إدخال الكل ويُضاعف ما حُفظ.
+  Future<({bool ok, String error, int saved})> saveBatch({
+    required List<AssetDraft> rows,
+    required String assetType,
+    String facilityId = '',
+    String facilityName = '',
+    String beneficiaryUnitId = '',
+    String beneficiaryUnitName = '',
+    String warehouse = '',
+    String status = AssetStatus.isNew,
+    String acquisitionDate = '',
+    String supplierId = '',
+    String supplierName = '',
+    String invoiceNumber = '',
+    String notes = '',
+    String actor = '',
+  }) async {
+    final error = AssetRules.validateBatch(rows);
+    if (error != null) return (ok: false, error: '✖ $error', saved: 0);
+
+    // الرقم التسلسلي يعرّف قطعة بعينها في النظام كلّه لا في الدفعة وحدها.
+    final serials = rows
+        .map((r) => r.serial.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (serials.isNotEmpty) {
+      final clash = await (db.select(db.assets)
+            ..where((t) => t.serialNumber.isIn(serials))
+            ..limit(1))
+          .getSingleOrNull();
+      if (clash != null) {
+        return (
+          ok: false,
+          error: '✖ الرقم التسلسلي «${clash.serialNumber}» مسجَّل سلفًا '
+              'للأصل «${clash.name}»',
+          saved: 0
+        );
+      }
+    }
+
+    final now = DateTime.now();
+    await db.transaction(() async {
+      for (final r in rows) {
+        await db.into(db.assets).insert(AssetsCompanion.insert(
+              id: Ids.next('ast'),
+              name: r.name.trim(),
+              quantity: Value(r.quantity),
+              assetType: Value(assetType),
+              serialNumber: Value(r.serial.trim()),
+              facilityId: Value(facilityId),
+              facilityName: Value(facilityName),
+              beneficiaryUnitId: Value(beneficiaryUnitId),
+              beneficiaryUnitName: Value(beneficiaryUnitName),
+              warehouse: Value(warehouse),
+              status: Value(status),
+              acquisitionDate: Value(acquisitionDate),
+              value: Value(r.value),
+              lifespanMonths: Value(r.lifespanMonths),
+              supplierId: Value(supplierId),
+              supplierName: Value(supplierName),
+              invoiceNumber: Value(invoiceNumber),
+              notes: Value(notes),
+              createdBy: Value(actor),
+              createdAt: Value(now),
+            ));
+      }
+    });
+
+    await AuditRepo(db).log(
+      action: 'asset.createBatch',
+      entityType: 'أصل ثابت',
+      summary: 'إضافة ${rows.length} أصلًا '
+          '(${AssetRules.totalPieces(rows).toInt()} قطعة) دفعةً واحدة',
+      details: {
+        'rows': rows.length,
+        'pieces': AssetRules.totalPieces(rows),
+        'value': AssetRules.totalValue(rows),
+        'type': assetType,
+      },
+      actorEmail: actor,
+    );
+    return (ok: true, error: '', saved: rows.length);
+  }
+
   Future<String> save({
     String? id,
     required String name,
+    double quantity = 1,
     required String assetType,
     String serialNumber = '',
     String facilityId = '',
@@ -104,6 +196,7 @@ class AssetsRepo {
     await db.into(db.assets).insertOnConflictUpdate(AssetsCompanion.insert(
           id: assetId,
           name: name.trim(),
+          quantity: Value(quantity),
           assetType: Value(assetType),
           serialNumber: Value(serialNumber.trim()),
           facilityId: Value(facilityId),

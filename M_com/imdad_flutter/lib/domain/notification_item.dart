@@ -58,7 +58,7 @@ extension NotifyKindX on NotifyKind {
 
   /// مسار الشاشة التي يفتحها التنبيه في القشرة.
   String get route => switch (this) {
-        NotifyKind.campStockLow => 'campDashboard',
+        NotifyKind.campStockLow => 'stores',
         NotifyKind.assetExpiring || NotifyKind.assetExpired => 'assets',
         NotifyKind.rationPending => 'rationOrders',
         NotifyKind.mealPlanEnding => 'mealPlans',

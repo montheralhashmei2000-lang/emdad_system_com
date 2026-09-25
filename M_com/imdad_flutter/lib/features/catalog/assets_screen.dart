@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/security/auth_service.dart';
 import '../../core/security/perm.dart';
+import '../../core/ui/imd_bulk.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_layout.dart';
@@ -32,6 +33,40 @@ class AssetsScreen extends StatefulWidget {
   State<AssetsScreen> createState() => _AssetsScreenState();
 }
 
+/// سطر أصل قيد الإدخال الجماعي.
+class _AssetDraftRow {
+  _AssetDraftRow({String name = '', double qty = 1, String serial = '', double value = 0, int life = 0})
+      : name = TextEditingController(text: name),
+        qty = TextEditingController(text: '${qty.toInt()}'),
+        serial = TextEditingController(text: serial),
+        value = TextEditingController(text: value == 0 ? '' : '$value'),
+        life = TextEditingController(text: life == 0 ? '' : '$life');
+
+  final TextEditingController name;
+  final TextEditingController qty;
+  final TextEditingController serial;
+  final TextEditingController value;
+  final TextEditingController life;
+
+  double get qtyV => double.tryParse(qty.text.trim()) ?? 0;
+  double get valueV => double.tryParse(value.text.trim()) ?? 0;
+  int get lifeV => int.tryParse(life.text.trim()) ?? 0;
+
+  AssetDraft get draft => AssetDraft(
+        name: name.text,
+        quantity: qtyV,
+        serial: serial.text,
+        value: valueV,
+        lifespanMonths: lifeV,
+      );
+
+  void dispose() {
+    for (final c in [name, qty, serial, value, life]) {
+      c.dispose();
+    }
+  }
+}
+
 class _AssetsScreenState extends State<AssetsScreen> {
   late final AppDatabase _db = context.read<AppDatabase>();
   late final AssetsRepo _repo = AssetsRepo(_db);
@@ -59,10 +94,15 @@ class _AssetsScreenState extends State<AssetsScreen> {
   String _warehouse = '';
   String _supplierId = '';
 
+  /// single | bulk — نمط الإدخال.
+  String _mode = 'single';
+  final List<_AssetDraftRow> _bulk = [];
+
   String _filterType = '';
   String _filterStatus = '';
   String? _editId;
   bool _loading = true;
+  bool _busy = false;
 
   /// assets | cylinders
   String _tab = 'assets';
@@ -415,9 +455,28 @@ class _AssetsScreenState extends State<AssetsScreen> {
       ImdGrid2(children: [
         ImdPanel(
           margin: EdgeInsets.zero,
-          title: cur != null ? 'تعديل: ${cur.name}' : 'إضافة أصل جديد',
-          icon: cur != null ? 'edit' : 'plus-square',
-          child: _form(can),
+          title: cur != null
+              ? 'تعديل: ${cur.name}'
+              : (_mode == 'bulk' ? 'إدخال أصول دفعةً واحدة' : 'إضافة أصل جديد'),
+          icon: cur != null
+              ? 'edit'
+              : (_mode == 'bulk' ? 'package' : 'plus-square'),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // نمط الإدخال لا يظهر أثناء التعديل: تعديلٌ جماعي لسطرٍ بعينه
+            // لا معنى له.
+            if (cur == null && can) ...[
+              ImdItabs(
+                value: _mode,
+                onChanged: (v) => setState(() => _mode = v),
+                tabs: const [
+                  ImdTab('single', 'أصل واحد', icon: 'file'),
+                  ImdTab('bulk', 'دفعة أصول', icon: 'package'),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
+            if (cur == null && can && _mode == 'bulk') _bulkForm() else _form(can),
+          ]),
         ),
         ImdPanel(
           margin: EdgeInsets.zero,
@@ -426,6 +485,223 @@ class _AssetsScreenState extends State<AssetsScreen> {
           child: _table(rows, can),
         ),
       ]),
+    ]);
+  }
+
+  void _addBulkRow() => setState(() => _bulk.add(_AssetDraftRow()));
+
+  void _removeBulkRow(int i) => setState(() => _bulk.removeAt(i).dispose());
+
+  void _duplicateBulkRow(int i) {
+    final src = _bulk[i];
+    setState(() => _bulk.insert(
+          i + 1,
+          // الرقم التسلسلي لا يُنسخ: هو ما يميّز القطعة عن توأمها.
+          _AssetDraftRow(
+            name: src.name.text,
+            qty: src.qtyV <= 0 ? 1 : src.qtyV,
+            value: src.valueV,
+            life: src.lifeV,
+          ),
+        ));
+  }
+
+  Map<int, String> get _bulkErrors {
+    final out = <int, String>{};
+    final serials = <String, int>{};
+    for (var i = 0; i < _bulk.length; i++) {
+      final error = AssetRules.validateDraft(_bulk[i].draft);
+      if (error != null) {
+        out[i] = error;
+        continue;
+      }
+      final serial = _bulk[i].serial.text.trim();
+      if (serial.isEmpty) continue;
+      final first = serials[serial];
+      if (first != null) {
+        out[i] = 'رقم تسلسلي مكرر مع السطر ${first + 1}';
+      } else {
+        serials[serial] = i;
+      }
+    }
+    return out;
+  }
+
+  Future<void> _saveBulk() async {
+    final perm = Perm.of(context);
+    if (!perm.guard(context, 'assets', PermAction.create)) return;
+    if (_bulkErrors.isNotEmpty) {
+      showImdToast(context, '✖ راجع ${nf(_bulkErrors.length)} سطرًا فيه خطأ',
+          error: true);
+      return;
+    }
+    setState(() => _busy = true);
+    final res = await AssetsRepo(_db).saveBatch(
+      rows: [for (final r in _bulk) r.draft],
+      assetType: _type,
+      status: _status,
+      warehouse: _warehouse,
+      acquisitionDate: _acquired,
+      facilityId: _facilityId,
+      facilityName: _facilities.where((f) => f.id == _facilityId).firstOrNull?.name ?? '',
+      beneficiaryUnitId: _unitId,
+      beneficiaryUnitName: _units.where((u) => u.id == _unitId).firstOrNull?.name ?? '',
+      supplierId: _supplierId,
+      supplierName: _suppliers.where((x) => x.id == _supplierId).firstOrNull?.name ?? '',
+      invoiceNumber: _invoice.text.trim(),
+      notes: _notes.text.trim(),
+      actor: context.read<AuthService>().currentUser?.email ?? '',
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    showImdToast(context, res.ok ? '✔ أُضيف ${nf(res.saved)} أصلًا' : res.error,
+        error: !res.ok);
+    if (res.ok) {
+      for (final r in _bulk) {
+        r.dispose();
+      }
+      setState(() => _bulk.clear());
+      imdSetText(_invoice, '');
+      imdSetText(_notes, '');
+      await _render();
+    }
+  }
+
+  /// نموذج الدفعة: المشترك أعلى، والمتغيّر في الشبكة.
+  ///
+  /// أكثر دفعات الأصول تأتي بفاتورة واحدة ومورّد واحد وتاريخ واحد، وتختلف
+  /// في الاسم والعدد. فصلُ المشترك يختصر الإدخال ويمنع تناقض السطور فيما
+  /// يُفترض أن يكون واحدًا.
+  Widget _bulkForm() {
+    final errors = _bulkErrors;
+    final drafts = [for (final r in _bulk) r.draft];
+    final pieces = AssetRules.totalPieces(drafts);
+    final total = AssetRules.totalValue(drafts);
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const ImdNote(
+          'البيانات المشتركة تُكتب مرة واحدة وتنطبق على سطور الدفعة كلها. '
+          'و**الكمية** لعدد القطع المتطابقة في السطر، و**القيمة** للقطعة '
+          'الواحدة. والرقم التسلسلي لقطعة بعينها، فلا يُكتب إلا والكمية ١.'),
+      const SizedBox(height: 12),
+      ImdF2(children: [
+        ImdLabeled(
+          'نوع الأصول *',
+          ImdSelect<String>(
+            items: [for (final t in AssetType.all) (t, AssetType.label(t))],
+            value: _type,
+            onChanged: (v) => setState(() => _type = v ?? AssetType.equipment),
+          ),
+          size: 11,
+        ),
+        ImdLabeled(
+          'الحالة',
+          ImdSelect<String>(
+            items: [for (final x in AssetStatus.all) (x, AssetStatus.label(x))],
+            value: _status,
+            onChanged: (v) => setState(() => _status = v ?? AssetStatus.isNew),
+          ),
+          size: 11,
+        ),
+        ImdLabeled(
+          'المستودع',
+          ImdSelect<String>(
+            items: [
+              ('', '— بلا مستودع —'),
+              for (final w in _warehouses)
+                if (Perm.of(context).canWh(w.name)) (w.name, w.name),
+            ],
+            value: _warehouse,
+            onChanged: (v) => setState(() => _warehouse = v ?? ''),
+          ),
+          size: 11,
+        ),
+        ImdLabeled(
+          'تاريخ الاقتناء',
+          ImdDateField(
+              value: _acquired, onChanged: (v) => setState(() => _acquired = v)),
+          size: 11,
+        ),
+        ImdLabeled(
+          'المورّد',
+          ImdSelect<String>(
+            items: [
+              ('', '— بلا مورّد —'),
+              for (final x in _suppliers) (x.id, x.name),
+            ],
+            value: _supplierId,
+            onChanged: (v) => setState(() => _supplierId = v ?? ''),
+          ),
+          size: 11,
+        ),
+        ImdLabeled('رقم الفاتورة', ImdFld(controller: _invoice), size: 11),
+      ]),
+      const SizedBox(height: 14),
+      ImdBulkGrid(
+        columns: const [
+          ImdBulkCol('اسم الأصل', flex: 5, hint: 'مثل: طاولة طعام'),
+          ImdBulkCol('الكمية', flex: 2, hint: 'عدد القطع'),
+          ImdBulkCol('الرقم التسلسلي', flex: 3, hint: 'للقطعة الواحدة'),
+          ImdBulkCol('قيمة القطعة', flex: 2),
+          ImdBulkCol('العمر (شهر)', flex: 2),
+        ],
+        rows: [
+          for (var i = 0; i < _bulk.length; i++)
+            ImdBulkRow(
+              error: errors[i] ?? '',
+              badge: _bulk[i].qtyV > 1
+                  ? ImdChip('×${nf(_bulk[i].qtyV)}', tone: ImdTone.code)
+                  : null,
+              cells: [
+                ImdFld(
+                    controller: _bulk[i].name,
+                    hint: 'الاسم',
+                    onChanged: (_) => setState(() {})),
+                ImdFld(
+                    controller: _bulk[i].qty,
+                    number: true,
+                    onChanged: (_) => setState(() {})),
+                ImdFld(
+                    controller: _bulk[i].serial,
+                    hint: '—',
+                    onChanged: (_) => setState(() {})),
+                ImdFld(
+                    controller: _bulk[i].value,
+                    number: true,
+                    hint: '—',
+                    onChanged: (_) => setState(() {})),
+                ImdFld(
+                    controller: _bulk[i].life,
+                    number: true,
+                    hint: '—',
+                    onChanged: (_) => setState(() {})),
+              ],
+            ),
+        ],
+        onAdd: _addBulkRow,
+        onRemove: _removeBulkRow,
+        onDuplicate: _duplicateBulkRow,
+        addLabel: 'إضافة أصل',
+        empty: 'أضف أول أصل في الدفعة',
+        summary: [
+          ImdChip('السطور: ${nf(_bulk.length)}', tone: ImdTone.code),
+          ImdChip('القطع: ${nf(pieces)}', tone: ImdTone.info),
+          if (total > 0)
+            ImdChip('الإجمالي: ${nf(total)}', tone: ImdTone.ok),
+          if (errors.isNotEmpty)
+            ImdChip('أخطاء: ${nf(errors.length)}', tone: ImdTone.err),
+        ],
+        actions: [
+          ImdButton(
+            label: 'حفظ الدفعة',
+            icon: 'check',
+            small: true,
+            busy: _busy,
+            onPressed:
+                _bulk.isNotEmpty && errors.isEmpty ? _saveBulk : null,
+          ),
+        ],
+      ),
     ]);
   }
 

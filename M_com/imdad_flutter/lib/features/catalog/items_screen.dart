@@ -73,6 +73,14 @@ class _ItemsScreenState extends State<ItemsScreen> {
   final _iBC = TextEditingController();
   final _iName = TextEditingController();
   final _iMin = TextEditingController();
+
+  /// هل لهذا الصنف حدّ أدنى عام؟
+  ///
+  /// صار للحدود موضعان: حدٌّ عام في بطاقة الصنف، وحدودٌ لكل مستودع في
+  /// «لوحة المستودعات». والعام يُنبّه على الرصيد الكلي ولو كان موزّعًا
+  /// بما يكفي كل مستودع — فيصير ضجيجًا يُتجاهل. فمن ضبط حدود مستودعاته
+  /// يُطفئ العام هنا بدل أن يكتب فيه صفرًا يظنّه حدًّا.
+  bool _iMinOn = false;
   String _iCat = '';
   bool _iRef = false;
   String _iReportUnit = '';
@@ -512,7 +520,8 @@ class _ItemsScreenState extends State<ItemsScreen> {
     imdSetText(_iCode, cur?.code ?? '$next');
     imdSetText(_iBC, cur?.barcode ?? '');
     imdSetText(_iName, cur?.name ?? '');
-    imdSetText(_iMin, cur != null && cur.minQty != 0 ? _fmtNum(cur.minQty) : '0');
+    _iMinOn = cur != null && cur.minQty != 0;
+    imdSetText(_iMin, _iMinOn ? _fmtNum(cur!.minQty) : '');
     _iCat = cur?.categoryId ?? '';
     _iRef = cur?.isRefillable ?? false;
     _iReportUnit = cur?.reportUnit ?? '';
@@ -575,7 +584,33 @@ class _ItemsScreenState extends State<ItemsScreen> {
                     onChanged: (v) => setState(() => _iCat = v ?? ''),
                   ),
                 ),
-                ImdLabeled('الحد الأدنى للتنبيه ⚠', ImdFld(controller: _iMin, number: true)),
+                ImdLabeled(
+                  'الحد الأدنى للتنبيه ⚠',
+                  Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    ImdCheckbox(
+                      value: _iMinOn,
+                      label: 'تعيين حد عام لهذا الصنف',
+                      onChanged: (v) => setState(() {
+                        _iMinOn = v;
+                        if (!v) imdSetText(_iMin, '');
+                      }),
+                    ),
+                    if (_iMinOn)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: ImdFld(controller: _iMin, number: true),
+                      )
+                    else
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          'بلا حد عام — تُضبط الحدود لكل مستودع من '
+                          '«المستودعات ← لوحة المستودعات»، فينبّه كلٌّ على نقصه.',
+                          style: TextStyle(fontSize: 11.5, color: context.imd.muted, height: 1.5),
+                        ),
+                      ),
+                  ]),
+                ),
                 // الرصيد يُخزَّن بالوحدة الأساسية دائمًا؛ هذه للعرض فقط في
                 // التقارير وفي رصيد شاشات الإدخال.
                 ImdLabeled(
@@ -744,7 +779,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
         barcode: _iBC.text.trim(),
         categoryId: _iCat,
         categoryName: cat?.name ?? '',
-        minQty: double.tryParse(_iMin.text.trim()) ?? 0,
+        minQty: _iMinOn ? (double.tryParse(_iMin.text.trim()) ?? 0) : 0,
         isRefillable: _iRef,
         reportUnit: _iReportUnit,
         units: us,

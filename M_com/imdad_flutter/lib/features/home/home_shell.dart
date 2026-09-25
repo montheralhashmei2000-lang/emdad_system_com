@@ -19,7 +19,6 @@ import '../catalog/items_screen.dart';
 import '../catalog/suppliers_screen.dart';
 import '../catalog/units_screen.dart';
 import '../catalog/warehouses_screen.dart';
-import '../daily/camp_dashboard_screen.dart';
 import '../daily/daily_operations_screen.dart';
 import '../daily/meal_plan_screen.dart';
 import '../daily/kitchen_log_screen.dart';
@@ -105,7 +104,6 @@ const _menu = <_MenuSection>[
     _MenuItem('feeding', 'calendar', 'التغذية اليومية (حصر القوة)'),
     _MenuItem('dailyOperations', 'calendar', 'التخطيط والتشغيل اليومي'),
     _MenuItem('ratios', 'scale', 'نسب الاستهلاك'),
-    _MenuItem('campDashboard', 'radio', 'لوحة المعسكرات'),
   ]),
   _MenuSection('reports', 'trending', 'التقارير والجرد', [
     _MenuItem('balances', 'calculator', 'الأرصدة الحالية'),
@@ -213,8 +211,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return const KitchensScreen();
       case 'units':
         return const UnitsScreen();
-      case 'campDashboard':
-        return const CampDashboardScreen();
       case 'campLedger':
         return const CampLedgerScreen();
       case 'campSettlement':

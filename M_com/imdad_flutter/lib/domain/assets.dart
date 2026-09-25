@@ -80,6 +80,46 @@ class AssetRules {
 
   // ───────────────────────── التحقق
 
+  static String? validateDraft(AssetDraft d) {
+    if (d.name.trim().isEmpty) return 'اسم الأصل مطلوب';
+    if (d.quantity <= 0) return 'الكمية أكبر من صفر';
+    if (d.quantity != d.quantity.roundToDouble()) {
+      return 'الكمية عدد صحيح — الأصول تُعدّ لا تُوزن';
+    }
+    if (d.value < 0) return 'القيمة لا تكون سالبة';
+    if (d.lifespanMonths < 0) return 'العمر الافتراضي لا يكون سالبًا';
+    // الرقم التسلسلي يعرّف **قطعة واحدة**. فسطرٌ بعشر قطع ورقمٍ واحد يجعل
+    // عشرة أصول تحمل الرقم نفسه، فلا يُعرف أيّها المقصود في أي عهدة.
+    if (d.serial.trim().isNotEmpty && d.quantity != 1) {
+      return 'الرقم التسلسلي لقطعة واحدة — اجعل الكمية ١ أو امسح الرقم';
+    }
+    return null;
+  }
+
+  /// تحقّق من دفعة: الأرقام التسلسلية لا تتكرر.
+  static String? validateBatch(List<AssetDraft> rows) {
+    if (rows.isEmpty) return 'أضف سطرًا واحدًا على الأقل';
+    for (final d in rows) {
+      final error = validateDraft(d);
+      if (error != null) return error;
+    }
+    final serials = <String>{};
+    for (final d in rows) {
+      final s = d.serial.trim();
+      if (s.isEmpty) continue;
+      if (!serials.add(s)) return 'رقم تسلسلي مكرر في الدفعة: $s';
+    }
+    return null;
+  }
+
+  /// إجمالي القطع في دفعة — ما يُعرض في الملخّص قبل الحفظ.
+  static double totalPieces(List<AssetDraft> rows) =>
+      rows.fold<double>(0, (sum, d) => sum + d.quantity);
+
+  /// إجمالي القيمة: القيمة في السطر **للقطعة الواحدة**، فتُضرب في كميتها.
+  static double totalValue(List<AssetDraft> rows) =>
+      rows.fold<double>(0, (sum, d) => sum + d.value * d.quantity);
+
   static String? validateName(String? value) {
     final v = (value ?? '').trim();
     if (v.isEmpty) return 'اسم الأصل مطلوب';
@@ -195,3 +235,22 @@ class AssetRules {
     return 'AST-${tail.toUpperCase()}';
   }
 }
+
+/// سطر أصل في دفعة إدخال — بلا ارتباط بجدول، فيُختبر وحده.
+class AssetDraft {
+  const AssetDraft({
+    required this.name,
+    this.quantity = 1,
+    this.serial = '',
+    this.value = 0,
+    this.lifespanMonths = 0,
+  });
+
+  final String name;
+  final double quantity;
+  final String serial;
+  final double value;
+  final int lifespanMonths;
+}
+
+/// قواعد إدخال الأصول.
