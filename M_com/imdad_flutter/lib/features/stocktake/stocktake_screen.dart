@@ -5,6 +5,7 @@ import '../../core/print/document_pdf.dart';
 import '../../core/security/perm.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
+import '../../core/ui/imd_scan.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
@@ -12,6 +13,7 @@ import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../data/repos/stocktake_repo.dart';
 import '../../domain/access_control.dart';
+import '../../domain/stocktake_scan.dart';
 import '../inventory/doc_kit.dart';
 
 /// إدارة الجرد المخزني — نقل `stocktake-center.js` بتبويباته الخمسة:
@@ -315,6 +317,58 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
       setState(() => _addItemId = '');
       showImdToast(context, '✔ أُضيف الصنف «${it.name}» إلى الجرد');
     }
+  }
+
+  /// عدّ بالمسح: مسحة الباركود = قطعة واحدة بأصغر وحدات الصنف، وتُحفظ فورًا
+  /// (العدّ بالمسح طويل، ولا يصح أن يضيع إن أُغلقت الشاشة قبل «حفظ العد»).
+  /// الصنف غير المدرج في الأمر يُضاف صنفًا مكتشفًا ثم يُعدّ. يُرجع سطر النتيجة.
+  Future<String> _onScan(String code) async {
+    final o = _order;
+    if (o == null || o.status != 'COUNTING' || !_canWrite) return '✖ اختر أمر جرد مفتوحًا لديك صلاحية العد فيه';
+    if (!_perm.has('stocktake', PermAction.edit)) return '✖ لا تملك صلاحية تعديل الجرد';
+    ScanResult resolve() => StocktakeScan.resolve(
+          code,
+          [for (final it in _items) (id: it.id, code: it.code, barcode: it.barcode)],
+          {for (final l in _lines) l.itemId: l.id},
+        );
+    var result = resolve();
+    if (result is ScanUnknown) {
+      // صنف عُرِّف بعد فتح الشاشة (من شاشة أخرى أو وصل بالمزامنة): إعادة قراءة مرة واحدة.
+      await _load();
+      result = resolve();
+    }
+    if (result is ScanUnknown) return '✖ الباركود «$code» غير معرّف لأي صنف';
+    if (result is ScanNotInOrder) {
+      final it = _itemById(result.itemId)!;
+      await _repo.addDiscoveredItem(sessionId: _cur, item: it, warehouse: o.warehouse);
+      await _load();
+      await _loadLines();
+      final line = _lines.where((l) => l.itemId == it.id).firstOrNull;
+      if (line == null) return '✖ تعذّر إضافة «${it.name}» إلى الجرد';
+      result = ScanCounted(it.id, line.id);
+    }
+    final counted = result as ScanCounted;
+    final line = _lines.firstWhere((l) => l.id == counted.lineId);
+    final units = _unitsOf(line);
+    final ctrls = _counts[line.id]!;
+    final current = <String, double>{
+      for (final u in units)
+        if (ctrls[u.name]!.text.trim().isNotEmpty) u.name: double.tryParse(ctrls[u.name]!.text.trim()) ?? 0,
+    };
+    final smallest = units.last;
+    final next = StocktakeScan.increment(current, smallest.name);
+    await _repo.saveCount(
+      lineId: line.id,
+      countsByUnit: next,
+      factors: {for (final u in units) u.name: u.factor},
+    );
+    if (!mounted) return '';
+    setState(() => ctrls[smallest.name]!.text = _plain(next[smallest.name]!));
+    final fresh = (await _repo.lines(_cur)).firstWhere((l) => l.id == line.id);
+    if (!mounted) return '';
+    setState(() => _lines = [for (final l in _lines) l.id == fresh.id ? fresh : l]);
+    final discovered = line.discovered ? ' (صنف مكتشف)' : '';
+    return '✔ ${line.itemName}$discovered: ${nf(next[smallest.name]!)} ${smallest.name}';
   }
 
   /// `printBlank()` — استمارة عد فارغة.
@@ -666,6 +720,32 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
               onPressed: open ? _addItem : null,
             ),
           ]),
+          if (open) ...[
+            const SizedBox(height: 10),
+            ImdLabeled(
+              'العدّ بالمسح (كل مسحة = قطعة واحدة بأصغر وحدة، وتُحفظ فورًا):',
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(
+                  child: ImdBarcodeInput(
+                    hint: 'امسح بقارئ USB أو اكتب كود الصنف ثم Enter…',
+                    onSubmit: (code) async {
+                      final msg = await _onScan(code);
+                      if (mounted && msg.isNotEmpty) showImdToast(context, msg, error: msg.startsWith('✖'));
+                    },
+                  ),
+                ),
+                if (ImdScanner.supported) ...[
+                  const SizedBox(width: 10),
+                  ImdButton(
+                    label: 'مسح متواصل بالكاميرا',
+                    icon: 'camera',
+                    onPressed: () => ImdScanner.scanMany(context, onCode: _onScan),
+                  ),
+                ],
+              ]),
+              size: 11,
+            ),
+          ],
           const SizedBox(height: 10),
           ImdLabeled(
             'بحث في الجدول:',
