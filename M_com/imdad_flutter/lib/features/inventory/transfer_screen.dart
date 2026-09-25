@@ -185,8 +185,9 @@ class _TransferScreenState extends State<TransferScreen> {
   }
 
   Future<void> _refreshBal() async {
-    if (_from.isEmpty) return;
-    final b = await _moves.balances(warehouse: _from);
+    // بلا مستودع محدد: إجمالي مستودعات نطاق المستخدم من دفتر الحركات نفسه —
+    // لا عمود `items.qty` القديم الذي لا يعرف المستودعات ولا الحركات.
+    final b = await _moves.balances(warehouse: _from, scope: Perm.of(context).scope);
     if (mounted) setState(() => _fromBal = b);
   }
 
@@ -597,7 +598,7 @@ class _TransferScreenState extends State<TransferScreen> {
     final meta = it == null
         ? ''
         : () {
-            final b = displayBalance(it, _from.isNotEmpty ? (_fromBal[it.id] ?? 0) : it.qty);
+            final b = displayBalance(it, _fromBal[it.id] ?? 0);
             return _from.isNotEmpty
                 ? 'رصيد «$_from»: ${nf(b.qty)} ${b.unit}'
                 : 'الرصيد الكلي: ${nf(b.qty)} ${b.unit}';

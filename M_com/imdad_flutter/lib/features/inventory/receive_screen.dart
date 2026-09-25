@@ -133,8 +133,9 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
   }
 
   Future<void> _refreshBal() async {
-    if (_wh.isEmpty) return;
-    final b = await _moves.balances(warehouse: _wh);
+    // بلا مستودع محدد: إجمالي مستودعات نطاق المستخدم من دفتر الحركات نفسه —
+    // لا عمود `items.qty` القديم الذي لا يعرف المستودعات ولا الحركات.
+    final b = await _moves.balances(warehouse: _wh, scope: Perm.of(context).scope);
     if (mounted) setState(() => _whBal = b);
   }
 
@@ -590,7 +591,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                 return 'رصيد «$_wh»: ${nf(b.qty)} ${b.unit}';
               }()
             : () {
-                final b = displayBalance(it, it.qty);
+                final b = displayBalance(it, _whBal[it.id] ?? 0);
                 return 'الرصيد: ${nf(b.qty)} ${b.unit}'
                     '${it.barcode.isNotEmpty ? ' • باركود: ${it.barcode}' : ''}';
               }());

@@ -143,8 +143,9 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
 
   Future<void> _refreshBal() async {
     final wh = _tab == 'unit' ? _uWh : _sWh;
-    if (wh.isEmpty) return;
-    final b = await _moves.balances(warehouse: wh);
+    // بلا مستودع محدد: إجمالي مستودعات نطاق المستخدم من دفتر الحركات نفسه —
+    // لا عمود `items.qty` القديم الذي لا يعرف المستودعات ولا الحركات.
+    final b = await _moves.balances(warehouse: wh, scope: Perm.of(context).scope);
     if (mounted) setState(() => _whBal = b);
   }
 
@@ -469,7 +470,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
     final meta = it == null
         ? ''
         : () {
-            final b = displayBalance(it, wh.isNotEmpty ? (_whBal[it.id] ?? 0) : it.qty);
+            final b = displayBalance(it, _whBal[it.id] ?? 0);
             return wh.isNotEmpty
                 ? 'رصيد «$wh»: ${nf(b.qty)} ${b.unit}'
                 : '$metaLabel: ${nf(b.qty)} ${b.unit}';

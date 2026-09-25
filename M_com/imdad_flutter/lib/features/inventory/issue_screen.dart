@@ -162,8 +162,9 @@ class _IssueScreenState extends State<IssueScreen> {
   }
 
   Future<void> _refreshBal() async {
-    if (_wh.isEmpty) return;
-    final b = await _moves.balances(warehouse: _wh);
+    // بلا مستودع محدد: إجمالي مستودعات نطاق المستخدم من دفتر الحركات نفسه —
+    // لا عمود `items.qty` القديم الذي لا يعرف المستودعات ولا الحركات.
+    final b = await _moves.balances(warehouse: _wh, scope: Perm.of(context).scope);
     if (mounted) setState(() => _whBal = b);
   }
 
@@ -919,7 +920,7 @@ class _IssueScreenState extends State<IssueScreen> {
     // الرصيد يُعرض بوحدة العرض المختارة في بطاقة الصنف لا بالأساسية دائمًا.
     final shown = it == null
         ? null
-        : displayBalance(it, _wh.isNotEmpty ? (_whBal[it.id] ?? 0) : it.qty);
+        : displayBalance(it, _whBal[it.id] ?? 0);
     final meta = it == null
         ? ''
         : (_wh.isNotEmpty
@@ -930,7 +931,7 @@ class _IssueScreenState extends State<IssueScreen> {
       ImdItemPicker(
         items: _items,
         value: r.itemId,
-        labelOf: (i) => '${i.code} — ${i.name} (رصيد: ${nf(_whBal[i.id] ?? i.qty)})',
+        labelOf: (i) => '${i.code} — ${i.name} (رصيد: ${nf(_whBal[i.id] ?? 0)})',
         onChanged: (v) => _onItem(r, v),
       ),
       ImdRowMeta(meta),

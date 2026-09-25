@@ -1,10 +1,11 @@
 import 'dart:math' as math;
 
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show BooleanExpressionOperators, Value;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/ids.dart';
 import '../../core/print/barcode_labels.dart';
 import '../../core/print/barcode128.dart';
 import '../../core/security/perm.dart';
@@ -117,8 +118,12 @@ class _ItemsScreenState extends State<ItemsScreen> {
     });
   }
 
-  /// رصيد الصنف `x.qty` في الويب: الرصيد المستورد مع الصنف + صافي الحركات.
-  double _qty(Item x) => x.qty + (_ledger[x.id] ?? 0);
+  /// رصيد الصنف من دفتر الحركات وحده (الأرصدة الافتتاحية + صافي الحركات).
+  ///
+  /// كان يُضاف إليه عمود `items.qty`، وهو في الويب رصيد عرضٍ يُعاد حسابه من
+  /// الدفتر نفسه — فكانت البيانات المستوردة من الويب تُحسب مرتين هنا، بينما
+  /// تتجاهله أرصدة المستودعات وفحوص الكفاية، فيظهر للصنف رصيدان مختلفان.
+  double _qty(Item x) => _ledger[x.id] ?? 0;
 
   bool _w(BuildContext context) => Perm.of(context).writable('items');
 
@@ -312,7 +317,12 @@ class _ItemsScreenState extends State<ItemsScreen> {
   Future<void> _import() async {
     final rows = await ImdExcel.pickAndRead(context);
     if (rows == null) return;
-    var ok = 0, skip = 0;
+    var ok = 0, skip = 0, qtyPending = 0;
+    // الرصيد لا يُحفظ على الصنف: يصير رصيدًا افتتاحيًا في مستودع، مصدر الأرصدة
+    // الوحيد. مع مستودع واحد يُعرف مكانه؛ ومع أكثر يُترك لشاشة الأرصدة الافتتاحية.
+    final whs = await _db.select(_db.warehouses).get();
+    final soleWh = whs.length == 1 ? whs.single.name : '';
+    final actor = Perm.of(context).email;
     for (final r in rows) {
       final code = (r['code'] ?? '').trim();
       final name = (r['name'] ?? '').trim();
@@ -337,7 +347,6 @@ class _ItemsScreenState extends State<ItemsScreen> {
             units: (unit.isEmpty || _unitsRaw(it).isNotEmpty)
                 ? const Value.absent()
                 : Value('[{"name":${_jsonStr(unit)},"factor":1,"isBase":true}]'),
-            qty: Value(qty),
             minQty: Value(min),
           ));
         } else {
@@ -353,7 +362,14 @@ class _ItemsScreenState extends State<ItemsScreen> {
           if (unit.isEmpty) {
             await (_db.update(_db.items)..where((t) => t.id.equals(id))).write(const ItemsCompanion(units: Value('[]')));
           }
-          await (_db.update(_db.items)..where((t) => t.id.equals(id))).write(ItemsCompanion(qty: Value(qty)));
+        }
+        if (qty != 0) {
+          if (soleWh.isEmpty) {
+            qtyPending++;
+          } else {
+            final item = await (_db.select(_db.items)..where((t) => t.code.equals(code))).getSingle();
+            await _setOpening(item, soleWh, qty, actor);
+          }
         }
         ok++;
       } catch (_) {
@@ -362,8 +378,31 @@ class _ItemsScreenState extends State<ItemsScreen> {
       }
     }
     if (!mounted) return;
-    showImdToast(context, '✔ استيراد الأصناف: $ok صنفًا${skip > 0 ? ' (تجاهل $skip)' : ''}');
+    showImdToast(
+      context,
+      '✔ استيراد الأصناف: $ok صنفًا${skip > 0 ? ' (تجاهل $skip)' : ''}'
+      '${qtyPending > 0 ? ' — لم تُسجَّل كميات $qtyPending صنفًا لتعدد المستودعات: أدخلها من «الأرصدة الافتتاحية»' : ''}',
+    );
     await _fetch();
+  }
+
+  /// رصيد افتتاحي للصنف في المستودع — تثبيت يستبدل السابق كما في شاشة الأرصدة الافتتاحية.
+  Future<void> _setOpening(Item item, String warehouse, double qty, String actor) async {
+    await _db.transaction(() async {
+      await (_db.delete(_db.openingBalances)
+            ..where((t) => t.itemId.equals(item.id) & t.warehouse.equals(warehouse)))
+          .go();
+      await _db.into(_db.openingBalances).insert(OpeningBalancesCompanion.insert(
+            id: Ids.next('opb'),
+            itemId: item.id,
+            itemCode: Value(item.code),
+            itemName: Value(item.name),
+            warehouse: Value(warehouse),
+            qty: Value(qty),
+            date: Value(isoDay(DateTime.now())),
+            setBy: Value(actor),
+          ));
+    });
   }
 
   static String _jsonStr(String s) => '"${s.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"';
