@@ -2,13 +2,19 @@
 
 block_cipher = None
 
-# حل مشكلة ordinal 380 في مكتبات Qt
 from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
 
-# جمع جميع المكتبات الديناميكية
-qt_binaries = collect_dynamic_libs('PySide6')
+# جمع مكتبات Qt الخاصة بـ PyQt6 بشكل صحيح
+# collect_dynamic_libs returns 2-element tuples; normalize to 3-element tuples for EXE()
+raw_binaries = []
+for mod in ['PyQt6.QtCore', 'PyQt6.QtGui', 'PyQt6.QtWidgets', 'PyQt6.QtSql', 'PyQt6.QtNetwork',
+            'PyQt6.QtPrintSupport', 'PyQt6.QtWebEngineWidgets']:
+    try:
+        raw_binaries += collect_dynamic_libs(mod)
+    except Exception:
+        pass
+qt_binaries = [(src, dst, 'BINARY') for src, dst in raw_binaries]
 
-# جمع جميع الوحدات الفرعية المهمة
 all_hidden_imports = [
     'sqlalchemy',
     'sqlalchemy.ext',
@@ -16,15 +22,22 @@ all_hidden_imports = [
     'sqlalchemy.sql',
     'pydantic',
     'pydantic.v1',
-    'PySide6',
-    'PySide6.QtCore',
-    'PySide6.QtGui',
-    'PySide6.QtWidgets',
-    'PySide6.QtSql',
-    'PySide6.QtNetwork',
+    'PyQt6',
+    'PyQt6.QtCore',
+    'PyQt6.QtGui',
+    'PyQt6.QtWidgets',
+    'PyQt6.QtSql',
+    'PyQt6.QtNetwork',
+    'PyQt6.QtPrintSupport',
+    'PyQt6.QtWebEngineWidgets',
     'core',
     'data',
     'ui',
+    'ui.views',
+    'ui.views.inventory_count_view',
+    'ui.print_helper',
+    'ui.api_service',
+    'ui.theme',
     'sync',
     'app',
     'hashlib',
@@ -246,7 +259,7 @@ a = Analysis(
     hiddenimports=all_hidden_imports,
     hookspath=[],
     hooksconfig={
-        'PySide6': {
+        'PyQt6': {
             'qt_plugins': ['platforms', 'styles', 'iconengines'],
         }
     },
@@ -258,7 +271,6 @@ a = Analysis(
     noarchive=False,
 )
 
-# إضافة بيانات إضافية
 added_files = [
     ('app/resources/*', 'app/resources'),
     ('logs/*', 'logs'),
@@ -266,7 +278,7 @@ added_files = [
 ]
 
 for src, dest in added_files:
-    a.datas += [(src, dest)]
+    a.datas += [(src, dest, 'DATA')]
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
