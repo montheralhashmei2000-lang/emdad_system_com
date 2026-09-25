@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/core/security/auth_service.dart';
 import 'package:imdad/core/theme/app_theme.dart';
+import 'package:imdad/core/ui/imd_tokens.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/repos/fuel_repo.dart';
 import 'package:imdad/domain/fuel.dart';
@@ -33,13 +34,14 @@ void main() {
 
   tearDown(() => db.close());
 
+  /// شاشات القسم تُعرض بسمته الداكنة، فتُختبر بها لا بالسمة الفاتحة.
   Widget host(Widget child) => MultiProvider(
         providers: [
           Provider<AppDatabase>.value(value: db),
           Provider<AuthService>.value(value: auth),
         ],
         child: MaterialApp(
-          theme: AppTheme.light(),
+          theme: AppTheme.fuel(),
           locale: const Locale('ar'),
           home: Directionality(
             textDirection: TextDirection.rtl,
@@ -153,6 +155,33 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: 'عند فتح «$name»');
     }
+  });
+
+  testWidgets('شاشات القسم تأخذ لوحته الداكنة', (tester) async {
+    await seed();
+    await show(tester, const FuelDashboardScreen());
+    final ctx = tester.element(find.byType(FuelDashboardScreen));
+    final colors = Theme.of(ctx).extension<ImdColors>()!;
+    expect(colors.isDark, isTrue);
+    expect(colors.accent, ImdColors.fuel.accent,
+        reason: 'القسم يجب أن يُعرف من أول نظرة أنه ليس شاشات الإعاشة');
+  });
+
+  testWidgets('مرشّح نوع الوقود يعمل في التفريدة', (tester) async {
+    await seed();
+    await show(tester, const FuelAllocationsScreen());
+    expect(find.textContaining('وحدة ·'), findsWidgets,
+        reason: 'سطر الملخّص يُجمل الخطة قبل قراءة سطورها');
+
+    // التفريدة المزروعة ديزل، فترشيح البترول يُفرغ الجدول.
+    await tester.tap(find.text('بترول').first);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('الكتيبة الأولى'), findsNothing);
+
+    await tester.tap(find.text('ديزل').first);
+    await tester.pumpAndSettle();
+    expect(find.text('الكتيبة الأولى'), findsWidgets);
   });
 
   testWidgets('التفريدة تعرض المستحق والمتبقي', (tester) async {

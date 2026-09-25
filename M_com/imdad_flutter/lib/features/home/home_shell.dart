@@ -8,6 +8,8 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/security/auth_service.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/ui/imd_fonts.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_window.dart';
@@ -384,6 +386,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       );
     }
     final space = _space ?? AppSpace.supply;
+    // سمة القسم تُلفّ القشرة كلها: كل شاشة داخله تأخذ لوحته بلا تعديل فيها،
+    // لأن ألوانها كلها تمرّ بـ`context.imd`.
+    final fuelSpace = space == AppSpace.fuel;
 
     final allowed = _page == 'dash' || _hasPerm(auth, _page);
     final body = allowed ? _pageBody(_page) : const _NoAccess();
@@ -405,7 +410,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       onLogout: widget.onSignOut,
     );
 
-    return Provider<ImdNav>.value(
+    final shell = Provider<ImdNav>.value(
       value: _nav,
       child: PopScope(
         // زر الرجوع كان يُنهي التطبيق بضغطة واحدة من أي شاشة. الآن يعود إلى
@@ -461,6 +466,19 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         ),
       ),
     );
+
+    // سمة القسم تُلفّ كل شيء: الشريط والمحتوى والحوارات تأخذ لوحته، فلا
+    // تُعدَّل شاشة واحدة من شاشاته — ألوانها كلها تمرّ بـ`context.imd`.
+    return fuelSpace
+        ? Theme(
+            data: AppTheme.fuel(
+              // الخط يتبع اختيار المستخدم في السمة العامة.
+              font: Theme.of(context).textTheme.bodyMedium?.fontFamily ??
+                  ImdFonts.defaultFamily,
+            ),
+            child: shell,
+          )
+        : shell;
   }
 }
 
@@ -663,13 +681,21 @@ class _Sidebar extends StatelessWidget {
                     decoration: BoxDecoration(
                         border: Border(bottom: BorderSide(color: c.sideLine))),
                     child: Column(children: [
-                      const Text('نظام الإمداد والتموين',
+                      Text('نظام الإمداد والتموين',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white)),
-                      const SizedBox(height: 8),
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: .2,
+                              color: c.sideMuted)),
+                      const SizedBox(height: 4),
+                      Text(AppSpace.label(space),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w700,
+                              color: c.sideText)),
+                      const SizedBox(height: 10),
                       // القسم الحالي معروضٌ دائمًا: من يعمل في قسمين يحتاج أن
                       // يعرف في أيّهما هو قبل أن يكتب سندًا في الخطأ.
                       MouseRegion(
@@ -691,20 +717,17 @@ class _Sidebar extends StatelessWidget {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   ImdIcon(
-                                      AppSpace.icons[space] ?? 'package',
-                                      size: 13,
-                                      color: c.sideText),
+                                      canSwitch
+                                          ? 'swap'
+                                          : (AppSpace.icons[space] ?? 'package'),
+                                      size: 12,
+                                      color: c.sideMuted),
                                   const SizedBox(width: 6),
-                                  Text(AppSpace.label(space),
+                                  Text(canSwitch ? 'تبديل القسم' : 'قسم واحد',
                                       style: TextStyle(
-                                          fontSize: 12,
+                                          fontSize: 11.5,
                                           fontWeight: FontWeight.w600,
-                                          color: c.sideText)),
-                                  if (canSwitch) ...[
-                                    const SizedBox(width: 6),
-                                    ImdIcon('swap',
-                                        size: 12, color: c.sideMuted),
-                                  ],
+                                          color: c.sideMuted)),
                                 ]),
                           ),
                         ),

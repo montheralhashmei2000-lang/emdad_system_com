@@ -40,6 +40,9 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
   String _unitId = '';
   String _fuelType = FuelType.diesel;
   String _periodType = FuelPeriod.monthly;
+  /// مرشّح نوع الوقود في الجدول — الكل أو نوعٌ بعينه.
+  String _filter = '';
+
   String _start = DateTime.now().toIso8601String().substring(0, 10);
   String _end = '';
   bool _active = true;
@@ -204,13 +207,39 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
           extra: drained == 0 ? null : const ImdChip('لا تُصرف', tone: ImdTone.err),
         ),
       ]),
+      ImdItabs(
+        value: _filter,
+        onChanged: (v) => setState(() => _filter = v),
+        tabs: [
+          const ImdTab('', 'الكل'),
+          for (final t in FuelType.all) ImdTab(t, FuelType.label(t)),
+        ],
+      ),
       if (can)
         ImdPanel(
           title: _editId == null ? 'تفريدة جديدة' : 'تعديل التفريدة',
           icon: _editId == null ? 'plus-square' : 'edit',
           child: _form(),
         ),
-      ImdPanel(title: 'التفريدات', icon: 'list', child: _table(can)),
+      ImdPanel(
+        title: _filter.isEmpty
+            ? 'التفريدات — جميع الوحدات المستفيدة'
+            : 'تفريدة ${FuelType.label(_filter)} — جميع الوحدات المستفيدة',
+        icon: 'list',
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // سطرٌ يُجمل الخطة قبل قراءة سطورها: كم وحدة، وكم أسبوعيًّا وشهريًّا.
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+              '${nf(_visible.length)} وحدة · '
+              '${nf(_sum((r) => Fuel.weeklyOf(r.calc)))} أسبوعي · '
+              '${nf(_sum((r) => Fuel.monthlyOf(r.calc)))} شهري',
+              style: TextStyle(fontSize: 12.5, color: context.imd.muted),
+            ),
+          ),
+          _table(can),
+        ]),
+      ),
     ]);
   }
 
@@ -315,6 +344,13 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
         ],
       );
 
+  List<FuelAllocationRow> get _visible => _filter.isEmpty
+      ? _rows
+      : _rows.where((r) => r.allocation.fuelType == _filter).toList();
+
+  double _sum(double Function(FuelAllocationRow) of) =>
+      _visible.fold<double>(0, (total, r) => total + of(r));
+
   Widget _table(bool can) {
     final c = context.imd;
     return ImdTable(
@@ -333,7 +369,7 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
         ImdCol('', center: true),
       ],
       rows: [
-        for (final r in _rows)
+        for (final r in _visible)
           [
             Text(r.allocation.refNo,
                 style: TextStyle(color: c.muted, fontSize: 12.5)),

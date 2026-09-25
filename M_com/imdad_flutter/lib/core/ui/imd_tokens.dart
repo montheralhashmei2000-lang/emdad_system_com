@@ -136,6 +136,51 @@ class ImdColors extends ThemeExtension<ImdColors> {
     isDark: true,
   );
 
+  /// لوحة قسم المحروقات — داكنة بلمسة زيتونية.
+  ///
+  /// القسم له هويّته البصرية: من يعمل فيه يعرف من أول نظرة أنه ليس في شاشات
+  /// الإعاشة، فلا يكتب سند وقود في مكان سند إعاشة. والخضرة الباهتة (لا
+  /// الفيروزي المؤسسي) تميّزه بلا أن تخرج عن لغة النظام.
+  static const fuel = ImdColors(
+    bg: Color(0xFF0E100D),
+    surface: Color(0xFF151814),
+    subtle: Color(0xFF1C201A),
+    hover: Color(0xFF212519),
+    line: Color(0xFF262B24),
+    lineStrong: Color(0xFF343A31),
+    text: Color(0xFFE9ECE5),
+    text2: Color(0xFFD2D7CB),
+    muted: Color(0xFF8C9386),
+    faint: Color(0xFF6E7568),
+    accent: Color(0xFFBFD8A4),
+    accentHover: Color(0xFFD3E6BD),
+    accentSoft: Color(0x22BFD8A4),
+    ring: Color(0x55BFD8A4),
+    onAccent: Color(0xFF13210C),
+    success: Color(0xFF8FD694),
+    successSoft: Color(0x248FD694),
+    danger: Color(0xFFE5806A),
+    dangerSoft: Color(0x26E5806A),
+    warn: Color(0xFFE3B872),
+    warnSoft: Color(0x26E3B872),
+    info: Color(0xFF9DC7D8),
+    infoSoft: Color(0x269DC7D8),
+    side: Color(0xFF111410),
+    side2: Color(0xFF0E110D),
+    sideHover: Color(0xFF1D2119),
+    sideActive: Color(0xFF242A20),
+    sideText: Color(0xFFE9ECE5),
+    sideMuted: Color(0xFF8C9386),
+    sideBorder: Color(0xFF272C24),
+    sideLine: Color(0xFF232821),
+    tableHead: Color(0xFF191D17),
+    tableRowLine: Color(0xFF232821),
+    noteBg: Color(0x1AE3B872),
+    noteBorder: Color(0x59E3B872),
+    noteText: Color(0xFFE8C88A),
+    isDark: true,
+  );
+
   @override
   ImdColors copyWith() => this;
 

@@ -42,6 +42,28 @@ class AppTheme {
         muted: const Color(0xFFA1A1AA),
       );
 
+  /// سمة قسم المحروقات — داكنة بلمسة زيتونية، بلوحة [ImdColors.fuel].
+  ///
+  /// القسم منفصل فعلًا لا اسمًا: هويّته البصرية تُعرّف من يعمل فيه أنه ليس
+  /// في شاشات الإعاشة قبل أن يقرأ عنوان الشاشة.
+  static ThemeData fuel({String font = ImdFonts.defaultFamily}) => _base(
+        font: font,
+        brightness: Brightness.dark,
+        primary: fuelAccent,
+        background: fuelBg,
+        surface: fuelSurface,
+        outline: fuelLine,
+        onSurface: fuelText,
+        muted: const Color(0xFF8C9386),
+        tokens: ImdColors.fuel,
+      );
+
+  static const Color fuelBg = Color(0xFF0E100D);
+  static const Color fuelSurface = Color(0xFF151814);
+  static const Color fuelLine = Color(0xFF262B24);
+  static const Color fuelText = Color(0xFFE9ECE5);
+  static const Color fuelAccent = Color(0xFFBFD8A4);
+
   static ThemeData _base({
     required String font,
     required Brightness brightness,
@@ -51,6 +73,7 @@ class AppTheme {
     required Color outline,
     required Color onSurface,
     required Color muted,
+    ImdColors? tokens,
   }) {
     final scheme = ColorScheme.fromSeed(
       seedColor: primary,
@@ -68,7 +91,10 @@ class AppTheme {
       colorScheme: scheme,
       scaffoldBackgroundColor: background,
       fontFamily: ImdFonts.normalize(font),
-      extensions: [brightness == Brightness.dark ? ImdColors.dark : ImdColors.light],
+      extensions: [
+        tokens ??
+            (brightness == Brightness.dark ? ImdColors.dark : ImdColors.light),
+      ],
       visualDensity: VisualDensity.standard,
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
