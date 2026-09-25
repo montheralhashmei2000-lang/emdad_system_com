@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/data/db/app_database.dart';
@@ -15,21 +14,15 @@ void main() {
 
   late AppDatabase db;
   late FuelRepo repo;
+  late String unitId;
 
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     repo = FuelRepo(db);
-    await db.into(db.warehouses).insert(WarehousesCompanion.insert(
-          id: 'wh1',
-          name: 'مستودع الوقود',
-          isMain: const Value(true),
-          fuelCapacityLiters: const Value(20000),
-        ));
-    await db
-        .into(db.warehouses)
-        .insert(WarehousesCompanion.insert(id: 'wh2', name: 'الفرعي'));
-    await db.into(db.beneficiaryUnits).insert(
-        BeneficiaryUnitsCompanion.insert(id: 'u1', name: 'الكتيبة الأولى'));
+    // دليل المحروقات مستقل عن دليل الإعاشة: يُزرع بمستودعاته ووحداته هو.
+    await repo.saveWarehouse(name: 'مستودع الوقود', capacityLiters: 20000);
+    await repo.saveWarehouse(name: 'الفرعي');
+    unitId = (await repo.saveUnit(name: 'الكتيبة الأولى')).refNo;
   });
 
   tearDown(() => db.close());
@@ -54,7 +47,7 @@ void main() {
     bool disbursable = true,
   }) async {
     final res = await repo.saveAllocation(
-      unitId: 'u1',
+      unitId: unitId,
       unitName: 'الكتيبة الأولى',
       fuelType: FuelType.diesel,
       periodType: period,
@@ -247,7 +240,7 @@ void main() {
 
     test('النهاية قبل البداية تُرفض', () async {
       final res = await repo.saveAllocation(
-        unitId: 'u1',
+        unitId: unitId,
         unitName: 'الكتيبة الأولى',
         fuelType: FuelType.diesel,
         periodType: FuelPeriod.monthly,

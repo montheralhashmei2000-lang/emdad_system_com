@@ -29,7 +29,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
   late final AppDatabase _db = context.read<AppDatabase>();
   late final FuelRepo _repo = FuelRepo(_db);
 
-  List<Warehouse> _warehouses = const [];
+  List<FuelWarehouse> _warehouses = const [];
   List<FuelAllocationRow> _allocations = const [];
   List<FuelStock> _stocks = const [];
   List<FuelIssue> _issues = const [];
@@ -92,7 +92,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
   }
 
   Future<void> _load() async {
-    final warehouses = await _db.select(_db.warehouses).get();
+    final warehouses = await _repo.warehouses(onlyActive: true);
     final allocations = await _repo.allocations(onlyActive: true);
     final stocks = await _repo.stocks();
     final issues = await _repo.issues();
@@ -150,10 +150,6 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
   Future<void> _submit() async {
     final perm = Perm.of(context);
     if (!perm.guard(context, 'fuelMoves', PermAction.create)) return;
-    if (!perm.canWh(_warehouse)) {
-      showImdToast(context, Perm.scopeBlock(_warehouse), error: true);
-      return;
-    }
     setState(() => _busy = true);
     final actor = context.read<AuthService>().currentUser?.email ?? '';
     late FuelResult res;
@@ -354,8 +350,9 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
         _tab == 'transfer' ? 'من مستودع *' : 'المستودع *',
         ImdSelect<String>(
           items: [
-            for (final w in _warehouses)
-              if (Perm.of(context).canWh(w.name)) (w.name, w.name),
+            // نطاق مستودعات الإعاشة لا يحكم خزّانات الوقود: دليلٌ مستقل
+            // وصلاحياتٌ مستقلة (`fuelMoves`).
+            for (final w in _warehouses) (w.name, w.name),
           ],
           value: _warehouse,
           onChanged: (v) => setState(() => _warehouse = v ?? ''),

@@ -349,6 +349,53 @@ class WebImporter {
   }
 
   Future<void> _importFuel(Map<String, dynamic> data, WebImportResult res) async {
+    for (final w in _rows(data['fuelWarehouses'])) {
+      if (!_accept('fuel_warehouses', _id(w))) continue;
+      await db
+          .into(db.fuelWarehouses)
+          .insertOnConflictUpdate(FuelWarehousesCompanion.insert(
+            id: _id(w),
+            code: Value(_s(w, 'code')),
+            name: _s(w, 'name'),
+            manager: Value(_s(w, 'manager')),
+            location: Value(_s(w, 'location')),
+            capacityLiters: Value(_d(w, 'capacityLiters')),
+            active: Value(_b(w, 'active', true)),
+            notes: Value(_s(w, 'notes')),
+            createdAt: Value(_created(w)),
+          ));
+    }
+    for (final u in _rows(data['fuelUnits'])) {
+      if (!_accept('fuel_units', _id(u))) continue;
+      await db.into(db.fuelUnits).insertOnConflictUpdate(FuelUnitsCompanion.insert(
+            id: _id(u),
+            code: Value(_s(u, 'code')),
+            name: _s(u, 'name'),
+            commander: Value(_s(u, 'commander')),
+            phone: Value(_s(u, 'phone')),
+            active: Value(_b(u, 'active', true)),
+            notes: Value(_s(u, 'notes')),
+            createdAt: Value(_created(u)),
+          ));
+    }
+    for (final x in _rows(data['fuelSettings'])) {
+      if (!_accept('fuel_settings_rows', _id(x))) continue;
+      await db
+          .into(db.fuelSettingsRows)
+          .insertOnConflictUpdate(FuelSettingsRowsCompanion.insert(
+            id: _id(x),
+            lowStockPercent: Value(_d(x, 'lowStockPercent', 20)),
+            defaultDailyLiters: Value(_d(x, 'defaultDailyLiters', 200)),
+            defaultWeeklyLiters: Value(_d(x, 'defaultWeeklyLiters', 1000)),
+            defaultMonthlyLiters: Value(_d(x, 'defaultMonthlyLiters', 4000)),
+            signOfficer: Value(_s(x, 'signOfficer')),
+            signSupply: Value(_s(x, 'signSupply')),
+            signChief: Value(_s(x, 'signChief')),
+            requireChassis: Value(_b(x, 'requireChassis')),
+            allowExceptional: Value(_b(x, 'allowExceptional', true)),
+            notes: Value(_s(x, 'notes')),
+          ));
+    }
     for (final a in _rows(data['fuelAllocations'])) {
       if (!_accept('fuel_allocations', _id(a))) continue;
       await db

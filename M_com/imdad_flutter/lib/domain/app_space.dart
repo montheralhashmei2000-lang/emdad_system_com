@@ -44,9 +44,18 @@ class AppSpace {
   /// المشتركة ليست دليلًا على امتلاك مساحة: من يملك الإعدادات وحدها لا يُقال
   /// إنه صاحب قسم محروقات، وإلا رأى مساحةً فارغة إلا من إعداداتٍ عامة.
   static const Map<String, List<String>> pages = {
-    fuel: ['fuelDashboard', 'fuelAllocations', 'fuelMoves', 'fuelStocktake'],
+    fuel: [
+      'fuelDashboard',
+      'fuelAllocations',
+      'fuelMoves',
+      'fuelStocktake',
+      'fuelWarehouses',
+      'fuelUnits',
+    ],
     supply: [
       'items',
+      'stores',
+      'units',
       'suppliers',
       'kitchens',
       'assets',

@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -58,19 +57,10 @@ void main() {
   }
 
   Future<void> seed() async {
-    await db.into(db.warehouses).insert(WarehousesCompanion.insert(
-          id: 'wh1',
-          name: 'مستودع الوقود',
-          isMain: const Value(true),
-          fuelCapacityLiters: const Value(20000),
-        ));
-    await db
-        .into(db.warehouses)
-        .insert(WarehousesCompanion.insert(id: 'wh2', name: 'الفرعي'));
-    await db.into(db.beneficiaryUnits).insert(
-        BeneficiaryUnitsCompanion.insert(id: 'u1', name: 'الكتيبة الأولى'));
-
     final repo = FuelRepo(db);
+    await repo.saveWarehouse(name: 'مستودع الوقود', capacityLiters: 20000);
+    await repo.saveWarehouse(name: 'الفرعي');
+    final unitId = (await repo.saveUnit(name: 'الكتيبة الأولى')).refNo;
     await repo.saveSupply(
       date: '2026-01-01',
       fuelType: FuelType.diesel,
@@ -79,7 +69,7 @@ void main() {
       supplierName: 'مورّد الوقود',
     );
     await repo.saveAllocation(
-      unitId: 'u1',
+      unitId: unitId,
       unitName: 'الكتيبة الأولى',
       fuelType: FuelType.diesel,
       periodType: FuelPeriod.monthly,
@@ -187,10 +177,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    final lines = await FuelRepo(db).stocktakeLines(
-        (await FuelRepo(db).stocktakes()).single.id);
+    final repo = FuelRepo(db);
+    final take = (await repo.stocktakes()).single;
+    final lines = await repo.stocktakeLines(take.id);
     final diesel = lines.firstWhere((l) => l.fuelType == FuelType.diesel);
-    expect(diesel.bookLiters, 7700,
+    // الشاشة تفتح على أول مستودع في الدليل (مرتَّبًا أبجديًّا)، فيُقارَن
+    // الدفتري برصيد ذلك المستودع بعينه لا برصيدٍ مفترض.
+    final expected = (await repo.stocks(warehouse: take.warehouse))
+        .firstWhere((x) => x.fuelType == FuelType.diesel)
+        .stock;
+    expect(diesel.bookLiters, expected,
         reason: 'الرصيد الدفتري لم يُلتقط وقت الفتح');
   });
 }

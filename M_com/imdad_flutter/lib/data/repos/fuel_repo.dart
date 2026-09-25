@@ -75,6 +75,243 @@ class FuelRepo {
 
   final AppDatabase db;
 
+  // ───────────────────────── الأدلة
+
+  Future<List<FuelWarehouse>> warehouses({bool onlyActive = false}) async {
+    final q = db.select(db.fuelWarehouses);
+    if (onlyActive) q.where((t) => t.active.equals(true));
+    final rows = await q.get();
+    rows.sort((a, b) => a.name.compareTo(b.name));
+    return rows;
+  }
+
+  Future<FuelResult> saveWarehouse({
+    String? id,
+    required String name,
+    String code = '',
+    String manager = '',
+    String location = '',
+    double capacityLiters = 0,
+    bool active = true,
+    String notes = '',
+    String actor = '',
+  }) async {
+    if (name.trim().isEmpty) {
+      return const FuelResult(ok: false, error: '✖ اسم المستودع مطلوب');
+    }
+    if (capacityLiters < 0) {
+      return const FuelResult(ok: false, error: '✖ السعة لا تكون سالبة');
+    }
+    final all = await warehouses();
+    if (all.any((w) => w.id != id && w.name.trim() == name.trim())) {
+      return const FuelResult(ok: false, error: '✖ يوجد مستودع بهذا الاسم');
+    }
+    // السندات تشير إلى **الاسم**، فتغييره على مستودعٍ له حركة يقطع صلته بها.
+    if (id != null) {
+      final old = all.where((w) => w.id == id).firstOrNull;
+      if (old != null && old.name.trim() != name.trim()) {
+        final used = await _warehouseInUse(old.name);
+        if (used) {
+          return FuelResult(
+            ok: false,
+            error: '✖ لا يُغيَّر اسم «${old.name}» وعليه حركة — '
+                'عطّله وأنشئ غيره',
+          );
+        }
+      }
+    }
+    final newId = id ?? Ids.next('fwh');
+    await db
+        .into(db.fuelWarehouses)
+        .insertOnConflictUpdate(FuelWarehousesCompanion.insert(
+          id: newId,
+          code: Value(code.trim()),
+          name: name.trim(),
+          manager: Value(manager.trim()),
+          location: Value(location.trim()),
+          capacityLiters: Value(capacityLiters),
+          active: Value(active),
+          notes: Value(notes.trim()),
+        ));
+    await AuditRepo(db).log(
+      action: id == null ? 'fuel.warehouse.create' : 'fuel.warehouse.update',
+      entityType: 'مستودع محروقات',
+      summary: '${id == null ? 'إضافة' : 'تعديل'} مستودع «${name.trim()}»',
+      details: {'warehouseId': newId},
+      actorEmail: actor,
+    );
+    return FuelResult(ok: true, refNo: newId);
+  }
+
+  Future<bool> _warehouseInUse(String name) async {
+    final row = await db.customSelect(
+      'SELECT 1 AS x FROM fuel_issues WHERE warehouse = ?1 '
+      'UNION ALL SELECT 1 FROM fuel_supplies WHERE warehouse = ?1 '
+      'UNION ALL SELECT 1 FROM fuel_openings WHERE warehouse = ?1 '
+      'UNION ALL SELECT 1 FROM fuel_transfers WHERE from_warehouse = ?1 '
+      'OR to_warehouse = ?1 '
+      'UNION ALL SELECT 1 FROM fuel_stocktakes WHERE warehouse = ?1 LIMIT 1',
+      variables: [Variable<String>(name)],
+    ).getSingleOrNull();
+    return row != null;
+  }
+
+  Future<FuelResult> deleteWarehouse(String id, {String actor = ''}) async {
+    final row = await (db.select(db.fuelWarehouses)
+          ..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+    if (row == null) {
+      return const FuelResult(ok: false, error: '✖ المستودع غير موجود');
+    }
+    if (await _warehouseInUse(row.name)) {
+      return const FuelResult(
+        ok: false,
+        error: '✖ لا يُحذف مستودع عليه حركة — عطّله بدل حذفه',
+      );
+    }
+    await (db.delete(db.fuelWarehouses)..where((t) => t.id.equals(id))).go();
+    await AuditRepo(db).log(
+      action: 'fuel.warehouse.delete',
+      entityType: 'مستودع محروقات',
+      summary: 'حذف مستودع محروقات «${row.name}»',
+      details: {'warehouseId': id},
+      risk: AuditRepo.riskHigh,
+      actorEmail: actor,
+    );
+    return const FuelResult(ok: true);
+  }
+
+  Future<List<FuelUnit>> units({bool onlyActive = false}) async {
+    final q = db.select(db.fuelUnits);
+    if (onlyActive) q.where((t) => t.active.equals(true));
+    final rows = await q.get();
+    rows.sort((a, b) => a.name.compareTo(b.name));
+    return rows;
+  }
+
+  Future<FuelResult> saveUnit({
+    String? id,
+    required String name,
+    String code = '',
+    String commander = '',
+    String phone = '',
+    bool active = true,
+    String notes = '',
+    String actor = '',
+  }) async {
+    if (name.trim().isEmpty) {
+      return const FuelResult(ok: false, error: '✖ اسم الوحدة مطلوب');
+    }
+    final all = await units();
+    if (all.any((u) => u.id != id && u.name.trim() == name.trim())) {
+      return const FuelResult(ok: false, error: '✖ توجد وحدة بهذا الاسم');
+    }
+    final newId = id ?? Ids.next('fun');
+    await db.into(db.fuelUnits).insertOnConflictUpdate(FuelUnitsCompanion.insert(
+          id: newId,
+          code: Value(code.trim()),
+          name: name.trim(),
+          commander: Value(commander.trim()),
+          phone: Value(phone.trim()),
+          active: Value(active),
+          notes: Value(notes.trim()),
+        ));
+    await AuditRepo(db).log(
+      action: id == null ? 'fuel.unit.create' : 'fuel.unit.update',
+      entityType: 'وحدة محروقات',
+      summary: '${id == null ? 'إضافة' : 'تعديل'} وحدة «${name.trim()}»',
+      details: {'unitId': newId},
+      actorEmail: actor,
+    );
+    return FuelResult(ok: true, refNo: newId);
+  }
+
+  Future<FuelResult> deleteUnit(String id, {String actor = ''}) async {
+    final used = await (db.select(db.fuelAllocations)
+          ..where((t) => t.unitId.equals(id))
+          ..limit(1))
+        .get();
+    if (used.isNotEmpty) {
+      return const FuelResult(
+        ok: false,
+        error: '✖ لا تُحذف وحدة لها تفريدة — عطّلها بدل حذفها',
+      );
+    }
+    await (db.delete(db.fuelUnits)..where((t) => t.id.equals(id))).go();
+    await AuditRepo(db).log(
+      action: 'fuel.unit.delete',
+      entityType: 'وحدة محروقات',
+      summary: 'حذف وحدة محروقات',
+      details: {'unitId': id},
+      risk: AuditRepo.riskHigh,
+      actorEmail: actor,
+    );
+    return const FuelResult(ok: true);
+  }
+
+  // ───────────────────────── الإعدادات
+
+  static const String settingsId = 'fuel-settings';
+
+  /// إعدادات القسم — تُنشأ بقيمها الافتراضية عند أول قراءة.
+  Future<FuelSettingsRow> settings() async {
+    final row = await (db.select(db.fuelSettingsRows)
+          ..where((t) => t.id.equals(settingsId)))
+        .getSingleOrNull();
+    if (row != null) return row;
+    await db
+        .into(db.fuelSettingsRows)
+        .insertOnConflictUpdate(
+            FuelSettingsRowsCompanion.insert(id: settingsId));
+    return (db.select(db.fuelSettingsRows)
+          ..where((t) => t.id.equals(settingsId)))
+        .getSingle();
+  }
+
+  Future<FuelResult> saveSettings({
+    required double lowStockPercent,
+    required double defaultDailyLiters,
+    required double defaultWeeklyLiters,
+    required double defaultMonthlyLiters,
+    String signOfficer = '',
+    String signSupply = '',
+    String signChief = '',
+    bool requireChassis = false,
+    bool allowExceptional = true,
+    String notes = '',
+    String actor = '',
+  }) async {
+    if (lowStockPercent < 0 || lowStockPercent > 100) {
+      return const FuelResult(
+          ok: false, error: '✖ حد التنبيه نسبة بين صفر ومئة');
+    }
+    await settings();
+    await (db.update(db.fuelSettingsRows)
+          ..where((t) => t.id.equals(settingsId)))
+        .write(FuelSettingsRowsCompanion(
+      lowStockPercent: Value(lowStockPercent),
+      defaultDailyLiters: Value(defaultDailyLiters),
+      defaultWeeklyLiters: Value(defaultWeeklyLiters),
+      defaultMonthlyLiters: Value(defaultMonthlyLiters),
+      signOfficer: Value(signOfficer.trim()),
+      signSupply: Value(signSupply.trim()),
+      signChief: Value(signChief.trim()),
+      requireChassis: Value(requireChassis),
+      allowExceptional: Value(allowExceptional),
+      notes: Value(notes.trim()),
+      updatedAt: Value(DateTime.now()),
+    ));
+    await AuditRepo(db).log(
+      action: 'fuel.settings.update',
+      entityType: 'إعدادات محروقات',
+      summary: 'تعديل إعدادات قسم المحروقات',
+      details: {'lowStockPercent': lowStockPercent},
+      risk: AuditRepo.riskHigh,
+      actorEmail: actor,
+    );
+    return const FuelResult(ok: true);
+  }
+
   // ───────────────────────── الرصيد
 
   /// مكوّنات رصيد كل نوعٍ في كل مستودع.
@@ -82,7 +319,7 @@ class FuelRepo {
   /// [upTo] يحصر الحساب بتاريخٍ فأقل — به يُقرأ الرصيد الدفتري وقت فتح الجرد
   /// لا رصيد اليوم.
   Future<List<FuelStock>> stocks({String warehouse = '', String upTo = ''}) async {
-    final warehouses = await db.select(db.warehouses).get();
+    final warehouses = await this.warehouses();
     final wanted = warehouse.trim();
     final list = wanted.isEmpty
         ? warehouses
@@ -148,7 +385,7 @@ class FuelRepo {
           transferredIn: inn,
           transferredOut: outQty,
           adjustments: adjustments,
-          capacityLiters: w.fuelCapacityLiters,
+          capacityLiters: w.capacityLiters,
         ));
       }
     }
@@ -338,6 +575,16 @@ class FuelRepo {
         error: '✖ رصيد «$warehouse» من ${FuelType.label(fuelType)} '
             '${Fuel.round(stock)} ${Fuel.unit} فقط',
       );
+    }
+
+    final conf = await settings();
+    if (conf.requireChassis && chassisNo.trim().isEmpty) {
+      return const FuelResult(
+          ok: false, error: '✖ رقم الشاصي مطلوب — اضبطه من إعدادات المحروقات');
+    }
+    if (source == FuelSource.exceptional && !conf.allowExceptional) {
+      return const FuelResult(
+          ok: false, error: '✖ الصرف الاستثنائي معطَّل في إعدادات المحروقات');
     }
 
     var entitled = 0.0;
@@ -734,8 +981,10 @@ class FuelRepo {
 
   // ───────────────────────── التنبيهات
 
-  Future<List<FuelAlert>> alerts({double lowPercent = 20}) async {
-    final out = FuelAlerts.forStocks(await stocks(), lowPercent: lowPercent);
+  /// [lowPercent] يُقرأ من إعدادات القسم ما لم يُمرَّر صراحةً.
+  Future<List<FuelAlert>> alerts({double? lowPercent}) async {
+    final threshold = lowPercent ?? (await settings()).lowStockPercent;
+    final out = FuelAlerts.forStocks(await stocks(), lowPercent: threshold);
     for (final row in await allocations(onlyActive: true)) {
       final alert = FuelAlerts.forAllocation(
         code: row.allocation.refNo.isEmpty

@@ -9,7 +9,6 @@ import '../../core/ui/imd_layout.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
-import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/fuel_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/fuel.dart';
@@ -30,7 +29,7 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
   late final FuelRepo _repo = FuelRepo(_db);
 
   List<FuelAllocationRow> _rows = const [];
-  List<BeneficiaryUnit> _units = const [];
+  List<FuelUnit> _units = const [];
 
   final _qty = TextEditingController();
   final _total = TextEditingController();
@@ -64,7 +63,7 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
 
   Future<void> _load() async {
     final rows = await _repo.allocations();
-    final units = await CatalogRepo(_db).units();
+    final units = await _repo.units(onlyActive: true);
     if (!mounted) return;
     setState(() {
       _rows = rows;

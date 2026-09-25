@@ -443,6 +443,78 @@ class AssetAssignments extends Table {
 ///
 /// المستودعات بأسمائها لا بمعرّفاتها، كما تفعل الحركات: نطاق صلاحيات المستخدم
 /// (`Perm.canWh`) يُقاس بالاسم، فتخزينه معرّفًا يعني ترجمةً في كل فحص صلاحية.
+/// v18: مستودعات المحروقات — دليلٌ مستقل عن مخازن الإعاشة.
+///
+/// **خزّان الوقود ليس مخزنًا للإعاشة.** له سعةٌ باللتر وموقعٌ يُشترط فيه
+/// البعد عن السكن، ويمسكه أمينٌ غير أمين المستودع، ويُجرد بلجنةٍ أخرى. وجمعُ
+/// الاثنين في دليلٍ واحد يجعل كل شاشة تُرشّح ما لا يخصّها، ويُدخل مخزن الطحين
+/// في قائمة «من أين نصرف الديزل؟».
+class FuelWarehouses extends Table {
+  TextColumn get id => text()();
+  TextColumn get code => text().withDefault(const Constant(''))();
+  TextColumn get name => text()();
+  TextColumn get manager => text().withDefault(const Constant(''))();
+  TextColumn get location => text().withDefault(const Constant(''))();
+
+  /// السعة باللتر — صفرٌ يعني بلا سعة معلومة، فلا تُحسب نسبة إشغال.
+  RealColumn get capacityLiters => real().withDefault(const Constant(0))();
+  BoolColumn get active => boolean().withDefault(const Constant(true))();
+  TextColumn get notes => text().withDefault(const Constant(''))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// v18: الوحدات المستفيدة من المحروقات — دليلٌ مستقل.
+///
+/// مستفيدُ الوقود ليس مستفيد الإعاشة: تلك وحداتٌ لها قوةٌ تُطعَم، وهذه جهاتٌ
+/// لها مركباتٌ تُزوَّد — وقد تكون ورشةً أو مولّدًا أو رتلًا عابرًا لا قوة له.
+class FuelUnits extends Table {
+  TextColumn get id => text()();
+  TextColumn get code => text().withDefault(const Constant(''))();
+  TextColumn get name => text()();
+  TextColumn get commander => text().withDefault(const Constant(''))();
+  TextColumn get phone => text().withDefault(const Constant(''))();
+  BoolColumn get active => boolean().withDefault(const Constant(true))();
+  TextColumn get notes => text().withDefault(const Constant(''))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// v18: إعدادات قسم المحروقات — سطرٌ واحد بمعرّف ثابت.
+///
+/// كانت الحدود والتواقيع مدفونةً في الكود، فتغييرُ حدّ التنبيه يحتاج بناءً
+/// جديدًا ونشرًا على كل جهاز. وهي إعداداتُ القسم لا إعداداتُ النظام: توقيع
+/// مسؤول المحروقات غير توقيع أمين المستودع.
+class FuelSettingsRows extends Table {
+  TextColumn get id => text()();
+
+  /// النسبة التي يُنبَّه عند بلوغها من سعة الخزّان.
+  RealColumn get lowStockPercent => real().withDefault(const Constant(20))();
+  RealColumn get defaultDailyLiters => real().withDefault(const Constant(200))();
+  RealColumn get defaultWeeklyLiters => real().withDefault(const Constant(1000))();
+  RealColumn get defaultMonthlyLiters => real().withDefault(const Constant(4000))();
+
+  /// تواقيع أوراق المحروقات.
+  TextColumn get signOfficer => text().withDefault(const Constant(''))();
+  TextColumn get signSupply => text().withDefault(const Constant(''))();
+  TextColumn get signChief => text().withDefault(const Constant(''))();
+
+  /// هل يُشترط رقم الشاصي في كل صرف؟
+  BoolColumn get requireChassis => boolean().withDefault(const Constant(false))();
+
+  /// هل يُسمح بالصرف الاستثنائي خارج التفريدة؟
+  BoolColumn get allowExceptional => boolean().withDefault(const Constant(true))();
+  TextColumn get notes => text().withDefault(const Constant(''))();
+  DateTimeColumn get updatedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// v17: تفريدة المحروقات — استحقاق وحدةٍ من الوقود في كل فترة.
 ///
 /// **وهي غير تفريدة الإعاشة.** تلك مقرَّرٌ للفرد يُضرب في القوة، وهذه مخصَّصٌ
@@ -881,6 +953,9 @@ class AppSettings extends Table {
 }
 
 @DriftDatabase(tables: [
+  FuelWarehouses,
+  FuelUnits,
+  FuelSettingsRows,
   FuelAllocations,
   FuelIssues,
   FuelSupplies,
@@ -926,7 +1001,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
 
   /// الفهارس المخدومة فعليًا بالاستعلامات: البحث بالمرجع (فتح سند من سجل
   /// المستندات)، وبالحالة (الأوامر المعلقة والمسودات)، وبالمستودع والصنف
@@ -970,6 +1045,8 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS ix_ration_kind ON ration_orders (order_kind, status)',
       'CREATE INDEX IF NOT EXISTS ix_ration_supply ON ration_orders (supplying_warehouse, status)',
       'CREATE UNIQUE INDEX IF NOT EXISTS ux_wh_limit ON warehouse_stock_limits (warehouse_id, item_id)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS ux_fuel_wh_name ON fuel_warehouses (name)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS ux_fuel_unit_name ON fuel_units (name)',
       'CREATE INDEX IF NOT EXISTS ix_fuel_issue_date ON fuel_issues (date)',
       'CREATE INDEX IF NOT EXISTS ix_fuel_issue_alloc ON fuel_issues (allocation_id)',
       'CREATE INDEX IF NOT EXISTS ix_fuel_issue_chassis ON fuel_issues (chassis_no)',
@@ -1243,6 +1320,36 @@ class AppDatabase extends _$AppDatabase {
             ]) {
               await _createIfMissing(m, t);
             }
+          }
+          // v18: فصل قسم المحروقات — دليلا مستودعاته ووحداته وإعداداته.
+          if (from < 18) {
+            for (final t in <TableInfo<Table, dynamic>>[
+              fuelWarehouses,
+              fuelUnits,
+              fuelSettingsRows,
+            ]) {
+              await _createIfMissing(m, t);
+            }
+            // ما كان يستعمل دليل الإعاشة يُنسخ إلى دليله الجديد بمعرّفه
+            // نفسه: السندات تشير إلى **الاسم**، فلو أُنشئ معرّف جديد بقيت
+            // السندات معلّقة باسمٍ لا صفَّ له في الدليل.
+            await customStatement(
+              'INSERT OR IGNORE INTO fuel_warehouses '
+              '(id, code, name, manager, location, capacity_liters, active, notes) '
+              'SELECT id, code, name, manager, location, fuel_capacity_liters, 1, notes '
+              'FROM warehouses WHERE fuel_capacity_liters > 0 '
+              'OR name IN (SELECT warehouse FROM fuel_issues) '
+              'OR name IN (SELECT warehouse FROM fuel_supplies) '
+              'OR name IN (SELECT warehouse FROM fuel_openings) '
+              'OR name IN (SELECT from_warehouse FROM fuel_transfers) '
+              'OR name IN (SELECT to_warehouse FROM fuel_transfers) '
+              'OR name IN (SELECT warehouse FROM fuel_stocktakes)',
+            );
+            await customStatement(
+              'INSERT OR IGNORE INTO fuel_units (id, code, name, active) '
+              'SELECT id, code, name, 1 FROM beneficiary_units '
+              'WHERE id IN (SELECT unit_id FROM fuel_allocations)',
+            );
           }
           // v15: إصلاح ما خلّفه تنقّل القاعدة بين نسختين مختلفتي المخطط.
           //

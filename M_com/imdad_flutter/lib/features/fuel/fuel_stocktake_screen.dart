@@ -31,7 +31,7 @@ class _FuelStocktakeScreenState extends State<FuelStocktakeScreen> {
   late final AppDatabase _db = context.read<AppDatabase>();
   late final FuelRepo _repo = FuelRepo(_db);
 
-  List<Warehouse> _warehouses = const [];
+  List<FuelWarehouse> _warehouses = const [];
   List<FuelStocktake> _takes = const [];
   List<FuelStocktakeLine> _lines = const [];
   String _openId = '';
@@ -64,7 +64,7 @@ class _FuelStocktakeScreenState extends State<FuelStocktakeScreen> {
   }
 
   Future<void> _load() async {
-    final warehouses = await _db.select(_db.warehouses).get();
+    final warehouses = await _repo.warehouses(onlyActive: true);
     final takes = await _repo.stocktakes();
     if (!mounted) return;
     setState(() {
@@ -234,8 +234,7 @@ class _FuelStocktakeScreenState extends State<FuelStocktakeScreen> {
               'المستودع *',
               ImdSelect<String>(
                 items: [
-                  for (final w in _warehouses)
-                    if (Perm.of(context).canWh(w.name)) (w.name, w.name),
+                  for (final w in _warehouses) (w.name, w.name),
                 ],
                 value: _warehouse,
                 onChanged: (v) => setState(() => _warehouse = v ?? ''),

@@ -17,6 +17,8 @@ import '../../domain/app_space.dart';
 import 'space_chooser_screen.dart';
 import '../catalog/assets_screen.dart';
 import '../fuel/fuel_allocations_screen.dart';
+import '../fuel/fuel_directories_screen.dart';
+import '../fuel/fuel_settings_screen.dart';
 import '../fuel/fuel_dashboard_screen.dart';
 import '../fuel/fuel_moves_screen.dart';
 import '../fuel/fuel_stocktake_screen.dart';
@@ -100,8 +102,8 @@ const _menu = <_MenuSection>[
   _MenuSection('basic', 'settings', 'البيانات الأساسية', [
     _MenuItem('items', 'package', 'إدارة الأصناف'),
     _MenuItem('suppliers', 'truck', 'الموردون'),
-    _MenuItem('units', 'users', 'الوحدات المستفيدة', space: AppSpace.both),
-    _MenuItem('stores', 'warehouse', 'المستودعات', space: AppSpace.both),
+    _MenuItem('units', 'users', 'الوحدات المستفيدة'),
+    _MenuItem('stores', 'warehouse', 'المستودعات'),
     _MenuItem('kitchens', 'utensils', 'المطابخ والأفران'),
     _MenuItem('assets', 'package', 'الأصول الثابتة'),
   ]),
@@ -119,6 +121,11 @@ const _menu = <_MenuSection>[
     _MenuItem('fuelAllocations', 'sliders', 'تفريدة المحروقات', space: AppSpace.fuel),
     _MenuItem('fuelMoves', 'swap', 'حركة المحروقات', space: AppSpace.fuel),
     _MenuItem('fuelStocktake', 'clipboard', 'جرد المحروقات', space: AppSpace.fuel),
+    _MenuItem('fuelWarehouses', 'warehouse', 'مستودعات المحروقات',
+        space: AppSpace.fuel),
+    _MenuItem('fuelUnits', 'users', 'وحدات المحروقات', space: AppSpace.fuel),
+    _MenuItem('fuelSettings', 'settings', 'إعدادات المحروقات',
+        space: AppSpace.fuel),
   ]),
   _MenuSection('daily', 'chart', 'التشغيل اليومي', [
     _MenuItem('feeding', 'calendar', 'التغذية اليومية (حصر القوة)'),
@@ -288,6 +295,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return const FuelMovesScreen();
       case 'fuelStocktake':
         return const FuelStocktakeScreen();
+      case 'fuelWarehouses':
+        return const FuelWarehousesScreen();
+      case 'fuelUnits':
+        return const FuelUnitsScreen();
+      case 'fuelSettings':
+        return const FuelSettingsScreen();
       case 'rationOrders':
         return const RationOrderScreen();
       case 'stores':

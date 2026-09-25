@@ -474,6 +474,48 @@ class DataExporter {
                 'createdAt': o.createdAt.toIso8601String(),
               })
           .toList(),
+      'fuelWarehouses':
+          (await _rows(db.fuelWarehouses, ids('fuel_warehouses'), (t) => t.id))
+              .map((w) => {
+                    'id': w.id,
+                    'code': w.code,
+                    'name': w.name,
+                    'manager': w.manager,
+                    'location': w.location,
+                    'capacityLiters': w.capacityLiters,
+                    'active': w.active,
+                    'notes': w.notes,
+                    'createdAt': w.createdAt.toIso8601String(),
+                  })
+              .toList(),
+      'fuelUnits': (await _rows(db.fuelUnits, ids('fuel_units'), (t) => t.id))
+          .map((u) => {
+                'id': u.id,
+                'code': u.code,
+                'name': u.name,
+                'commander': u.commander,
+                'phone': u.phone,
+                'active': u.active,
+                'notes': u.notes,
+                'createdAt': u.createdAt.toIso8601String(),
+              })
+          .toList(),
+      'fuelSettings': (await _rows(
+              db.fuelSettingsRows, ids('fuel_settings_rows'), (t) => t.id))
+          .map((x) => {
+                'id': x.id,
+                'lowStockPercent': x.lowStockPercent,
+                'defaultDailyLiters': x.defaultDailyLiters,
+                'defaultWeeklyLiters': x.defaultWeeklyLiters,
+                'defaultMonthlyLiters': x.defaultMonthlyLiters,
+                'signOfficer': x.signOfficer,
+                'signSupply': x.signSupply,
+                'signChief': x.signChief,
+                'requireChassis': x.requireChassis,
+                'allowExceptional': x.allowExceptional,
+                'notes': x.notes,
+              })
+          .toList(),
       'fuelAllocations':
           (await _rows(db.fuelAllocations, ids('fuel_allocations'), (t) => t.id))
               .map((a) => {

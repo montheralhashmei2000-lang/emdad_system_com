@@ -43,6 +43,7 @@ class AccessControl {
   /// بالضرورة أمين المستودع، وصلاحية أحدهما لا تُعطى للآخر ضمنًا.
   static const List<String> fuelPages = [
     'fuelDashboard', 'fuelAllocations', 'fuelMoves', 'fuelStocktake',
+    'fuelWarehouses', 'fuelUnits', 'fuelSettings',
   ];
 
   static const List<String> opsPages = [
@@ -97,9 +98,10 @@ class AccessControl {
         // ركن الإمداد يضع تفريدة المحروقات ويعتمد جردها — وهو من يوازن بين
         // الوحدات، فبيده توزيع الاستحقاق لا بيد من يصرفه.
         grant(fuelPages, [PermAction.view, PermAction.print, PermAction.export]),
-        grant(['fuelAllocations'], [
+        grant(['fuelAllocations', 'fuelWarehouses', 'fuelUnits'], [
           PermAction.view, PermAction.create, PermAction.edit, PermAction.delete,
         ]),
+        grant(['fuelSettings'], [PermAction.view, PermAction.edit]),
         grant(['fuelStocktake'], [PermAction.view, PermAction.approve]),
         // ركن الإمداد هو من تُرفع إليه طلبيات الإعاشة وبه تُجاز: لا تتحرك
         // إعاشةٌ بين مستودعين ولا تُطلب من جهةٍ إلا بإذنه.
