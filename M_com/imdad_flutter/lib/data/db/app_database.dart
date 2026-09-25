@@ -697,7 +697,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   /// الفهارس المخدومة فعليًا بالاستعلامات: البحث بالمرجع (فتح سند من سجل
   /// المستندات)، وبالحالة (الأوامر المعلقة والمسودات)، وبالمستودع والصنف
@@ -746,47 +746,141 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
+  /// أسماء أعمدة جدول قائم.
+  Future<Set<String>> _columnsOf(String table) async {
+    final rows = await customSelect('PRAGMA table_info("$table")').get();
+    return {for (final r in rows) r.data['name'] as String};
+  }
+
+  /// يضيف العمود إن لم يكن موجودًا.
+  ///
+  /// الترحيل لا بد أن يحتمل قاعدةً سبقت طابَعها: جهازٌ فتح نسخةً أحدث ثم
+  /// فُتحت عليه نسخةٌ أقدم يُخفَّض طابَعُه وتبقى أعمدته. فإذا رُقّي بعدها
+  /// أعاد الترحيل إضافةَ عمودٍ قائم، فتُرمى `duplicate column name` **أثناء
+  /// فتح القاعدة** — أي أن التطبيق لا يفتح أصلًا ولا يعرض خطأً مفهومًا،
+  /// ولا سبيل للمستخدم إلى إصلاحه من داخله.
+  ///
+  /// وهذا ليس فرضًا نظريًّا: وقع فعلًا عند تبادل نسختين في يوم واحد.
+  Future<void> _addCol(
+      Migrator m, TableInfo<Table, dynamic> t, GeneratedColumn c) async {
+    if ((await _columnsOf(t.actualTableName)).contains(c.name)) return;
+    await m.addColumn(t, c);
+  }
+
+  /// ينشئ الجدول إن لم يكن موجودًا — للسبب نفسه.
+  Future<void> _createIfMissing(Migrator m, TableInfo<Table, dynamic> t) async {
+    final rows = await customSelect(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+      variables: [Variable<String>(t.actualTableName)],
+    ).get();
+    if (rows.isNotEmpty) return;
+    await m.createTable(t);
+  }
+
+  /// يضمن أن كل جدول وعمود يصفه المخطط موجودٌ فعلًا في القاعدة.
+  ///
+  /// بوابات `if (from < N)` تكفي قاعدةً تدرّجت في إصداراتها بالترتيب. لكن
+  /// قاعدةً فُتحت عليها نسختان مختلفتا المخطط يُخفَّض طابَعُها ثم يُرفع، فتمرّ
+  /// البوابةُ **وهي لم تُنفَّذ قط**: يصير الطابَع 15 وفي الجدول عمودٌ ناقص.
+  /// وقتها لا يسقط الفتح بل تسقط أول قراءة، فيبدو العطل في الشاشة.
+  ///
+  /// ولذلك لا يُعتمد على الطابَع وحده: يُقارَن المخطط بالواقع عند كل فتح.
+  /// ثمنُه استعلامٌ خفيف لكل جدول، وعائدُه أن انحرافًا كهذا يُصلَح نفسه بدل
+  /// أن يترك التطبيق لا يفتح.
+  Future<int> _ensureSchema() async {
+    final m = createMigrator();
+    var added = 0;
+    for (final table in allTables) {
+      await _createIfMissing(m, table);
+      final present = await _columnsOf(table.actualTableName);
+      for (final col in table.$columns) {
+        if (present.contains(col.name)) continue;
+        // عمودٌ بلا افتراضٍ ولا قبولٍ للفراغ لا يُضاف إلى جدولٍ فيه سطور:
+        // SQLite ترفضه، وإضافته قسرًا تفسد أكثر مما تصلح.
+        if (col.defaultValue == null && !col.$nullable) continue;
+        await m.addColumn(table, col);
+        added++;
+      }
+    }
+    return added;
+  }
+
+  /// يملأ القيم الفارغة في أعمدةٍ لا تقبل الفراغ.
+  ///
+  /// قاعدةٌ تنقّلت بين نسختين مختلفتي المخطط قد تحمل `NULL` في عمودٍ يصفه
+  /// المخطط الحالي `NOT NULL`. وقتها لا يسقط الاستعلام بل **يسقط تحويل
+  /// السطر إلى كائن** عند أول قراءة — فيبدو العطل في الشاشة لا في القاعدة،
+  /// ويعجز المستخدم عن بلوغ أي زرّ لإصلاحه.
+  ///
+  /// والإصلاح يضع القيمة الافتراضية التي يصفها المخطط نفسه: فراغٌ للنص
+  /// وصفرٌ للرقم. ولا يضيع شيء — `NULL` هنا غيابُ قيمةٍ لا قيمةٌ ذات معنى.
+  Future<int> _repairNulls() async {
+    var fixed = 0;
+    for (final table in allTables) {
+      final name = table.actualTableName;
+      final present = await _columnsOf(name);
+      for (final col in table.$columns) {
+        if (col.$nullable || !present.contains(col.name)) continue;
+        final fallback = switch (col.type) {
+          DriftSqlType.string => "''",
+          DriftSqlType.bool => '0',
+          DriftSqlType.int || DriftSqlType.bigInt || DriftSqlType.double => '0',
+          _ => null,
+        };
+        if (fallback == null) continue;
+        await customStatement(
+          'UPDATE "$name" SET "${col.name}" = $fallback '
+          'WHERE "${col.name}" IS NULL',
+        );
+        fixed += await customSelect('SELECT changes() AS c')
+            .getSingle()
+            .then((r) => r.data['c'] as int);
+      }
+    }
+    return fixed;
+  }
+
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
         onUpgrade: (m, from, to) async {
           // v2: حقول الموردين وسجل التدقيق كما في نسخة الويب.
           if (from < 2) {
-            await m.addColumn(suppliers, suppliers.contact);
-            await m.addColumn(suppliers, suppliers.city);
-            await m.addColumn(beneficiaryUnits, beneficiaryUnits.category);
-            await m.addColumn(issues, issues.approvedBy);
-            await m.addColumn(issues, issues.rejectReason);
-            await m.addColumn(issues, issues.rejectedBy);
-            await m.addColumn(issues, issues.cylinderAction);
-            await m.addColumn(issues, issues.officerCount);
-            await m.addColumn(receipts, receipts.supervision);
-            await m.addColumn(receipts, receipts.audit);
-            await m.addColumn(receipts, receipts.cylinderAction);
+            await _addCol(m, suppliers, suppliers.contact);
+            await _addCol(m, suppliers, suppliers.city);
+            await _addCol(m, beneficiaryUnits, beneficiaryUnits.category);
+            await _addCol(m, issues, issues.approvedBy);
+            await _addCol(m, issues, issues.rejectReason);
+            await _addCol(m, issues, issues.rejectedBy);
+            await _addCol(m, issues, issues.cylinderAction);
+            await _addCol(m, issues, issues.officerCount);
+            await _addCol(m, receipts, receipts.supervision);
+            await _addCol(m, receipts, receipts.audit);
+            await _addCol(m, receipts, receipts.cylinderAction);
             for (final col in [
               receipts.editedBy, receipts.cancelReason, receipts.cancelledBy, receipts.prevStatus,
             ]) {
-              await m.addColumn(receipts, col);
+              await _addCol(m, receipts, col);
             }
             for (final col in [
               issues.editedBy, issues.cancelReason, issues.cancelledBy, issues.prevStatus,
             ]) {
-              await m.addColumn(issues, col);
+              await _addCol(m, issues, col);
             }
             for (final col in [
               transfers.editedBy, transfers.cancelReason, transfers.cancelledBy, transfers.prevStatus,
             ]) {
-              await m.addColumn(transfers, col);
+              await _addCol(m, transfers, col);
             }
             for (final col in [
               returns.editedBy, returns.cancelReason, returns.cancelledBy, returns.prevStatus,
             ]) {
-              await m.addColumn(returns, col);
+              await _addCol(m, returns, col);
             }
             for (final col in [
               adjustments.editedBy, adjustments.cancelReason, adjustments.cancelledBy, adjustments.prevStatus,
             ]) {
-              await m.addColumn(adjustments, col);
+              await _addCol(m, adjustments, col);
             }
             for (final col in [
               auditLogs.actorName,
@@ -798,24 +892,24 @@ class AppDatabase extends _$AppDatabase {
               auditLogs.itemCount,
               auditLogs.qty,
             ]) {
-              await m.addColumn(auditLogs, col);
+              await _addCol(m, auditLogs, col);
             }
           }
           // v3: ملاحظة المقرر في شاشة نسب الاستهلاك.
           if (from < 3) {
-            await m.addColumn(entitlements, entitlements.notes);
+            await _addCol(m, entitlements, entitlements.notes);
           }
           // v5: جدول مراجعة الأحداث الحساسة.
           if (from < 5) {
-            await m.createTable(sensitiveReviews);
+            await _createIfMissing(m, sensitiveReviews);
           }
           // v7: وحدة العرض الافتراضية في بطاقة الصنف.
           if (from < 7) {
-            await m.addColumn(items, items.reportUnit);
+            await _addCol(m, items, items.reportUnit);
           }
           // v6: ربط الوحدة بأكثر من منشأة (مطبخ وفرن معًا).
           if (from < 6) {
-            await m.addColumn(beneficiaryUnits, beneficiaryUnits.facilityIds);
+            await _addCol(m, beneficiaryUnits, beneficiaryUnits.facilityIds);
             // نقل الارتباط المفرد القديم إلى القائمة حتى لا تنقطع الاشتراكات.
             await customStatement(
               "UPDATE beneficiary_units SET facility_ids = '[\"' || facility_id || '\"]' "
@@ -833,41 +927,41 @@ class AppDatabase extends _$AppDatabase {
               stocktakes.varianceCount,
               stocktakes.adjustedCount,
             ]) {
-              await m.addColumn(stocktakes, col);
+              await _addCol(m, stocktakes, col);
             }
           }
           // v8: الأصول الثابتة وعهدها، وطلبيات الإعاشة وسطورها.
           if (from < 8) {
-            await m.createTable(assets);
-            await m.createTable(assetAssignments);
-            await m.createTable(rationOrders);
-            await m.createTable(rationOrderLines);
+            await _createIfMissing(m, assets);
+            await _createIfMissing(m, assetAssignments);
+            await _createIfMissing(m, rationOrders);
+            await _createIfMissing(m, rationOrderLines);
           }
           // v9: خطط الوجبات ومدخلاتها.
           if (from < 9) {
-            await m.createTable(mealPlans);
-            await m.createTable(mealPlanEntries);
+            await _createIfMissing(m, mealPlans);
+            await _createIfMissing(m, mealPlanEntries);
           }
           // v10: سجل حساب المعسكرات وحدود مخزونها وأرشيف التصفيات.
           if (from < 10) {
-            await m.addColumn(warehouses, warehouses.isMain);
-            await m.createTable(campLedgers);
-            await m.createTable(campStockLimits);
-            await m.createTable(monthlySettlements);
+            await _addCol(m, warehouses, warehouses.isMain);
+            await _createIfMissing(m, campLedgers);
+            await _createIfMissing(m, campStockLimits);
+            await _createIfMissing(m, monthlySettlements);
           }
           // v11: ربط المرتجع بوحدته بالمعرّف لا بالاسم.
           if (from < 11) {
-            await m.addColumn(returns, returns.beneficiaryUnitId);
-            await m.addColumn(returns, returns.beneficiaryUnitName);
+            await _addCol(m, returns, returns.beneficiaryUnitId);
+            await _addCol(m, returns, returns.beneficiaryUnitName);
           }
           // v12: صلاحية دفعات الوارد لتنبيهات قرب الانتهاء.
           if (from < 12) {
-            await m.addColumn(receipts, receipts.expiryDate);
+            await _addCol(m, receipts, receipts.expiryDate);
           }
           // v13: حالة الأسطوانات (ممتلئة/فارغة) في التحويلات والمرتجعات.
           if (from < 13) {
-            await m.addColumn(transfers, transfers.cylinderAction);
-            await m.addColumn(returns, returns.cylinderAction);
+            await _addCol(m, transfers, transfers.cylinderAction);
+            await _addCol(m, returns, returns.cylinderAction);
           }
           // v14: نوع الطلبية وجهتها ومستند تنفيذها.
           //
@@ -877,13 +971,13 @@ class AppDatabase extends _$AppDatabase {
           // النظامُ قاعدةً ينقصها جدول، ويسقط عند أول طلبية. فأُعيد ترقيمه
           // هنا فوق ما استقر.
           if (from < 14) {
-            await m.createTable(supplyAuthorities);
-            await m.addColumn(rationOrders, rationOrders.orderKind);
-            await m.addColumn(rationOrders, rationOrders.authorityId);
-            await m.addColumn(rationOrders, rationOrders.authorityName);
-            await m.addColumn(rationOrders, rationOrders.fulfillRef);
-            await m.addColumn(rationOrders, rationOrders.fulfillKind);
-            await m.addColumn(rationOrders, rationOrders.fulfillDate);
+            await _createIfMissing(m, supplyAuthorities);
+            await _addCol(m, rationOrders, rationOrders.orderKind);
+            await _addCol(m, rationOrders, rationOrders.authorityId);
+            await _addCol(m, rationOrders, rationOrders.authorityName);
+            await _addCol(m, rationOrders, rationOrders.fulfillRef);
+            await _addCol(m, rationOrders, rationOrders.fulfillKind);
+            await _addCol(m, rationOrders, rationOrders.fulfillDate);
             // الطلبيات المستلمة قبل هذا الإصدار وُلِّد لها سند استلام فعلًا،
             // فيُنقل مرجعه إلى حقل التنفيذ حتى لا تبدو بلا أثر.
             await customStatement(
@@ -891,10 +985,20 @@ class AppDatabase extends _$AppDatabase {
               "fulfill_kind = 'RECEIPT' WHERE receipt_ref <> ''",
             );
           }
+          // v15: إصلاح ما خلّفه تنقّل القاعدة بين نسختين مختلفتي المخطط.
+          //
+          // يجري بعد كل ترقية لا في هذا الإصدار وحده: الانحراف قد يتكرر كلما
+          // فُتحت نسخة أقدم على قاعدة أحدث، وثمنُ الفحص لحظةٌ عند الترقية
+          // مقابل تطبيق لا يفتح.
+          await _repairNulls();
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');
           await customStatement('PRAGMA journal_mode = WAL');
+          // المخطط يُطابَق بالواقع قبل أي شيء: الفهارس والملء الرجعي أدناه
+          // تفترض أعمدةً موجودة، وهي قد لا تكون.
+          final healed = await _ensureSchema();
+          if (healed > 0) await _repairNulls();
           await _createIndexes();
           await SyncMarks.install(this);
           await SignaturesRepo.install(this);
