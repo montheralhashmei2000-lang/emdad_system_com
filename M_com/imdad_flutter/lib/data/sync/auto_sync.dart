@@ -123,6 +123,18 @@ class AutoSyncService with ChangeNotifier {
     await refresh();
   }
 
+  /// إنهاء نظيف قبل إغلاق التطبيق — **ينتظر** إغلاق المقبس والخادم.
+  ///
+  /// [dispose] يُطلق الإغلاق بلا انتظار، وذلك يناسب تفكيك شجرة الواجهة.
+  /// أما إغلاق التطبيق فلا يناسبه: خادمٌ يستمع على منفذ ومقبسُ اكتشافٍ
+  /// مفتوح يُبقيان العملية حيّةً بعد اختفاء النافذة، فيظنّ المستخدم أن
+  /// التطبيق علّق وقد انتهى شأنه.
+  Future<void> shutdown() async {
+    _timer?.cancel();
+    _timer = null;
+    await _sync.stopReceiving();
+  }
+
   @override
   void dispose() {
     _timer?.cancel();

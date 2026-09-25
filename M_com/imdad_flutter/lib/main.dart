@@ -143,6 +143,8 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
       windowManager.addListener(this);
       // الإضافة غير مُهيّأة في بيئة الاختبار، فالفشل هنا لا يمنع التطبيق.
       windowManager.setPreventClose(true).catchError((_) {});
+      // ما يُنهى قبل الإغلاق: مؤقّت المزامنة وخادمها ومقبس اكتشافها.
+      ImdWindow.onBeforeExit = _shutdown;
     }
   }
 
@@ -153,16 +155,27 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
     super.dispose();
   }
 
+  /// إنهاء ما يُبقي العملية حيّةً بعد إغلاق النافذة.
+  ///
+  /// خادم المزامنة يستمع على منفذ، ومقبس الاكتشاف على آخر، ومؤقّتها يدور.
+  /// هدمُ النافذة وحده يترك هذه قائمةً فتتأخّر نهاية العملية ثوانيَ تبدو
+  /// تعليقًا. وكلٌّ منها يُنهى على حدة فلا يمنع تعثّرُ واحدٍ إنهاءَ الباقي.
+  Future<void> _shutdown() async {
+    try {
+      await _autoSync.shutdown();
+    } catch (_) {}
+  }
+
   @override
   void onWindowClose() async {
     if (!await windowManager.isPreventClose()) return;
     final context = imdNavigatorKey.currentContext;
     if (context == null || !context.mounted) {
-      await windowManager.destroy();
+      await ImdWindow.exit();
       return;
     }
     if (await imdConfirm(context, 'إغلاق النظام؟', ok: 'خروج')) {
-      await windowManager.destroy();
+      await ImdWindow.exit();
     }
   }
 

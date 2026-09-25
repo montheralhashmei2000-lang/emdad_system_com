@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../core/security/auth_service.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_tokens.dart';
+import '../../core/ui/imd_window.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../domain/access_control.dart';
 import '../catalog/assets_screen.dart';
@@ -323,7 +324,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             return;
           }
           if (await imdConfirm(context, 'إغلاق النظام؟', ok: 'خروج')) {
-            await SystemNavigator.pop();
+            // `SystemNavigator.pop` تُنهي تطبيق أندرويد، أما على ويندوز
+            // فتُطلب ولا يستجيب لها أحد: يظلّ المستخدم ينقر ويظنّ التطبيق
+            // معلّقًا. وهدمُ النافذة هو إنهاؤه هناك.
+            if (ImdWindow.supported) {
+              await ImdWindow.exit();
+            } else {
+              await SystemNavigator.pop();
+            }
           }
         },
         child: Scaffold(
