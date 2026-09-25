@@ -11,7 +11,6 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/repos/documents_repo.dart';
 import '../documents/doc_log_view.dart';
 import '../../data/db/app_database.dart';
-import '../../data/repos/audit_repo.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../domain/line_consolidation.dart';
@@ -622,20 +621,10 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
         refNo: _uRef,
         notes: _uNotes.text.trim(),
         createdBy: actor?.email ?? '',
+        actor: actor,
       );
       if (!mounted) return;
       if (!res.ok) return showImdToast(context, res.error);
-      await AuditRepo(_db).write('RETURN_FROM_UNIT', 'return', isGood ? 'تسجيل مرتجع من وحدة وإضافة الرصيد' : 'تسجيل مرتجع من وحدة كتالف',
-          details: {
-            'refNo': _uRef,
-            'warehouse': _uWh,
-            'target': _uUnit,
-            'status': isGood ? 'GOOD' : 'DAMAGED',
-            'itemCount': c.rows.length,
-            'totalBaseQty': c.rows.fold<double>(0, (a, b) => a + b.baseQty),
-            'risk': isGood ? 'normal' : 'sensitive',
-          },
-          actor: actor);
       if (!mounted) return;
       showImdToast(context, isGood ? '🎉 تم تسجيل المرتجع وإضافته للرصيد' : '✔ تم تسجيل المرتجع كإتلاف');
       await _fetch();
@@ -682,21 +671,10 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
         refNo: _sRef,
         notes: _sNotes.text.trim(),
         createdBy: actor?.email ?? '',
+        actor: actor,
       );
       if (!mounted) return;
       if (!res.ok) return showImdToast(context, res.error);
-      await AuditRepo(_db).write('RETURN_TO_SUPPLIER', 'return', 'تسجيل مرتجع إلى المورد وخصم الرصيد',
-          details: {
-            'refNo': _sRef,
-            'warehouse': _sWh,
-            'target': _sSup,
-            'status': 'TO_SUPPLIER',
-            'itemCount': c.rows.length,
-            'totalBaseQty': c.rows.fold<double>(0, (a, b) => a + b.baseQty),
-            'origRef': _sOrig.text.trim(),
-            'risk': 'sensitive',
-          },
-          actor: actor);
       if (!mounted) return;
       showImdToast(context, '✔ تم تسجيل مرتجع المورّد وخصم الرصيد');
       await _fetch();

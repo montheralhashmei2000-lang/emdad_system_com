@@ -583,24 +583,10 @@ class _IssueScreenState extends State<IssueScreen> {
         notes: _notes.text.trim(),
         status: status,
         createdBy: actor?.email ?? '',
+        actor: actor,
       );
       if (!mounted) return;
       if (!res.ok) return showImdToast(context, res.error);
-      await AuditRepo(_db).write(
-        status == 'COMPLETED' ? 'ISSUE_COMPLETED' : (status == 'ORDER' ? 'ISSUE_ORDER_CREATED' : 'ISSUE_DRAFT_SAVED'),
-        'issue',
-        status == 'COMPLETED' ? 'اعتماد سند صرف وخصم الرصيد' : (status == 'ORDER' ? 'إرسال أمر صرف للمستودع' : 'حفظ مسودة صرف'),
-        details: {
-          'refNo': _ref,
-          'warehouse': _wh,
-          'target': target,
-          'status': status,
-          'itemCount': c.rows.length,
-          'totalBaseQty': c.rows.fold<double>(0, (a, b) => a + b.baseQty),
-          'risk': status == 'DRAFT' ? 'normal' : 'sensitive',
-        },
-        actor: actor,
-      );
       if (!mounted) return;
       showImdToast(
           context,
@@ -1113,43 +1099,17 @@ class _IssueScreenState extends State<IssueScreen> {
 
   Future<void> _approveDraft(String k, List<Issue> g) async {
     final perm = Perm.of(context);
+    if (!perm.guard(context, 'issue', 'approve')) return;
     if (!perm.canWh(g.first.warehouse)) return showImdToast(context, Perm.scopeBlock(g.first.warehouse));
-    final need = <String, double>{};
-    for (final d in g) {
-      need[d.itemId] = (need[d.itemId] ?? 0) + d.baseQty;
-    }
-    final totals = await _moves.balances();
-    final items = {for (final i in await _db.select(_db.items).get()) i.id: i};
-    for (final e in need.entries) {
-      final bal = (items[e.key]?.qty ?? 0) + (totals[e.key] ?? 0);
-      if (bal < e.value) {
-        if (mounted) {
-          showImdToast(context, '✖ الرصيد الحالي لا يكفي لاعتماد السند بالكامل (${nf(bal)} متاح، المطلوب ${nf(e.value)})');
-        }
-        return;
-      }
-    }
-    if (!mounted || !await imdConfirm(context, 'اعتماد أمر الصرف وخصم الرصيد المخزني لجميع الأصناف؟')) return;
+    if (!await imdConfirm(context, 'اعتماد أمر الصرف وخصم الرصيد المخزني لجميع الأصناف؟')) return;
     if (!mounted) return;
     final actor = context.read<AuthService>().currentUser;
     try {
-      await _db.transaction(() async {
-        for (final d in g) {
-          await (_db.update(_db.issues)..where((t) => t.id.equals(d.id))).write(const IssuesCompanion(status: Value('COMPLETED')));
-        }
-      });
-      await AuditRepo(_db).write('ISSUE_DRAFT_APPROVED', 'issue', 'اعتماد أمر/مسودة صرف وخصم الرصيد',
-          details: {
-            'refNo': k,
-            'warehouse': g.first.warehouse,
-            'target': g.first.recipientDisplay,
-            'status': 'COMPLETED',
-            'itemCount': g.length,
-            'totalBaseQty': g.fold<double>(0, (a, b) => a + b.baseQty),
-            'risk': 'sensitive',
-          },
-          actor: actor);
-      if (mounted) showImdToast(context, '✔ اعتُمد السند وتم خصم الرصيد');
+      // فحص الرصيد والتجميد والاعتماد في مكان واحد: رصيد مستودع السند لا الإجمالي.
+      final res = await _moves.approveIssues(g, actor: actor);
+      if (!mounted) return;
+      if (!res.ok) return showImdToast(context, res.error);
+      showImdToast(context, '✔ اعتُمد السند وتم خصم الرصيد');
       await _loadDrafts();
     } catch (e) {
       if (mounted) showImdToast(context, '✖ $e');

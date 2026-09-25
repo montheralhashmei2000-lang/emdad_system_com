@@ -147,6 +147,19 @@ class MovementsRepo {
   Future<double> balanceOf(String itemId, {String? warehouse}) async =>
       (await balances(warehouse: warehouse))[itemId] ?? 0;
 
+  /// فحص كفاية رصيد مستودع واحد — قواعد `StockLedger.check` نفسها، لكن على
+  /// أرصدة [balances] المحسوبة في قاعدة البيانات بدل تحميل كل الحركات.
+  Future<StockCheck> checkStock(String warehouse, Map<String, double> requiredBaseQty) async {
+    final bal = await balances(warehouse: warehouse);
+    for (final entry in requiredBaseQty.entries) {
+      final have = bal[entry.key] ?? 0;
+      if (entry.value > have + 1e-9) {
+        return StockCheck(ok: false, itemId: entry.key, available: have, requested: entry.value);
+      }
+    }
+    return const StockCheck(ok: true);
+  }
+
   /// (المستودع، الصنف، الرصيد) لكل تركيبة لها حركة.
   Future<List<(String, String, double)>> _balanceRows() async {
     const inactive = "('DRAFT','ORDER','CANCELLED','REJECTED')";
@@ -231,6 +244,7 @@ class MovementsRepo {
     bool draft = false,
     bool replaceDraft = false,
     String createdBy = '',
+    User? actor,
   }) async {
     if (lines.isEmpty) return const SaveResult(ok: false, error: '✖ القائمة فارغة — أضف صنفًا واحدًا على الأقل');
     if (warehouse.isEmpty) return const SaveResult(ok: false, error: '✖ اختر المستودع (أو أضف واحدًا بزر ➕)');
@@ -276,6 +290,7 @@ class MovementsRepo {
       status: draft ? 'DRAFT' : 'COMPLETED',
       lines: lines,
       actorEmail: createdBy,
+      actor: actor,
     );
     return SaveResult(ok: true, refNo: ref);
   }
@@ -307,9 +322,10 @@ class MovementsRepo {
     required List<DocLineInput> lines,
     String risk = 'normal',
     String actorEmail = '',
+    User? actor,
     Map<String, dynamic> extra = const {},
   }) =>
-      AuditRepo(db).write(action, entityType, summary, actorEmail: actorEmail, details: {
+      AuditRepo(db).write(action, entityType, summary, actor: actor, actorEmail: actorEmail, details: {
         'refNo': refNo,
         'warehouse': warehouse,
         'target': target,
@@ -334,6 +350,7 @@ class MovementsRepo {
     String notes = '',
     String status = 'COMPLETED',
     String createdBy = '',
+    User? actor,
   }) async {
     if (lines.isEmpty) return const SaveResult(ok: false, error: '✖ أضف صنفًا واحدًا على الأقل');
     if (warehouse.isEmpty) return const SaveResult(ok: false, error: '✖ اختر المستودع');
@@ -341,10 +358,7 @@ class MovementsRepo {
     if (frozenMsg != null) return SaveResult(ok: false, error: frozenMsg);
 
     if (status == 'COMPLETED') {
-      final check = (await ledger()).check(
-        warehouse: warehouse,
-        requiredBaseQty: _sumByItem(lines),
-      );
+      final check = await checkStock(warehouse, _sumByItem(lines));
       if (!check.ok) {
         final item = await (db.select(db.items)..where((t) => t.id.equals(check.itemId))).getSingleOrNull();
         return SaveResult(ok: false, error: stockError(item, warehouse, check.available, check.requested));
@@ -395,6 +409,7 @@ class MovementsRepo {
       status: status,
       lines: lines,
       actorEmail: createdBy,
+      actor: actor,
       risk: (status == 'COMPLETED' || status == 'ORDER') ? 'sensitive' : 'normal',
     );
     return SaveResult(ok: true, refNo: ref);
@@ -412,6 +427,7 @@ class MovementsRepo {
     String refNo = '',
     String notes = '',
     String createdBy = '',
+    User? actor,
   }) async {
     if (lines.isEmpty) return const SaveResult(ok: false, error: 'لا توجد أصناف في السند');
     if (fromWarehouse.isEmpty || toWarehouse.isEmpty) {
@@ -421,10 +437,7 @@ class MovementsRepo {
       return const SaveResult(ok: false, error: 'لا يمكن التحويل إلى نفس المستودع');
     }
 
-    final check = (await ledger()).check(
-      warehouse: fromWarehouse,
-      requiredBaseQty: _sumByItem(lines),
-    );
+    final check = await checkStock(fromWarehouse, _sumByItem(lines));
     if (!check.ok) {
       return SaveResult(
         ok: false,
@@ -472,6 +485,7 @@ class MovementsRepo {
       status: 'PENDING',
       lines: lines,
       actorEmail: createdBy,
+      actor: actor,
       risk: 'sensitive',
     );
     return SaveResult(ok: true, refNo: ref);
@@ -523,42 +537,112 @@ class MovementsRepo {
     return filtered;
   }
 
-  /// اعتماد أمر صرف: يتحول إلى سند منصرف بعد التأكد من كفاية رصيد المستودع.
-  Future<SaveResult> approveIssueOrder(String refNo, {String approvedBy = ''}) async {
-    final rows = await (db.select(db.issues)..where((t) => t.refNo.equals(refNo))).get();
+  /// اعتماد أمر صرف بمرجعه: يتحول إلى سند منصرف بعد التأكد من كفاية رصيد المستودع.
+  Future<SaveResult> approveIssueOrder(String refNo, {String approvedBy = '', User? actor}) async {
+    final rows = await (db.select(db.issues)
+          ..where((t) => t.refNo.equals(refNo) & t.status.isIn(approvableIssueStatuses)))
+        .get();
+    if (rows.isEmpty) return const SaveResult(ok: false, error: 'أمر الصرف غير موجود');
+    return approveIssues(
+      rows,
+      approvedBy: approvedBy,
+      actor: actor,
+      action: 'ISSUE_DRAFT_APPROVED',
+      summary: 'اعتماد أمر/مسودة صرف وخصم الرصيد',
+    );
+  }
+
+  /// حالات الصرف التي تنتظر الاعتماد ولا أثر لها على الرصيد قبله.
+  static const List<String> approvableIssueStatuses = ['ORDER', 'DRAFT'];
+
+  /// اعتماد سطور أمر صرف أو مسودة صرف (مجموعة سند واحد) وخصمها من الرصيد.
+  ///
+  /// الطريق الوحيد للاعتماد من الشاشات: يرفض المستودع المجمّد بأمر جرد، ويفحص
+  /// كفاية رصيد **مستودع السند نفسه** (لا الرصيد الإجمالي لكل المستودعات)،
+  /// ويعيد الفحص والتحديث داخل معاملة واحدة حتى لا يُعتمد سندان على الرصيد نفسه.
+  /// السطور التي تغيّرت حالتها منذ عرضها (اعتُمدت أو رُفضت من جهاز آخر) لا تُمس.
+  Future<SaveResult> approveIssues(
+    List<Issue> rows, {
+    String approvedBy = '',
+    User? actor,
+    String action = 'ISSUE_DRAFT_APPROVED',
+    String summary = 'اعتماد أمر/مسودة صرف وخصم الرصيد',
+  }) async {
     if (rows.isEmpty) return const SaveResult(ok: false, error: 'أمر الصرف غير موجود');
     final warehouse = rows.first.warehouse;
-
-    final frozen = await frozenOrder(warehouse);
-    if (frozen != null) {
-      return SaveResult(ok: false, error: 'المستودع مجمّد بأمر الجرد $frozen');
+    final refNo = rows.first.refNo;
+    if (rows.any((r) => r.warehouse != warehouse)) {
+      return const SaveResult(ok: false, error: '✖ سطور السند موزعة على أكثر من مستودع — راجع السند قبل اعتماده');
     }
+    final frozen = await frozenMessage(warehouse);
+    if (frozen != null) return SaveResult(ok: false, error: frozen);
 
     final required = <String, double>{};
     for (final r in rows) {
       required[r.itemId] = _round((required[r.itemId] ?? 0) + r.baseQty);
     }
-    final check = (await ledger()).check(warehouse: warehouse, requiredBaseQty: required);
-    if (!check.ok) {
-      final item =
-          await (db.select(db.items)..where((t) => t.id.equals(check.itemId))).getSingleOrNull();
-      return SaveResult(
-        ok: false,
-        error: 'رصيد «${item?.name ?? check.itemId}» في مستودع «$warehouse» لا يكفي '
-            '(${_fmt(check.available)} متاح، المطلوب ${_fmt(check.requested)})',
-      );
+    final by = approvedBy.isNotEmpty ? approvedBy : (actor?.email ?? '');
+    String? error;
+    try {
+      error = await db.transaction<String?>(() async {
+        final check = await checkStock(warehouse, required);
+        if (!check.ok) {
+          final item =
+              await (db.select(db.items)..where((t) => t.id.equals(check.itemId))).getSingleOrNull();
+          return stockError(item, warehouse, check.available, check.requested);
+        }
+        final changed = await (db.update(db.issues)
+              ..where((t) =>
+                  t.id.isIn(rows.map((r) => r.id)) & t.status.isIn(approvableIssueStatuses)))
+            .write(IssuesCompanion(status: const Value('COMPLETED'), approvedBy: Value(by)));
+        // تغيّر السند منذ عرضه ⇒ لا اعتماد جزئي: الاستثناء يُرجع المعاملة كلها.
+        if (changed != rows.length) throw _StaleDocument();
+        return null;
+      });
+    } on _StaleDocument {
+      error = '✖ تغيّر السند منذ فتحه (اعتُمد أو رُفض) — حدّث القائمة وأعد المحاولة';
     }
+    if (error != null) return SaveResult(ok: false, error: error);
 
-    await (db.update(db.issues)..where((t) => t.refNo.equals(refNo) & t.status.equals('ORDER')))
-        .write(const IssuesCompanion(status: Value('COMPLETED')));
-    await AuditRepo(db).log(
-      action: 'issue.approve',
-      entityType: 'أمر صرف',
-      summary: 'اعتماد أمر الصرف $refNo من مستودع $warehouse',
-      details: {'refNo': refNo, 'warehouse': warehouse},
-      actorEmail: approvedBy,
-    );
+    await AuditRepo(db).write(action, 'issue', summary,
+        actor: actor,
+        actorEmail: by,
+        details: {
+          'refNo': refNo,
+          'warehouse': warehouse,
+          'target': rows.first.recipientDisplay,
+          'status': 'COMPLETED',
+          'itemCount': rows.length,
+          'totalBaseQty': rows.fold<double>(0, (a, b) => a + b.baseQty),
+          'risk': 'sensitive',
+        });
     return SaveResult(ok: true, refNo: refNo);
+  }
+
+  /// اعتماد مسودة وارد (مجموعة سند واحد) وإضافة كمياتها إلى الرصيد.
+  /// يرفض المستودع المجمّد بأمر جرد، كما يرفضه الحفظ المباشر.
+  Future<SaveResult> approveReceiptDraft(List<Receipt> rows, {User? actor}) async {
+    if (rows.isEmpty) return const SaveResult(ok: false, error: 'المسودة غير موجودة');
+    final warehouse = rows.first.warehouse;
+    final frozen = await frozenMessage(warehouse);
+    if (frozen != null) return SaveResult(ok: false, error: frozen);
+    await db.transaction(() async {
+      await (db.update(db.receipts)
+            ..where((t) => t.id.isIn(rows.map((r) => r.id)) & t.status.equals('DRAFT')))
+          .write(const ReceiptsCompanion(status: Value('COMPLETED')));
+    });
+    await AuditRepo(db).write('RECEIPT_DRAFT_APPROVED', 'receipt', 'اعتماد مسودة وارد وإضافة الرصيد',
+        actor: actor,
+        details: {
+          'refNo': rows.first.refNo,
+          'warehouse': warehouse,
+          'target': rows.first.supplier,
+          'status': 'COMPLETED',
+          'itemCount': rows.length,
+          'totalBaseQty': rows.fold<double>(0, (a, b) => a + b.baseQty),
+          'risk': 'sensitive',
+        });
+    return SaveResult(ok: true, refNo: rows.first.refNo);
   }
 
   Future<void> cancelIssueOrder(String refNo, String reason, {String cancelledBy = ''}) async {
@@ -585,6 +669,7 @@ class MovementsRepo {
     String refNo = '',
     String notes = '',
     String createdBy = '',
+    User? actor,
   }) async {
     if (lines.isEmpty) return const SaveResult(ok: false, error: '✖ أضف صنفًا واحدًا على الأقل');
     if (warehouse.isEmpty) return const SaveResult(ok: false, error: '✖ اختر المستودع');
@@ -592,10 +677,7 @@ class MovementsRepo {
     if (frozenMsg != null) return SaveResult(ok: false, error: frozenMsg);
 
     if (type == 'TO_SUPPLIER') {
-      final check = (await ledger()).check(
-        warehouse: warehouse,
-        requiredBaseQty: _sumByItem(lines),
-      );
+      final check = await checkStock(warehouse, _sumByItem(lines));
       if (!check.ok) {
         final item = await (db.select(db.items)..where((t) => t.id.equals(check.itemId))).getSingleOrNull();
         return SaveResult(
@@ -645,6 +727,7 @@ class MovementsRepo {
       lines: lines,
       risk: toSupplier || !good ? 'sensitive' : 'normal',
       actorEmail: createdBy,
+      actor: actor,
       extra: toSupplier ? {'origRef': origRef} : const {},
     );
     return SaveResult(ok: true, refNo: ref);
@@ -682,3 +765,5 @@ class MovementsRepo {
   static String _newId(String prefix) =>
       Ids.next(prefix);
 }
+
+class _StaleDocument implements Exception {}

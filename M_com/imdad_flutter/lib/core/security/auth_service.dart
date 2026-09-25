@@ -98,8 +98,11 @@ class AuthService {
       return const AuthResult(status: AuthStatus.badCredentials, message: '✖ أدخل اسم المستخدم وكلمة المرور');
     }
     final user = u.contains('@') ? u.split('@').first : u;
+    // المطابقة غير حساسة لحالة الأحرف، فالعدّاد كذلك: وإلا أخذ كل شكل للاسم
+    // (admin / Admin / ADMIN …) خمس محاولات مستقلة وسقط القفل.
+    final lockKey = user.toLowerCase();
     final prefs = await SharedPreferences.getInstance();
-    final st = _lockRead(prefs, user);
+    final st = _lockRead(prefs, lockKey);
     final now = DateTime.now().millisecondsSinceEpoch;
     if (st.until > now) {
       final remaining = Duration(milliseconds: st.until - now);
@@ -130,7 +133,7 @@ class AuthService {
       final ns = st.fails + 1 >= maxAttempts
           ? _LockState(0, now + lockDuration.inMilliseconds)
           : _LockState(st.fails + 1, 0);
-      await _lockStore(prefs, user, ns);
+      await _lockStore(prefs, lockKey, ns);
       if (ns.until > now) {
         return const AuthResult(
           status: AuthStatus.locked,
@@ -158,7 +161,7 @@ class AuthService {
       );
     }
 
-    await _lockStore(prefs, user, const _LockState(0, 0));
+    await _lockStore(prefs, lockKey, const _LockState(0, 0));
     await _startSession(found);
     return AuthResult(status: AuthStatus.ok, user: found, message: '🌐 تم الدخول محليًا (بدون إنترنت)');
   }

@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/security/auth_service.dart';
 import '../../core/security/perm.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
@@ -58,33 +59,18 @@ class _PendingScreenState extends State<PendingScreen> {
   }
 
   Future<void> _approve(String k, List<Issue> g) async {
-    final need = <String, double>{};
-    for (final d in g) {
-      need[d.itemId] = (need[d.itemId] ?? 0) + d.baseQty;
-    }
-    // الويب يفحص رصيد الصنف الإجمالي (items.qty) لا رصيد المستودع.
-    final totals = await MovementsRepo(_db).balances();
-    final items = {for (final i in await _db.select(_db.items).get()) i.id: i};
-    for (final e in need.entries) {
-      final bal = (items[e.key]?.qty ?? 0) + (totals[e.key] ?? 0);
-      if (bal < e.value) {
-        if (mounted) {
-          showImdToast(context, '✖ الرصيد الحالي لا يكفي لاعتماد الأمر بالكامل (${nf(bal)} متاح، المطلوب ${nf(e.value)})');
-        }
-        return;
-      }
-    }
-    if (!mounted || !await imdConfirm(context, 'اعتماد أمر الصرف «$k» وخصم الكميات من الرصيد؟')) return;
+    final perm = Perm.of(context);
+    if (!perm.guard(context, 'pendingOrders', 'approve')) return;
+    if (!perm.canWh(g.first.warehouse)) return showImdToast(context, Perm.scopeBlock(g.first.warehouse));
+    if (!await imdConfirm(context, 'اعتماد أمر الصرف «$k» وخصم الكميات من الرصيد؟')) return;
     if (!mounted) return;
-    final by = Perm.of(context).email;
+    final actor = context.read<AuthService>().currentUser;
     try {
-      await _db.transaction(() async {
-        for (final d in g) {
-          await (_db.update(_db.issues)..where((t) => t.id.equals(d.id)))
-              .write(IssuesCompanion(status: const Value('COMPLETED'), approvedBy: Value(by)));
-        }
-      });
+      // رصيد مستودع الأمر نفسه (لا مجموع كل المستودعات)، مع منع المستودع المجمّد بأمر جرد.
+      final res = await MovementsRepo(_db).approveIssues(g,
+          actor: actor, action: 'ISSUE_DRAFT_APPROVED', summary: 'اعتماد أمر صرف معلّق وخصم الرصيد');
       if (!mounted) return;
+      if (!res.ok) return showImdToast(context, res.error);
       showImdToast(context, '✔ اعتُمد الأمر وتم خصم الرصيد');
       await _load();
     } catch (e) {
@@ -93,6 +79,9 @@ class _PendingScreenState extends State<PendingScreen> {
   }
 
   Future<void> _reject(List<Issue> g) async {
+    final perm = Perm.of(context);
+    if (!perm.guard(context, 'pendingOrders', 'approve')) return;
+    if (!perm.canWh(g.first.warehouse)) return showImdToast(context, Perm.scopeBlock(g.first.warehouse));
     final reason = await imdPrompt(context, 'سبب رفض الأمر:');
     if (reason == null || reason.trim().isEmpty || !mounted) return;
     final by = Perm.of(context).email;

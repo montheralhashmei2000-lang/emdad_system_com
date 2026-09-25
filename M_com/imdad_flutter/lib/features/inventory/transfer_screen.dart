@@ -355,20 +355,10 @@ class _TransferScreenState extends State<TransferScreen> {
         refNo: _ref,
         notes: _notes.text.trim(),
         createdBy: actor?.email ?? '',
+        actor: actor,
       );
       if (!mounted) return;
       if (!res.ok) return showImdToast(context, res.error);
-      await AuditRepo(_db).write('TRANSFER_SENT', 'transfer', 'إرسال تحويل مخزني معلق',
-          details: {
-            'refNo': _ref,
-            'warehouse': _from,
-            'target': _to,
-            'status': 'PENDING',
-            'itemCount': c.rows.length,
-            'totalBaseQty': c.rows.fold<double>(0, (a, b) => a + b.baseQty),
-            'risk': 'sensitive',
-          },
-          actor: actor);
       if (!mounted) return;
       showImdToast(context, '📤 أُرسل أمر التحويل — بانتظار تأكيد الاستلام من «$_to»');
       await _form();
@@ -731,6 +721,10 @@ class _TransferScreenState extends State<TransferScreen> {
     // النطاق: الاستلام يتطلب أن يكون مستودع الوصول ضمن نطاق المستخدم.
     final perm = Perm.of(context);
     if (!perm.canWh(g.first.destWarehouse)) return showImdToast(context, Perm.scopeBlock(g.first.destWarehouse));
+    // الاستلام يزيد رصيد المستودع الهدف، فيُمنع إن كان مجمّدًا بأمر جرد كبقية الحركات.
+    final frozen = await _moves.frozenMessage(g.first.destWarehouse);
+    if (!mounted) return;
+    if (frozen != null) return showImdToast(context, frozen);
     if (!await imdConfirm(context, 'تأكيد استلام التحويل «$k» في المستودع الهدف؟')) return;
     if (!mounted) return;
     final actor = context.read<AuthService>().currentUser;

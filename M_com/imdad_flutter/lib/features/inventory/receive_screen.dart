@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -342,24 +341,10 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
         draft: draft,
         replaceDraft: _loadedDraftRef == _ref,
         createdBy: actor?.email ?? '',
+        actor: actor,
       );
       if (!mounted) return;
       if (!res.ok) return showImdToast(context, res.error);
-      await AuditRepo(_db).write(
-        draft ? 'RECEIPT_DRAFT_SAVED' : 'RECEIPT_COMPLETED',
-        'receipt',
-        draft ? 'حفظ مسودة سند وارد' : 'اعتماد سند وارد',
-        details: {
-          'refNo': _ref,
-          'warehouse': _wh,
-          'target': _sup,
-          'status': draft ? 'DRAFT' : 'COMPLETED',
-          'itemCount': c.rows.length,
-          'totalBaseQty': c.rows.fold<double>(0, (a, b) => a + b.baseQty),
-          'risk': 'normal',
-        },
-        actor: actor,
-      );
       if (!mounted) return;
       _loadedDraftRef = '';
       showImdToast(context, draft ? '💾 حُفظت المسودة — لم تُؤثر على الأرصدة' : '🎉 تم الاستلام وإضافة الأرصدة بنجاح');
@@ -739,28 +724,16 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
   }
 
   Future<void> _approveDraft(String k, List<Receipt> g) async {
+    if (!Perm.of(context).guard(context, 'receive', 'approve')) return;
     if (!await _scopeOk(g.first.warehouse) || !mounted) return;
     if (!await imdConfirm(context, 'اعتماد المسودة $k وإضافة أرصدتها إلى الأصناف؟')) return;
     if (!mounted) return;
     final actor = context.read<AuthService>().currentUser;
     try {
-      await _db.transaction(() async {
-        for (final d in g) {
-          await (_db.update(_db.receipts)..where((t) => t.id.equals(d.id))).write(const ReceiptsCompanion(status: Value('COMPLETED')));
-        }
-      });
-      await AuditRepo(_db).write('RECEIPT_DRAFT_APPROVED', 'receipt', 'اعتماد مسودة وارد وإضافة الرصيد',
-          details: {
-            'refNo': k,
-            'warehouse': g.first.warehouse,
-            'target': g.first.supplier,
-            'status': 'COMPLETED',
-            'itemCount': g.length,
-            'totalBaseQty': g.fold<double>(0, (a, b) => a + b.baseQty),
-            'risk': 'sensitive',
-          },
-          actor: actor);
-      if (mounted) showImdToast(context, '🎉 اعتُمدت المسودة وأُضيف الرصيد');
+      final res = await _moves.approveReceiptDraft(g, actor: actor);
+      if (!mounted) return;
+      if (!res.ok) return showImdToast(context, res.error);
+      showImdToast(context, '🎉 اعتُمدت المسودة وأُضيف الرصيد');
     } catch (e) {
       if (mounted) showImdToast(context, '✖ $e');
       return;
