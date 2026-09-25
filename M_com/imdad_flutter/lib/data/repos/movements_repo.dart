@@ -187,9 +187,9 @@ class MovementsRepo {
         SELECT warehouse, item_id, base_qty FROM receipts
           WHERE status NOT IN $inactive AND cylinder_action <> 'REFILL'
         UNION ALL
-        -- الاستبدال لا ينقص العدد: فارغة تدخل وممتلئة تخرج.
+        -- الاستبدال والإرسال للتعبئة لا ينقصان العدد: الأسطوانة باقية ملك المستودع.
         SELECT warehouse, item_id, -base_qty FROM issues
-          WHERE status NOT IN $inactive AND cylinder_action <> 'EXCHANGE'
+          WHERE status NOT IN $inactive AND cylinder_action NOT IN ('EXCHANGE','SEND_REFILL')
         UNION ALL
         SELECT warehouse, item_id, base_qty FROM adjustments
           WHERE status NOT IN $inactive
@@ -516,6 +516,7 @@ class MovementsRepo {
               notes: Value(l.notes.isEmpty ? notes : l.notes),
               createdBy: Value(createdBy),
               destWarehouse: Value(toWarehouse),
+              cylinderAction: Value(l.cylinderAction),
               campId: Value(campId),
               campName: Value(campName),
               strength: Value(strength),
@@ -763,6 +764,7 @@ class MovementsRepo {
                   Value(beneficiaryUnitName.isEmpty ? party : beneficiaryUnitName),
               condition: Value(condition),
               origRef: Value(origRef),
+              cylinderAction: Value(l.cylinderAction),
             ));
       }
     });

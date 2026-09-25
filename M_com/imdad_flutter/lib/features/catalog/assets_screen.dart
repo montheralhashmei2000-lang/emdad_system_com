@@ -14,8 +14,13 @@ import '../../data/repos/assets_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/assets.dart';
 import 'asset_barcode_sheet.dart';
+import 'cylinders_view.dart';
 
-/// الأصول الثابتة: المطابخ والأفران والمعدات وعهدها.
+/// الأصول الثابتة: المطابخ والأفران والمعدات وعهدها، وتبويب «الأسطوانات».
+///
+/// الأسطوانات ليست أصولًا بأرقام تسلسلية: تُعدّ بالكمية وتدور بين الامتلاء
+/// والفراغ والمستودعات والعهد عبر سندات الحركة، فلها تبويب يعرض موقفها
+/// المحسوب من تلك السندات ([CylindersView]) لا سجلٌّ يدوي ثانٍ.
 ///
 /// بنية الشاشة كبقية شاشات التعريف (المستودعات، الأصناف): شريط بحث وإحصاءات،
 /// ثم نموذج إلى جانب جدول. ولا `Scaffold` ولا `AppBar`: الشاشة تعيش داخل
@@ -58,6 +63,21 @@ class _AssetsScreenState extends State<AssetsScreen> {
   String _filterStatus = '';
   String? _editId;
   bool _loading = true;
+
+  /// assets | cylinders
+  String _tab = 'assets';
+
+  static const _tabs = [
+    ImdTab('assets', 'المعدات والأصول', icon: 'package'),
+    ImdTab('cylinders', 'الأسطوانات', icon: 'database'),
+  ];
+
+  static const _title = ImdPageTitle(
+    title: 'الأصول الثابتة',
+    icon: 'package',
+    subtitle: 'المطابخ والأفران والمعدات والآليات: اقتناؤها وعمرها الافتراضي وعهدها '
+        'لدى الوحدات المستفيدة — وموقف الأسطوانات ممتلئةً وفارغةً وعهدةً',
+  );
 
   @override
   void initState() {
@@ -281,6 +301,10 @@ class _AssetsScreenState extends State<AssetsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tabs = ImdPillTabs<String>(value: _tab, onChanged: (t) => setState(() => _tab = t), tabs: _tabs);
+    if (_tab == 'cylinders') {
+      return ImdPage(children: [_title, tabs, const CylindersView()]);
+    }
     if (_loading) {
       return const ImdPage(children: [
         ImdPageTitle(title: 'الأصول الثابتة', icon: 'package'),
@@ -313,12 +337,8 @@ class _AssetsScreenState extends State<AssetsScreen> {
     final cur = _rows.where((a) => a.id == _editId).firstOrNull;
 
     return ImdPage(children: [
-      const ImdPageTitle(
-        title: 'الأصول الثابتة',
-        icon: 'package',
-        subtitle: 'المطابخ والأفران والمعدات والآليات: اقتناؤها وعمرها الافتراضي وعهدها '
-            'لدى الوحدات المستفيدة',
-      ),
+      _title,
+      tabs,
       ImdKpis(children: [
         ImdKpi(label: 'إجمالي الأصول', value: nf(_rows.length)),
         ImdKpi(

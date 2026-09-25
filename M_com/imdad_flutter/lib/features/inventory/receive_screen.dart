@@ -15,6 +15,7 @@ import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/documents_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../domain/line_consolidation.dart';
+import '../../domain/cylinders.dart';
 import '../documents/doc_log_view.dart';
 import 'doc_kit.dart';
 
@@ -696,7 +697,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
           ImdCyBox(
             label: '🛢️ صنف قابل للتعبئة — نوع العملية:',
             value: r.cy,
-            options: const [('RECEIVE_FULL', 'توريد ممتلئ'), ('RECEIVE_EMPTY', 'توريد فارغ'), ('REFILL', 'تعبئة')],
+            options: CylAction.receiveOptions,
             onChanged: (v) => setState(() => r.cy = v),
           ),
       ]),

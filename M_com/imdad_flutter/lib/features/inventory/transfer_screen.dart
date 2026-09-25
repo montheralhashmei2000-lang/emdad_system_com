@@ -20,6 +20,7 @@ import '../../data/repos/daily_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../domain/line_consolidation.dart';
 import '../../domain/strength.dart';
+import '../../domain/cylinders.dart';
 import 'doc_kit.dart';
 
 /// التحويل المخزني — نقل مطابق لـ `renderTransfer()`: إرسال تحويل جديد (مع الاحتساب التلقائي
@@ -32,11 +33,14 @@ class TransferScreen extends StatefulWidget {
 }
 
 class _Row {
-  _Row({this.itemId = '', this.unit = '', double? qty, this.noAuto = false})
+  _Row({this.itemId = '', this.unit = '', double? qty, this.noAuto = false, this.cy = CylAction.transferFull})
       : qty = TextEditingController(text: qty == null ? '' : _num(qty));
   String itemId;
   String unit;
   final TextEditingController qty;
+
+  /// حالة الأسطوانات المحوَّلة (للأصناف القابلة للتعبئة).
+  String cy;
   bool noAuto;
   final key = UniqueKey();
 }
@@ -64,14 +68,17 @@ class _TransferScreenState extends State<TransferScreen> {
     final consolidated = consolidateLines([
       for (final r in complete)
         LineQty(
-          groupKey: r.itemId,
+          // الممتلئة والفارغة لا تُدمجان في سطر واحد.
+          groupKey: '${r.itemId}|${_item(r.itemId)!.isRefillable ? r.cy : ''}',
           unitName: r.unit,
           factor: _catalog.factorOf(_item(r.itemId)!, r.unit),
           qty: double.parse(r.qty.text.trim()),
         ),
     ]);
 
-    final before = [for (final r in complete) '${r.itemId}|${r.unit}|${r.qty.text.trim()}'];
+    final before = [
+      for (final r in complete) '${r.itemId}|${_item(r.itemId)!.isRefillable ? r.cy : ''}|${r.unit}|${r.qty.text.trim()}'
+    ];
     final after = [for (final l in consolidated) '${l.groupKey}|${l.unitName}|${_num(l.qty)}'];
     if (before.join('§') == after.join('§')) return;
 
@@ -83,7 +90,13 @@ class _TransferScreenState extends State<TransferScreen> {
         ..clear()
         ..addAll([
           for (final l in consolidated)
-            _Row(itemId: l.groupKey, unit: l.unitName, qty: l.qty, noAuto: true),
+            _Row(
+              itemId: l.groupKey.split('|')[0],
+              unit: l.unitName,
+              qty: l.qty,
+              noAuto: true,
+              cy: l.groupKey.split('|')[1].isEmpty ? CylAction.transferFull : l.groupKey.split('|')[1],
+            ),
           ...pending,
         ]);
       if (_rows.isEmpty) _rows.add(_Row());
@@ -230,6 +243,7 @@ class _TransferScreenState extends State<TransferScreen> {
         unitName: r.unit,
         factor: _catalog.factorOf(it, r.unit),
         qty: qty,
+        cylinderAction: it.isRefillable ? r.cy : '',
       ));
     }
     return (rows: rows, err: '');
@@ -655,10 +669,19 @@ class _TransferScreenState extends State<TransferScreen> {
         }),
       ),
     );
+    final cyBox = it != null && it.isRefillable
+        ? ImdCyBox(
+            label: '🛢️ أسطوانات — حالتها عند التحويل:',
+            value: r.cy,
+            options: CylAction.transferOptions,
+            onChanged: (v) => setState(() => r.cy = v),
+          )
+        : null;
     return ImdRvRow(
       index: index,
       trailing: _baseHint(r),
-      child: narrow
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        narrow
           ? Column(children: [
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: picker), const SizedBox(width: 10), Expanded(child: unit)]),
               const SizedBox(height: 10),
@@ -673,6 +696,8 @@ class _TransferScreenState extends State<TransferScreen> {
               const SizedBox(width: 10),
               del,
             ]),
+        if (cyBox != null) cyBox,
+      ]),
     );
   }
 

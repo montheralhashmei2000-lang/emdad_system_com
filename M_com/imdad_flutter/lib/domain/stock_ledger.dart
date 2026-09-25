@@ -5,6 +5,8 @@
 /// المسودات والأوامر المعلقة والملغاة والمرفوضة لا تدخل في الحساب.
 library;
 
+import 'cylinders.dart';
+
 enum MovementKind {
   opening,
   receipt,
@@ -46,11 +48,9 @@ class MovementRecord {
   /// الأسطوانة أصل ثابت: تدخل جديدة مرة واحدة، وما بعدها تعبئة أو استبدال —
   /// الأسطوانة نفسها تخرج فارغة وتعود ممتلئة فلا يتغيّر عددها. كان النظام
   /// يضيف كل توريد إلى الرصيد فينتفخ عدد الأسطوانات مع كل تعبئة.
-  bool get changesCount => switch (cylinderAction) {
-        'REFILL' => false, // توريد تعبئة: أسطوانات موجودة أصلًا عادت ممتلئة
-        'EXCHANGE' => false, // استبدال: فارغة تدخل وممتلئة تخرج، والعدد ثابت
-        _ => true,
-      };
+  ///
+  /// والإرسال للتعبئة كذلك: الأسطوانة تبقى ملك المستودع وهي عند المورد (انظر `CylAction.countNeutral` و`CylinderPosition`).
+  bool get changesCount => !CylAction.countNeutral.contains(cylinderAction);
 
   static const Set<String> inactiveStatuses = {'DRAFT', 'ORDER', 'CANCELLED', 'REJECTED'};
 

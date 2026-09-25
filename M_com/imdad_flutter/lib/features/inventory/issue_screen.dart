@@ -22,6 +22,7 @@ import '../../domain/line_consolidation.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../domain/issue_rules.dart';
 import '../../domain/strength.dart';
+import '../../domain/cylinders.dart';
 import 'doc_kit.dart';
 import 'issue_drafts_view.dart';
 
@@ -1019,7 +1020,7 @@ class _IssueScreenState extends State<IssueScreen> {
           ImdCyBox(
             label: '🛢️ صنف قابل للتعبئة/الاستبدال — العملية:',
             value: r.cy,
-            options: const [('EXCHANGE', 'استبدال أسطوانات'), ('ISSUE_FULL', 'صرف ممتلئ'), ('ISSUE_EMPTY', 'صرف فارغ'), ('CONSUME', 'استهلاك داخلي')],
+            options: CylAction.issueOptions,
             onChanged: (v) => setState(() => r.cy = v),
           ),
         Padding(

@@ -188,6 +188,8 @@ class Transfers extends Table with MovementColumns {
   RealColumn get strength => real().withDefault(const Constant(0))();
   IntColumn get durationDays => integer().withDefault(const Constant(1))();
   TextColumn get rejectReason => text().withDefault(const Constant(''))();
+  // v13: حالة الأسطوانات المحوَّلة: TRANSFER_FULL | TRANSFER_EMPTY (فارغ لغيرها).
+  TextColumn get cylinderAction => text().withDefault(const Constant(''))();
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -205,6 +207,8 @@ class Returns extends Table with MovementColumns {
   TextColumn get type => text().withDefault(const Constant('FROM_UNIT'))(); // FROM_UNIT | TO_SUPPLIER
   TextColumn get condition => text().withDefault(const Constant('صالحة'))();
   TextColumn get origRef => text().withDefault(const Constant(''))();
+  // v13: حالة الأسطوانات المرتجعة: RETURN_FULL | RETURN_EMPTY (فارغ لغيرها).
+  TextColumn get cylinderAction => text().withDefault(const Constant(''))();
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -652,7 +656,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   /// الفهارس المخدومة فعليًا بالاستعلامات: البحث بالمرجع (فتح سند من سجل
   /// المستندات)، وبالحالة (الأوامر المعلقة والمسودات)، وبالمستودع والصنف
@@ -816,6 +820,11 @@ class AppDatabase extends _$AppDatabase {
           // v12: صلاحية دفعات الوارد لتنبيهات قرب الانتهاء.
           if (from < 12) {
             await m.addColumn(receipts, receipts.expiryDate);
+          }
+          // v13: حالة الأسطوانات (ممتلئة/فارغة) في التحويلات والمرتجعات.
+          if (from < 13) {
+            await m.addColumn(transfers, transfers.cylinderAction);
+            await m.addColumn(returns, returns.cylinderAction);
           }
         },
         beforeOpen: (details) async {

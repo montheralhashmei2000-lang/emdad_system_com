@@ -220,6 +220,7 @@ class DataExporter {
                 'strength': t.strength,
                 'durationDays': t.durationDays,
                 'rejectReason': t.rejectReason,
+                'cylinderAction': t.cylinderAction,
                 ..._edits(t.editCount, t.editLog, t.editedBy, t.cancelReason, t.cancelledBy, t.prevStatus),
               })
           .toList(),
@@ -248,6 +249,7 @@ class DataExporter {
                 'beneficiaryUnitName': r.beneficiaryUnitName,
                 'condition': r.condition,
                 'origRef': r.origRef,
+                'cylinderAction': r.cylinderAction,
                 ..._edits(r.editCount, r.editLog, r.editedBy, r.cancelReason, r.cancelledBy, r.prevStatus),
               })
           .toList(),

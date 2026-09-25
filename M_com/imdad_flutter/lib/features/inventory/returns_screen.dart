@@ -14,6 +14,7 @@ import '../../data/db/app_database.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../domain/line_consolidation.dart';
+import '../../domain/cylinders.dart';
 import 'doc_kit.dart';
 
 /// المرتجعات — نقل مطابق لـ `renderReturns()`: مرتجع من وحدة (صالح يُعاد للرصيد أو تالف توثيقي)،
@@ -30,6 +31,9 @@ class _Row {
   String itemId;
   String unit;
   final TextEditingController qty;
+
+  /// حالة الأسطوانات المرتجعة (للأصناف القابلة للتعبئة) — العهدة تعود فارغة غالبًا.
+  String cy = CylAction.returnEmpty;
   final key = UniqueKey();
 }
 
@@ -248,6 +252,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
         unitName: r.unit,
         factor: f,
         qty: qty,
+        cylinderAction: it.isRefillable ? r.cy : '',
       ));
     }
     return (rows: out, err: '');
@@ -540,10 +545,19 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
         }),
       ),
     );
+    final cyBox = it != null && it.isRefillable
+        ? ImdCyBox(
+            label: '🛢️ أسطوانات — حالتها عند الإرجاع:',
+            value: r.cy,
+            options: CylAction.returnOptions,
+            onChanged: (v) => setState(() => r.cy = v),
+          )
+        : null;
     return ImdRvRow(
       index: index,
       trailing: _baseHint(r),
-      child: narrow
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        narrow
           ? Column(children: [
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: picker), const SizedBox(width: 10), Expanded(child: unit)]),
               const SizedBox(height: 10),
@@ -558,6 +572,8 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
               const SizedBox(width: 10),
               del,
             ]),
+        if (cyBox != null) cyBox,
+      ]),
     );
   }
 

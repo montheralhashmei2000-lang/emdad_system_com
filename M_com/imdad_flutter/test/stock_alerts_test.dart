@@ -134,7 +134,7 @@ void main() {
     });
   });
 
-  test('الترقية من v11 تضيف عمود الصلاحية ولا تمس السندات القائمة', () async {
+  test('الترقية من v11 تضيف أعمدة v12 وv13 ولا تمس السندات القائمة', () async {
     final dir = await Directory.systemTemp.createTemp('imdad_mig');
     addTearDown(() => dir.delete(recursive: true));
     final file = File('${dir.path}/db.sqlite');
@@ -143,6 +143,9 @@ void main() {
     final v8 = AppDatabase.forTesting(NativeDatabase(file));
     await v8.customStatement("INSERT INTO receipts (id, ref_no, base_qty) VALUES ('r1', 'و-000001', 4)");
     await v8.customStatement('ALTER TABLE receipts DROP COLUMN expiry_date');
+    // وأعمدة v13 (حالة الأسطوانات في التحويل والمرتجع): الترقية تمر بالخطوتين.
+    await v8.customStatement('ALTER TABLE transfers DROP COLUMN cylinder_action');
+    await v8.customStatement('ALTER TABLE "returns" DROP COLUMN cylinder_action');
     await v8.customStatement('PRAGMA user_version = 11');
     await v8.close();
 
@@ -151,5 +154,7 @@ void main() {
     final r = await upgraded.select(upgraded.receipts).getSingle();
     expect(r.refNo, 'و-000001');
     expect(r.expiryDate, '');
+    await upgraded.customStatement("INSERT INTO transfers (id, cylinder_action) VALUES ('t1', 'TRANSFER_FULL')");
+    expect((await upgraded.select(upgraded.transfers).getSingle()).cylinderAction, 'TRANSFER_FULL');
   });
 }

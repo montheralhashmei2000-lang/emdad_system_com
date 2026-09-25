@@ -275,9 +275,7 @@ class DocumentsRepo {
               notes: r.notes as String,
               beneficiaryUnitId: kind == DocKind.issue ? r.beneficiaryUnitId as String : '',
               beneficiaryUnitName: kind == DocKind.issue ? r.beneficiaryUnitName as String : '',
-              cylinderAction: kind == DocKind.issue || kind == DocKind.receipt
-                  ? r.cylinderAction as String
-                  : '',
+              cylinderAction: r.cylinderAction as String,
             ))
         .toList();
   }
@@ -483,6 +481,7 @@ class DocumentsRepo {
                   campName: Value(o.campName),
                   strength: Value(o.strength),
                   durationDays: Value(o.durationDays),
+                  cylinderAction: Value(r.cylinderAction),
                 ));
           case DocKind.returnDoc:
             final o = head as Return;
@@ -509,6 +508,10 @@ class DocumentsRepo {
                   type: Value(o.type),
                   condition: Value(o.condition),
                   origRef: Value(o.origRef),
+                  // التعديل يعيد إنشاء السطور: ما لم يُنقل هنا يضيع، ومنه ربط الوحدة (v11).
+                  beneficiaryUnitId: Value(o.beneficiaryUnitId),
+                  beneficiaryUnitName: Value(o.beneficiaryUnitName),
+                  cylinderAction: Value(r.cylinderAction),
                 ));
         }
       }
