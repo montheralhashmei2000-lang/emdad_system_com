@@ -429,6 +429,28 @@ class AssetAssignments extends Table {
 ///
 /// المستودعات بأسمائها لا بمعرّفاتها، كما تفعل الحركات: نطاق صلاحيات المستخدم
 /// (`Perm.canWh`) يُقاس بالاسم، فتخزينه معرّفًا يعني ترجمةً في كل فحص صلاحية.
+/// v14: الجهات التي يُطلب منها — لا مستودعات ولا موردون.
+///
+/// المخزن الرئيسي لا يطلب من مستودعٍ آخر: يطلب من **جهة** في تسلسل الفرقة —
+/// ركن الإمداد أو رئيس الشعبة أو قائد الفرقة. وهذه ليست طرفًا مخزنيًّا، فلا
+/// رصيد لها ولا حركة عليها؛ ولذلك جدولٌ مستقل لا صفٌّ في [Warehouses].
+///
+/// ولأنها تُدار من الأدلة لا من الكود، تُضاف جهةٌ أو يُغيَّر مسمّاها بلا
+/// تحديثٍ للبرنامج — وتُزامَن كبقية الأدلة.
+class SupplyAuthorities extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+
+  /// المسمّى الوظيفي إن اختلف عن الاسم (مثل «ركن إمداد الفرقة»).
+  TextColumn get title => text().withDefault(const Constant(''))();
+  TextColumn get notes => text().withDefault(const Constant(''))();
+  BoolColumn get active => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class RationOrders extends Table {
   TextColumn get id => text()();
   TextColumn get refNo => text().withDefault(const Constant(''))();
@@ -449,6 +471,24 @@ class RationOrders extends Table {
   /// مرجع سند الاستلام الذي وُلّد عند استلام الطلبية — به يُربط الطلب بأثره
   /// المخزني، فلا تبقى الطلبية ورقةً بلا حركة.
   TextColumn get receiptRef => text().withDefault(const Constant(''))();
+
+  /// v14: نوع الطلبية — `MAIN` أو `BRANCH` (انظر `RationKind`).
+  ///
+  /// الافتراضي `BRANCH` لأن كل ما سبق هذا العمود كان بين مستودعين.
+  TextColumn get orderKind => text().withDefault(const Constant('BRANCH'))();
+
+  /// v14: الجهة المطلوب منها — لطلبية المخزن الرئيسي وحدها.
+  TextColumn get authorityId => text().withDefault(const Constant(''))();
+  TextColumn get authorityName => text().withDefault(const Constant(''))();
+
+  /// v14: المستند الذي نُفِّذت به الطلبية — سند التحويل للفرعي، وسند التوريد
+  /// للرئيسي. **الطلبية نفسها لا تحرّك مخزونًا**، وهذا الحقل هو كل صلتها به:
+  /// به تُطابَق لاحقًا ويُعرف ما وصل مما طُلب.
+  TextColumn get fulfillRef => text().withDefault(const Constant(''))();
+
+  /// `TRANSFER` | `RECEIPT`
+  TextColumn get fulfillKind => text().withDefault(const Constant(''))();
+  TextColumn get fulfillDate => text().withDefault(const Constant(''))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().nullable()();
 
@@ -620,6 +660,7 @@ class AppSettings extends Table {
 }
 
 @DriftDatabase(tables: [
+  SupplyAuthorities,
   Users,
   Categories,
   Items,
@@ -656,7 +697,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   /// الفهارس المخدومة فعليًا بالاستعلامات: البحث بالمرجع (فتح سند من سجل
   /// المستندات)، وبالحالة (الأوامر المعلقة والمسودات)، وبالمستودع والصنف
@@ -697,6 +738,8 @@ class AppDatabase extends _$AppDatabase {
       'CREATE UNIQUE INDEX IF NOT EXISTS ux_camp_limit ON camp_stock_limits (camp_id, item_id)',
       'CREATE UNIQUE INDEX IF NOT EXISTS ux_settlement_month ON monthly_settlements (year, month)',
       'CREATE INDEX IF NOT EXISTS ix_returns_unit ON returns (beneficiary_unit_id)',
+      'CREATE INDEX IF NOT EXISTS ix_ration_kind ON ration_orders (order_kind, status)',
+      'CREATE INDEX IF NOT EXISTS ix_ration_supply ON ration_orders (supplying_warehouse, status)',
     ];
     for (final sql in statements) {
       await customStatement(sql);
@@ -825,6 +868,28 @@ class AppDatabase extends _$AppDatabase {
           if (from < 13) {
             await m.addColumn(transfers, transfers.cylinderAction);
             await m.addColumn(returns, returns.cylinderAction);
+          }
+          // v14: نوع الطلبية وجهتها ومستند تنفيذها.
+          //
+          // بُني هذا الترحيل رقمًا 12 قبل أن يُدمج عمل الأسطوانات وصلاحية
+          // الدفعات، وكان الرقم 12 مأخوذًا فيهما. ورقمان مختلفان لإصدارٍ
+          // واحد يعني أن جهازًا ترقّى بأحدهما يتخطّى الآخر صامتًا — فيفتح
+          // النظامُ قاعدةً ينقصها جدول، ويسقط عند أول طلبية. فأُعيد ترقيمه
+          // هنا فوق ما استقر.
+          if (from < 14) {
+            await m.createTable(supplyAuthorities);
+            await m.addColumn(rationOrders, rationOrders.orderKind);
+            await m.addColumn(rationOrders, rationOrders.authorityId);
+            await m.addColumn(rationOrders, rationOrders.authorityName);
+            await m.addColumn(rationOrders, rationOrders.fulfillRef);
+            await m.addColumn(rationOrders, rationOrders.fulfillKind);
+            await m.addColumn(rationOrders, rationOrders.fulfillDate);
+            // الطلبيات المستلمة قبل هذا الإصدار وُلِّد لها سند استلام فعلًا،
+            // فيُنقل مرجعه إلى حقل التنفيذ حتى لا تبدو بلا أثر.
+            await customStatement(
+              "UPDATE ration_orders SET fulfill_ref = receipt_ref, "
+              "fulfill_kind = 'RECEIPT' WHERE receipt_ref <> ''",
+            );
           }
         },
         beforeOpen: (details) async {

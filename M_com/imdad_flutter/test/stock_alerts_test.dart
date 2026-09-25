@@ -134,7 +134,7 @@ void main() {
     });
   });
 
-  test('الترقية من v11 تضيف أعمدة v12 وv13 ولا تمس السندات القائمة', () async {
+  test('الترقية من v11 تضيف أعمدة v12 وv13 وv14 ولا تمس السندات القائمة', () async {
     final dir = await Directory.systemTemp.createTemp('imdad_mig');
     addTearDown(() => dir.delete(recursive: true));
     final file = File('${dir.path}/db.sqlite');
@@ -146,6 +146,20 @@ void main() {
     // وأعمدة v13 (حالة الأسطوانات في التحويل والمرتجع): الترقية تمر بالخطوتين.
     await v8.customStatement('ALTER TABLE transfers DROP COLUMN cylinder_action');
     await v8.customStatement('ALTER TABLE "returns" DROP COLUMN cylinder_action');
+    // وأعمدة v14: نوع الطلبية وجهتها ومستند تنفيذها، ودليل الجهات.
+    // الفهرس يُسقط أولًا: عمودٌ يشير إليه فهرس لا يُحذف.
+    await v8.customStatement('DROP INDEX IF EXISTS ix_ration_kind');
+    for (final col in [
+      'order_kind',
+      'authority_id',
+      'authority_name',
+      'fulfill_ref',
+      'fulfill_kind',
+      'fulfill_date',
+    ]) {
+      await v8.customStatement('ALTER TABLE ration_orders DROP COLUMN $col');
+    }
+    await v8.customStatement('DROP TABLE supply_authorities');
     await v8.customStatement('PRAGMA user_version = 11');
     await v8.close();
 

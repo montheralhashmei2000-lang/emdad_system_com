@@ -95,6 +95,7 @@ class SyncMarks {
     // يكتشف أحدهم أن بياناتها لا تغادر جهازها.
     'assets': 'id',
     'asset_assignments': 'id',
+    'supply_authorities': 'id',
     'ration_orders': 'id',
     'ration_order_lines': 'id',
     'meal_plans': 'id',

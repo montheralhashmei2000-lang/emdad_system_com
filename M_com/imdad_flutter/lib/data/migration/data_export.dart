@@ -463,9 +463,26 @@ class DataExporter {
                 'approvedBy': o.approvedBy,
                 'receivedBy': o.receivedBy,
                 'receiptRef': o.receiptRef,
+                'orderKind': o.orderKind,
+                'authorityId': o.authorityId,
+                'authorityName': o.authorityName,
+                'fulfillRef': o.fulfillRef,
+                'fulfillKind': o.fulfillKind,
+                'fulfillDate': o.fulfillDate,
                 'createdAt': o.createdAt.toIso8601String(),
               })
           .toList(),
+      'supplyAuthorities':
+          (await _rows(db.supplyAuthorities, ids('supply_authorities'), (t) => t.id))
+              .map((a) => {
+                    'id': a.id,
+                    'name': a.name,
+                    'title': a.title,
+                    'notes': a.notes,
+                    'active': a.active,
+                    'createdAt': a.createdAt.toIso8601String(),
+                  })
+              .toList(),
       'rationOrderLines':
           (await _rows(db.rationOrderLines, ids('ration_order_lines'), (t) => t.id))
               .map((l) => {

@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/data/db/app_database.dart';
@@ -174,7 +175,144 @@ void main() {
     });
   });
 
-  group('أثر الطلبية في المخزون', () {
+  group('مسار الطلبية: من يطلب ممّن', () {
+    Future<void> warehouses() async {
+      await db.into(db.warehouses).insert(WarehousesCompanion.insert(
+          id: 'wh1', name: 'الرئيسي', isMain: const Value(true)));
+      await db
+          .into(db.warehouses)
+          .insert(WarehousesCompanion.insert(id: 'wh2', name: 'الفرع'));
+    }
+
+    List<RationLineInput> oneLine() => const [
+          RationLineInput(
+            itemId: 'i1',
+            itemCode: 'X1',
+            itemName: 'دقيق',
+            unitName: 'كجم',
+            factor: 1,
+            requestedQty: 10,
+          ),
+        ];
+
+    test('بلا مخزن رئيسي لا تُبنى طلبية — المسار مجهول', () async {
+      final res = await RationRepo(db).save(
+        requestingWarehouse: 'الفرع',
+        date: '2026-01-01',
+        lines: oneLine(),
+      );
+      expect(res.ok, isFalse);
+      expect(res.error, contains('مخزن رئيسي'));
+    });
+
+    test('المخزن الفرعي يطلب من الرئيسي تلقائيًّا', () async {
+      await warehouses();
+      final res = await RationRepo(db).save(
+        requestingWarehouse: 'الفرع',
+        date: '2026-01-01',
+        lines: oneLine(),
+      );
+      expect(res.ok, isTrue, reason: res.error);
+      final o = (await RationRepo(db).orders()).single;
+      expect(o.supplyingWarehouse, 'الرئيسي',
+          reason: 'المطلوب منه يُملأ عن الفرع لا يُترك لاختياره');
+      expect(o.orderKind, RationKind.branch);
+    });
+
+    test('المخزن الرئيسي لا يطلب من نفسه كفرع', () async {
+      await warehouses();
+      final res = await RationRepo(db).save(
+        requestingWarehouse: 'الرئيسي',
+        date: '2026-01-01',
+        lines: oneLine(),
+      );
+      expect(res.ok, isFalse);
+      expect(res.error, contains('لا يطلب من نفسه'));
+    });
+
+    test('طلبية المخزن الرئيسي بلا جهة تُرفض', () async {
+      await warehouses();
+      final res = await RationRepo(db).save(
+        kind: RationKind.main,
+        requestingWarehouse: 'الرئيسي',
+        date: '2026-01-01',
+        lines: oneLine(),
+      );
+      expect(res.ok, isFalse);
+      expect(res.error, contains('الجهة'));
+    });
+
+    test('طلبية المخزن الرئيسي تُبنى بجهة ولا مستودع مورِّد لها', () async {
+      await warehouses();
+      final auth = await RationRepo(db)
+          .saveAuthority(name: 'ركن إمداد الفرقة', title: 'ركن إمداد');
+      final res = await RationRepo(db).save(
+        kind: RationKind.main,
+        requestingWarehouse: 'الرئيسي',
+        authorityId: auth.refNo,
+        authorityName: 'ركن إمداد الفرقة',
+        date: '2026-01-01',
+        lines: oneLine(),
+      );
+      expect(res.ok, isTrue, reason: res.error);
+      final o = (await RationRepo(db).orders()).single;
+      expect(o.orderKind, RationKind.main);
+      expect(o.authorityName, 'ركن إمداد الفرقة');
+      expect(o.supplyingWarehouse, isEmpty,
+          reason: 'الجهة ليست مستودعًا — لا رصيد لها ولا حركة عليها');
+    });
+
+    test('غير الرئيسي لا يفتح طلبية جهة', () async {
+      await warehouses();
+      final auth = await RationRepo(db).saveAuthority(name: 'قائد الفرقة');
+      final res = await RationRepo(db).save(
+        kind: RationKind.main,
+        requestingWarehouse: 'الفرع',
+        authorityId: auth.refNo,
+        date: '2026-01-01',
+        lines: oneLine(),
+      );
+      expect(res.ok, isFalse);
+      expect(res.error, contains('يطلبها'));
+    });
+  });
+
+  group('دليل الجهات', () {
+    test('الاسم المكرر يُرفض', () async {
+      final repo = RationRepo(db);
+      expect((await repo.saveAuthority(name: 'ركن الإمداد')).ok, isTrue);
+      final again = await repo.saveAuthority(name: 'ركن الإمداد');
+      expect(again.ok, isFalse);
+    });
+
+    test('الجهة التي عليها طلبيات تُعطَّل ولا تُحذف', () async {
+      final repo = RationRepo(db);
+      await db.into(db.warehouses).insert(WarehousesCompanion.insert(
+          id: 'wh1', name: 'الرئيسي', isMain: const Value(true)));
+      final auth = await repo.saveAuthority(name: 'رئيس الشعبة');
+      await repo.save(
+        kind: RationKind.main,
+        requestingWarehouse: 'الرئيسي',
+        authorityId: auth.refNo,
+        date: '2026-01-01',
+        lines: const [
+          RationLineInput(
+            itemId: 'i1',
+            itemCode: 'X1',
+            itemName: 'دقيق',
+            unitName: 'كجم',
+            factor: 1,
+            requestedQty: 10,
+          ),
+        ],
+      );
+      final res = await repo.deleteAuthority(auth.refNo);
+      expect(res.ok, isFalse);
+      expect(res.error, contains('عطّلها'));
+    });
+  });
+
+  group('الطلبية لا تحرّك المخزون', () {
     Future<String> seed() async {
       await CatalogRepo(db).saveItem(
         code: 'X1',
@@ -183,9 +321,13 @@ void main() {
         units: const [ItemUnit(name: 'كجم', factor: 1, isBase: true)],
       );
       final item = (await CatalogRepo(db).items()).single;
+      await db.into(db.warehouses).insert(WarehousesCompanion.insert(
+          id: 'wh1', name: 'الرئيسي', isMain: const Value(true)));
+      await db
+          .into(db.warehouses)
+          .insert(WarehousesCompanion.insert(id: 'wh2', name: 'الفرع'));
       final res = await RationRepo(db).save(
         requestingWarehouse: 'الفرع',
-        supplyingWarehouse: 'الرئيسي',
         date: '2026-01-01',
         lines: [
           RationLineInput(
@@ -202,59 +344,135 @@ void main() {
       return (await RationRepo(db).orders()).single.id;
     }
 
-    test('الاستلام يولّد سند استلام حقيقي لا تعليمًا على ورقة', () async {
+    test('التنفيذ يربط بمستندٍ قائم ولا يولّد سندًا', () async {
       final repo = RationRepo(db);
       final id = await seed();
       await repo.submit(id);
       await repo.approve(id);
-      final res = await repo.receive(id, actor: 'admin@imdad.local');
+      final res = await repo.linkTransfer(id, transferRef: 'ح-000007');
 
       expect(res.ok, isTrue, reason: res.error);
-      final receipts = await db.select(db.receipts).get();
-      expect(receipts, hasLength(1), reason: 'استُلمت الطلبية بلا حركة مخزنية');
-      expect(receipts.single.warehouse, 'الفرع');
-      expect(receipts.single.qty, 100);
+      // هذا هو جوهر التغيير: كان التنفيذ يولّد سند استلام بلا أن يُنقص أحدًا،
+      // فيزيد مخزون النظام من العدم كلما حُوِّلت بضاعة بين مستودعين.
+      expect(await db.select(db.receipts).get(), isEmpty,
+          reason: 'الطلبية أنشأت حركة مخزنية — وهي طلبٌ لا حركة');
+      expect(await db.select(db.transfers).get(), isEmpty,
+          reason: 'سند التحويل يُنشئه أمين المخزن لا الطلبية');
 
       final order = (await repo.byId(id))!.order;
       expect(order.status, RationStatus.received);
-      expect(order.receiptRef, receipts.single.refNo,
-          reason: 'الطلبية لا تشير إلى سندها');
+      expect(order.fulfillRef, 'ح-000007');
+      expect(order.fulfillKind, RationFulfillKind.transfer);
     });
 
-    test('الاستلام قبل الاعتماد يُرفض ولا يحرّك رصيدًا', () async {
+    test('التنفيذ قبل الاعتماد يُرفض', () async {
       final repo = RationRepo(db);
       final id = await seed();
       await repo.submit(id);
-      final res = await repo.receive(id);
-
+      final res = await repo.linkTransfer(id, transferRef: 'ح-1');
       expect(res.ok, isFalse);
-      expect(await db.select(db.receipts).get(), isEmpty);
+      expect((await repo.byId(id))!.order.fulfillRef, isEmpty);
     });
 
-    test('الاعتماد بكمية أقل يُستلم بالمعتمدة لا بالمطلوبة', () async {
+    test('التنفيذ بلا مرجع مستند يُرفض', () async {
+      final repo = RationRepo(db);
+      final id = await seed();
+      await repo.submit(id);
+      await repo.approve(id);
+      expect((await repo.linkTransfer(id, transferRef: '  ')).ok, isFalse);
+    });
+
+    test('المنفَّذ هو المعتمد لا المطلوب', () async {
       final repo = RationRepo(db);
       final id = await seed();
       await repo.submit(id);
       final lineId = (await repo.byId(id))!.lines.single.id;
       await repo.approve(id, approved: {lineId: 60});
-      await repo.receive(id);
+      await repo.linkTransfer(id, transferRef: 'ح-2');
 
-      expect((await db.select(db.receipts).get()).single.qty, 60);
+      final line = (await repo.byId(id))!.lines.single;
+      expect(line.receivedQty, 60);
+      expect(line.requestedQty, 100, reason: 'المطلوب يبقى ليُعرف حجم العجز');
     });
 
-    test('لا تُحذف طلبية مستلمة — أثرها المخزني قائم', () async {
+    test('طلبية الرئيسي تُطابَق بسند توريد لا بتحويل', () async {
+      final repo = RationRepo(db);
+      await CatalogRepo(db).saveItem(
+        code: 'X1',
+        name: 'دقيق',
+        baseUnit: 'كجم',
+        units: const [ItemUnit(name: 'كجم', factor: 1, isBase: true)],
+      );
+      await db.into(db.warehouses).insert(WarehousesCompanion.insert(
+          id: 'wh1', name: 'الرئيسي', isMain: const Value(true)));
+      final auth = await repo.saveAuthority(name: 'ركن إمداد الفرقة');
+      await repo.save(
+        kind: RationKind.main,
+        requestingWarehouse: 'الرئيسي',
+        authorityId: auth.refNo,
+        authorityName: 'ركن إمداد الفرقة',
+        date: '2026-01-01',
+        lines: const [
+          RationLineInput(
+            itemId: 'i1',
+            itemCode: 'X1',
+            itemName: 'دقيق',
+            unitName: 'كجم',
+            factor: 1,
+            requestedQty: 500,
+          ),
+        ],
+      );
+      final id = (await repo.orders()).single.id;
+      await repo.submit(id);
+      expect((await repo.awaitingReceiptMatch()), isEmpty,
+          reason: 'لم تُعتمد بعد');
+      await repo.approve(id);
+      expect((await repo.awaitingReceiptMatch()).single.id, id);
+
+      await repo.matchReceipt(id, receiptRef: 'و-000012');
+      final o = (await repo.byId(id))!.order;
+      expect(o.fulfillKind, RationFulfillKind.receipt);
+      expect(await db.select(db.receipts).get(), isEmpty,
+          reason: 'المطابقة ربطٌ بسندٍ قائم لا إنشاءٌ له');
+    });
+
+    test('readyForTransfer تُظهر المعتمدة للمخزن المورِّد وحده', () async {
+      final repo = RationRepo(db);
+      final id = await seed();
+      expect(await repo.readyForTransfer('الرئيسي'), isEmpty,
+          reason: 'المسودة ليست جاهزة');
+      await repo.submit(id);
+      expect(await repo.readyForTransfer('الرئيسي'), isEmpty,
+          reason: 'المرسلة لم يأذن بها أحد');
+      await repo.approve(id);
+
+      final ready = await repo.readyForTransfer('الرئيسي');
+      expect(ready.single.order.id, id);
+      expect(ready.single.lines.single.approvedQty, 100);
+      expect(await repo.readyForTransfer('الفرع'), isEmpty,
+          reason: 'الفرع ليس مَن يحوّل');
+    });
+
+    test('لا تُحذف طلبية منفَّذة — سندها قائم', () async {
       final repo = RationRepo(db);
       final id = await seed();
       await repo.submit(id);
       await repo.approve(id);
-      await repo.receive(id);
+      await repo.linkTransfer(id, transferRef: 'ح-3');
       expect((await repo.delete(id)).ok, isFalse);
     });
   });
 
   group('الجداول الجديدة داخل المزامنة', () {
-    test('الأربعة مسجّلة، فلا تبقى بياناتها حبيسة جهازها', () {
-      for (final t in ['assets', 'asset_assignments', 'ration_orders', 'ration_order_lines']) {
+    test('الخمسة مسجّلة، فلا تبقى بياناتها حبيسة جهازها', () {
+      for (final t in [
+        'assets',
+        'asset_assignments',
+        'ration_orders',
+        'ration_order_lines',
+        'supply_authorities',
+      ]) {
         expect(SyncMarks.entities.containsKey(t), isTrue, reason: '$t خارج المزامنة');
       }
     });

@@ -34,6 +34,7 @@ class RoleTemplate {
 class AccessControl {
   static const List<String> basicPages = [
     'dashboard', 'items', 'suppliers', 'units', 'stores', 'kitchens', 'assets',
+    'supplyAuthorities',
   ];
 
   /// طلبيات الإعاشة ضمن العمليات: من يستلم ويصرف هو من يطلب، ومن يعتمد سندًا
@@ -87,6 +88,15 @@ class AccessControl {
           PermAction.view, PermAction.create, PermAction.edit, PermAction.approve, PermAction.print,
         ]),
         grant(['pendingOrders'], [PermAction.view, PermAction.approve, PermAction.print]),
+        // ركن الإمداد هو من تُرفع إليه طلبيات الإعاشة وبه تُجاز: لا تتحرك
+        // إعاشةٌ بين مستودعين ولا تُطلب من جهةٍ إلا بإذنه.
+        grant(['rationOrders'], [
+          PermAction.view, PermAction.approve, PermAction.print, PermAction.export,
+        ]),
+        // ودليل الجهات يديره من يطلب منها.
+        grant(['supplyAuthorities'], [
+          PermAction.view, PermAction.create, PermAction.edit,
+        ]),
         grant(['opening'], [PermAction.view, PermAction.create, PermAction.print]),
         grant(['balances'], [PermAction.view, PermAction.print, PermAction.export]),
         grant(['campDashboard'], [PermAction.view]),

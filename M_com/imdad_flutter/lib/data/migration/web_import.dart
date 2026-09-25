@@ -99,6 +99,7 @@ class WebImporter {
       await _importSensitiveReviews(data['sensitiveReviews'], res);
       await _importAssets(data['assets'], res);
       await _importAssetAssignments(data['assetAssignments'], res);
+      await _importSupplyAuthorities(data['supplyAuthorities'], res);
       await _importRationOrders(data['rationOrders'], res);
       await _importRationOrderLines(data['rationOrderLines'], res);
       await _importMealPlans(data['mealPlans'], res);
@@ -314,10 +315,34 @@ class WebImporter {
             approvedBy: Value(_s(o, 'approvedBy')),
             receivedBy: Value(_s(o, 'receivedBy')),
             receiptRef: Value(_s(o, 'receiptRef')),
+            orderKind: Value(_s(o, 'orderKind', 'BRANCH')),
+            authorityId: Value(_s(o, 'authorityId')),
+            authorityName: Value(_s(o, 'authorityName')),
+            fulfillRef: Value(_s(o, 'fulfillRef')),
+            fulfillKind: Value(_s(o, 'fulfillKind')),
+            fulfillDate: Value(_s(o, 'fulfillDate')),
             createdAt: Value(_created(o)),
           ));
     }
     if (rows.isNotEmpty) _count(res, 'طلبيات الإعاشة', rows.length);
+  }
+
+  Future<void> _importSupplyAuthorities(Object? raw, WebImportResult res) async {
+    final rows = _rows(raw);
+    for (final a in rows) {
+      if (!_accept('supply_authorities', _id(a))) continue;
+      await db
+          .into(db.supplyAuthorities)
+          .insertOnConflictUpdate(SupplyAuthoritiesCompanion.insert(
+            id: _id(a),
+            name: _s(a, 'name'),
+            title: Value(_s(a, 'title')),
+            notes: Value(_s(a, 'notes')),
+            active: Value(_b(a, 'active', true)),
+            createdAt: Value(_created(a)),
+          ));
+    }
+    if (rows.isNotEmpty) _count(res, 'جهات الإمداد', rows.length);
   }
 
   Future<void> _importRationOrderLines(Object? raw, WebImportResult res) async {
