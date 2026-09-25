@@ -68,6 +68,7 @@ class DataExporter {
                   'hashHex': u.hashHex,
                   'iterations': u.iterations,
                   'active': u.active,
+                  'approved': u.approved,
                 })
             .toList(),
       'categories': (await _rows(db.categories, ids('categories'), (t) => t.id))
@@ -83,6 +84,7 @@ class DataExporter {
                 'baseUnit': i.baseUnit,
                 'units': i.units,
                 'minQty': i.minQty,
+                'qty': i.qty,
                 'barcode': i.barcode,
                 'isRefillable': i.isRefillable,
                 'reportUnit': i.reportUnit,
@@ -149,6 +151,11 @@ class DataExporter {
                 'supplier': r.supplier,
                 'invoiceNo': r.invoiceNo,
                 'committee': r.committee,
+                'supervision': r.supervision,
+                'audit': r.audit,
+                // توريد التعبئة لا يزيد عدد الأسطوانات: بدونه يُحسب في الجهاز الآخر توريدًا جديدًا.
+                'cylinderAction': r.cylinderAction,
+                ..._edits(r.editCount, r.editLog, r.editedBy, r.cancelReason, r.cancelledBy, r.prevStatus),
               })
           .toList(),
       'issues': issues
@@ -178,6 +185,12 @@ class DataExporter {
                 'beneficiaryUnitName': i.beneficiaryUnitName,
                 'soldierCount': i.soldierCount,
                 'durationDays': i.durationDays,
+                'officerCount': i.officerCount,
+                'cylinderAction': i.cylinderAction,
+                'approvedBy': i.approvedBy,
+                'rejectReason': i.rejectReason,
+                'rejectedBy': i.rejectedBy,
+                ..._edits(i.editCount, i.editLog, i.editedBy, i.cancelReason, i.cancelledBy, i.prevStatus),
               })
           .toList(),
       'transfers': transfers
@@ -205,6 +218,7 @@ class DataExporter {
                 'strength': t.strength,
                 'durationDays': t.durationDays,
                 'rejectReason': t.rejectReason,
+                ..._edits(t.editCount, t.editLog, t.editedBy, t.cancelReason, t.cancelledBy, t.prevStatus),
               })
           .toList(),
       'returns': returns
@@ -230,6 +244,7 @@ class DataExporter {
                 'type': r.type,
                 'condition': r.condition,
                 'origRef': r.origRef,
+                ..._edits(r.editCount, r.editLog, r.editedBy, r.cancelReason, r.cancelledBy, r.prevStatus),
               })
           .toList(),
       'openingBalances': (await _rows(db.openingBalances, ids('opening_balances'), (t) => t.id))
@@ -251,14 +266,20 @@ class DataExporter {
                 'date': a.date,
                 'warehouse': a.warehouse,
                 'itemId': a.itemId,
+                'itemCode': a.itemCode,
                 'itemName': a.itemName,
                 'unitName': a.unitName,
+                'factor': a.factor,
                 'qty': a.qty,
                 'baseQty': a.baseQty,
                 'status': a.status,
+                'notes': a.notes,
+                'createdBy': a.createdBy,
+                'createdAt': a.createdAt.toIso8601String(),
                 'sessionId': a.sessionId,
                 'reason': a.reason,
                 'approvedBy': a.approvedBy,
+                ..._edits(a.editCount, a.editLog, a.editedBy, a.cancelReason, a.cancelledBy, a.prevStatus),
               })
           .toList(),
       'strengths': (await _rows(db.strengths, ids('strengths'), (t) => t.id))
@@ -272,7 +293,9 @@ class DataExporter {
                 'soldierCount': s.soldierCount,
                 'officerCount': s.officerCount,
                 'total': s.total,
+                'pct': s.pct,
                 'mode': s.mode,
+                'createdBy': s.createdBy,
               })
           .toList(),
       'kitchenLogs': (await _rows(db.kitchenLogs, ids('kitchen_logs'), (t) => t.id))
@@ -300,6 +323,10 @@ class DataExporter {
                 'qtyPerPerson': e.qtyPerPerson,
                 'measureUnitName': e.measureUnitName,
                 'measureFactor': e.measureFactor,
+                // الكمية محفوظة بوحدة القياس المقررة. بدون هذا الوسم يعاملها المستورِد
+                // كتصدير ويب قديم بالوحدة الأساسية فيقسمها على المعامل في كل مزامنة.
+                'qtyUnit': 'measure',
+                'notes': e.notes,
               })
           .toList(),
       'stocktakes': (await _rows(db.stocktakes, ids('stocktakes'), (t) => t.id))
@@ -400,6 +427,24 @@ class DataExporter {
     if (ids != null) q.where((t) => key(t).isIn(ids.toList()));
     return q.get();
   }
+
+  /// حقول تعديل السند وإلغائه المشتركة بين جداول الحركات (سجل المستندات).
+  Map<String, dynamic> _edits(
+    int editCount,
+    String editLog,
+    String editedBy,
+    String cancelReason,
+    String cancelledBy,
+    String prevStatus,
+  ) =>
+      {
+        'editCount': editCount,
+        'editLog': editLog,
+        'editedBy': editedBy,
+        'cancelReason': cancelReason,
+        'cancelledBy': cancelledBy,
+        'prevStatus': prevStatus,
+      };
 
   Map<String, dynamic> _movement({
     required String id,
