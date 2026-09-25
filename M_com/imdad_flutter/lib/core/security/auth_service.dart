@@ -4,9 +4,9 @@ import 'package:drift/drift.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/db/app_database.dart';
+import 'password_hash.dart';
 import '../../data/sync/sync_marks.dart';
 import '../../data/sync/sync_trust.dart';
-import 'pbkdf2.dart';
 
 /// نتيجة محاولة الدخول
 enum AuthStatus { ok, badCredentials, locked, inactive, notApproved }
@@ -30,7 +30,8 @@ class AuthResult {
 }
 
 /// المصادقة والجلسة — نقل مطابق لسلوك نظام الويب:
-/// • PBKDF2-HMAC-SHA256 بـ 45,000 دورة + salt لكل مستخدم.
+/// • PBKDF2-HMAC-SHA256 + salt لكل مستخدم؛ الحسابات القديمة (45,000 دورة) تُعاد
+///   تجزئتها بالعدد الحالي تلقائيًا عند أول دخول ناجح.
 /// • قفل الدخول بعد 5 محاولات خاطئة لمدة 3 دقائق (لكل اسم مستخدم).
 /// • مدة الجلسة 12 ساعة ثم يُطلب الدخول من جديد.
 class AuthService {
@@ -74,8 +75,7 @@ class AuthService {
     final u = _normalizeUsername(username);
     _validateUsername(u);
     _validatePassword(password);
-    final salt = Pbkdf2.newSaltHex();
-    final hash = Pbkdf2.deriveHex(password, salt);
+    final ph = await PasswordHash.create(password);
     final id = 'local-$u';
     final row = UsersCompanion.insert(
       id: id,
@@ -83,8 +83,9 @@ class AuthService {
       name: Value(name.isEmpty ? u : name),
       email: Value('$u@imdad.local'),
       role: const Value('admin'),
-      saltHex: Value(salt),
-      hashHex: Value(hash),
+      saltHex: Value(ph.saltHex),
+      hashHex: Value(ph.hashHex),
+      iterations: Value(ph.iterations),
       warehouseScope: const Value('ALL'),
     );
     await db.into(db.users).insert(row);
@@ -100,8 +101,11 @@ class AuthService {
       return const AuthResult(status: AuthStatus.badCredentials, message: '✖ أدخل اسم المستخدم وكلمة المرور');
     }
     final user = u.contains('@') ? u.split('@').first : u;
+    // المطابقة غير حساسة لحالة الأحرف، فالعدّاد كذلك: وإلا أخذ كل شكل للاسم
+    // (admin / Admin / ADMIN …) خمس محاولات مستقلة وسقط القفل.
+    final lockKey = user.toLowerCase();
     final prefs = await SharedPreferences.getInstance();
-    final st = _lockRead(prefs, user);
+    final st = _lockRead(prefs, lockKey);
     final now = DateTime.now().millisecondsSinceEpoch;
     if (st.until > now) {
       final remaining = Duration(milliseconds: st.until - now);
@@ -123,16 +127,13 @@ class AuthService {
     }
     final found = matches.isEmpty ? null : matches.first;
     final ok = found != null &&
-        Pbkdf2.constantTimeEquals(
-          Pbkdf2.deriveHex(password, found.saltHex, iterations: found.iterations),
-          found.hashHex,
-        );
+        await PasswordHash.verify(password, found.saltHex, found.hashHex, found.iterations);
 
     if (!ok) {
       final ns = st.fails + 1 >= maxAttempts
           ? _LockState(0, now + lockDuration.inMilliseconds)
           : _LockState(st.fails + 1, 0);
-      await _lockStore(prefs, user, ns);
+      await _lockStore(prefs, lockKey, ns);
       if (ns.until > now) {
         return const AuthResult(
           status: AuthStatus.locked,
@@ -160,9 +161,33 @@ class AuthService {
       );
     }
 
-    await _lockStore(prefs, user, const _LockState(0, 0));
-    await _startSession(found);
-    return AuthResult(status: AuthStatus.ok, user: found, message: '🌐 تم الدخول محليًا (بدون إنترنت)');
+    await _lockStore(prefs, lockKey, const _LockState(0, 0));
+    final account = await _upgradeHash(found, password);
+    await _startSession(account);
+    return AuthResult(status: AuthStatus.ok, user: account, message: '🌐 تم الدخول محليًا (بدون إنترنت)');
+  }
+
+  /// إعادة تجزئة كلمة المرور بالعدد الحالي من الدورات إن كانت بصمتها أضعف.
+  ///
+  /// لا تُعرف كلمة المرور الصريحة إلا لحظة الدخول، فهذه الفرصة الوحيدة للترقية.
+  /// التحديث يمر بمشغّلات المزامنة فتصل البصمة الجديدة إلى بقية الأجهزة، وفشله
+  /// لا يمنع الدخول: البصمة القديمة ما زالت صحيحة.
+  Future<User> _upgradeHash(User user, String password) async {
+    if (!PasswordHash.needsUpgrade(user.iterations)) return user;
+    try {
+      final ph = await PasswordHash.create(password);
+      await (db.update(db.users)..where((t) => t.id.equals(user.id) & t.hashHex.equals(user.hashHex))).write(
+        UsersCompanion(
+          saltHex: Value(ph.saltHex),
+          hashHex: Value(ph.hashHex),
+          iterations: Value(ph.iterations),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+      return await (db.select(db.users)..where((t) => t.id.equals(user.id))).getSingleOrNull() ?? user;
+    } catch (_) {
+      return user;
+    }
   }
 
   /// «إعادة تعيين محلي»: تُمسح حسابات الدخول من **هذا الجهاز وحده**، وأقفال

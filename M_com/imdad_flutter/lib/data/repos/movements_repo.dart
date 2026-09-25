@@ -6,6 +6,7 @@ import '../../core/ui/imd_format.dart';
 import '../../domain/main_warehouse.dart';
 import '../db/app_database.dart';
 import 'audit_repo.dart';
+import 'doc_numbering.dart';
 
 /// سطر إدخال في سند (قبل الحفظ).
 class DocLineInput {
@@ -20,6 +21,7 @@ class DocLineInput {
     this.beneficiaryUnitId = '',
     this.beneficiaryUnitName = '',
     this.cylinderAction = '',
+    this.expiryDate = '',
   });
 
   final String itemId;
@@ -34,6 +36,9 @@ class DocLineInput {
 
   /// عملية الأصناف القابلة للتعبئة (فارغ لغيرها).
   final String cylinderAction;
+
+  /// تاريخ انتهاء صلاحية الدفعة (سند الوارد فقط)، فارغ إن لم يُحدَّد.
+  final String expiryDate;
 
   double get baseQty => _round(qty * (factor <= 0 ? 1 : factor));
 
@@ -145,8 +150,31 @@ class MovementsRepo {
     return out;
   }
 
+  /// أرصدة كل المستودعات دفعة واحدة: المستودع ← (الصنف ← الرصيد).
+  Future<Map<String, Map<String, double>>> balancesByWarehouse({List<String>? scope}) async {
+    final out = <String, Map<String, double>>{};
+    for (final (wh, item, qty) in await _balanceRows()) {
+      if (scope != null && !scope.contains(wh)) continue;
+      out.putIfAbsent(wh, () => {})[item] = qty;
+    }
+    return out;
+  }
+
   Future<double> balanceOf(String itemId, {String? warehouse}) async =>
       (await balances(warehouse: warehouse))[itemId] ?? 0;
+
+  /// فحص كفاية رصيد مستودع واحد — قواعد `StockLedger.check` نفسها، لكن على
+  /// أرصدة [balances] المحسوبة في قاعدة البيانات بدل تحميل كل الحركات.
+  Future<StockCheck> checkStock(String warehouse, Map<String, double> requiredBaseQty) async {
+    final bal = await balances(warehouse: warehouse);
+    for (final entry in requiredBaseQty.entries) {
+      final have = bal[entry.key] ?? 0;
+      if (entry.value > have + 1e-9) {
+        return StockCheck(ok: false, itemId: entry.key, available: have, requested: entry.value);
+      }
+    }
+    return const StockCheck(ok: true);
+  }
 
   /// (المستودع، الصنف، الرصيد) لكل تركيبة لها حركة.
   Future<List<(String, String, double)>> _balanceRows() async {
@@ -159,9 +187,9 @@ class MovementsRepo {
         SELECT warehouse, item_id, base_qty FROM receipts
           WHERE status NOT IN $inactive AND cylinder_action <> 'REFILL'
         UNION ALL
-        -- الاستبدال لا ينقص العدد: فارغة تدخل وممتلئة تخرج.
+        -- الاستبدال والإرسال للتعبئة لا ينقصان العدد: الأسطوانة باقية ملك المستودع.
         SELECT warehouse, item_id, -base_qty FROM issues
-          WHERE status NOT IN $inactive AND cylinder_action <> 'EXCHANGE'
+          WHERE status NOT IN $inactive AND cylinder_action NOT IN ('EXCHANGE','SEND_REFILL')
         UNION ALL
         SELECT warehouse, item_id, base_qty FROM adjustments
           WHERE status NOT IN $inactive
@@ -232,6 +260,7 @@ class MovementsRepo {
     bool draft = false,
     bool replaceDraft = false,
     String createdBy = '',
+    User? actor,
   }) async {
     if (lines.isEmpty) return const SaveResult(ok: false, error: '✖ القائمة فارغة — أضف صنفًا واحدًا على الأقل');
     if (warehouse.isEmpty) return const SaveResult(ok: false, error: '✖ اختر المستودع (أو أضف واحدًا بزر ➕)');
@@ -242,6 +271,7 @@ class MovementsRepo {
       if (replaceDraft) {
         await (db.delete(db.receipts)..where((t) => t.refNo.equals(ref) & t.status.equals('DRAFT'))).go();
       }
+      await _numbering.claim('receipts', 'و-', ref);
       for (final l in lines) {
         await db.into(db.receipts).insert(ReceiptsCompanion.insert(
               id: _newId('rc'),
@@ -264,6 +294,7 @@ class MovementsRepo {
               supervision: Value(supervision),
               audit: Value(audit),
               cylinderAction: Value(l.cylinderAction),
+              expiryDate: Value(l.expiryDate),
             ));
       }
     });
@@ -277,6 +308,7 @@ class MovementsRepo {
       status: draft ? 'DRAFT' : 'COMPLETED',
       lines: lines,
       actorEmail: createdBy,
+      actor: actor,
     );
     return SaveResult(ok: true, refNo: ref);
   }
@@ -308,9 +340,10 @@ class MovementsRepo {
     required List<DocLineInput> lines,
     String risk = 'normal',
     String actorEmail = '',
+    User? actor,
     Map<String, dynamic> extra = const {},
   }) =>
-      AuditRepo(db).write(action, entityType, summary, actorEmail: actorEmail, details: {
+      AuditRepo(db).write(action, entityType, summary, actor: actor, actorEmail: actorEmail, details: {
         'refNo': refNo,
         'warehouse': warehouse,
         'target': target,
@@ -335,6 +368,7 @@ class MovementsRepo {
     String notes = '',
     String status = 'COMPLETED',
     String createdBy = '',
+    User? actor,
   }) async {
     if (lines.isEmpty) return const SaveResult(ok: false, error: '✖ أضف صنفًا واحدًا على الأقل');
     if (warehouse.isEmpty) return const SaveResult(ok: false, error: '✖ اختر المستودع');
@@ -342,10 +376,7 @@ class MovementsRepo {
     if (frozenMsg != null) return SaveResult(ok: false, error: frozenMsg);
 
     if (status == 'COMPLETED') {
-      final check = (await ledger()).check(
-        warehouse: warehouse,
-        requiredBaseQty: _sumByItem(lines),
-      );
+      final check = await checkStock(warehouse, _sumByItem(lines));
       if (!check.ok) {
         final item = await (db.select(db.items)..where((t) => t.id.equals(check.itemId))).getSingleOrNull();
         return SaveResult(ok: false, error: stockError(item, warehouse, check.available, check.requested));
@@ -354,6 +385,7 @@ class MovementsRepo {
 
     final ref = refNo.isNotEmpty ? refNo : await nextRef('issues', 'ص-');
     await db.transaction(() async {
+      await _numbering.claim('issues', 'ص-', ref);
       for (final l in lines) {
         await db.into(db.issues).insert(IssuesCompanion.insert(
               id: _newId('is'),
@@ -396,6 +428,7 @@ class MovementsRepo {
       status: status,
       lines: lines,
       actorEmail: createdBy,
+      actor: actor,
       risk: (status == 'COMPLETED' || status == 'ORDER') ? 'sensitive' : 'normal',
     );
     return SaveResult(ok: true, refNo: ref);
@@ -413,6 +446,7 @@ class MovementsRepo {
     String refNo = '',
     String notes = '',
     String createdBy = '',
+    User? actor,
   }) async {
     if (lines.isEmpty) return const SaveResult(ok: false, error: 'لا توجد أصناف في السند');
     if (fromWarehouse.isEmpty || toWarehouse.isEmpty) {
@@ -450,10 +484,7 @@ class MovementsRepo {
       if (error != null) return SaveResult(ok: false, error: '✖ $error');
     }
 
-    final check = (await ledger()).check(
-      warehouse: fromWarehouse,
-      requiredBaseQty: _sumByItem(lines),
-    );
+    final check = await checkStock(fromWarehouse, _sumByItem(lines));
     if (!check.ok) {
       return SaveResult(
         ok: false,
@@ -467,6 +498,7 @@ class MovementsRepo {
     }
     final ref = refNo.isNotEmpty ? refNo : await nextRef('transfers', 'ح-');
     await db.transaction(() async {
+      await _numbering.claim('transfers', 'ح-', ref);
       for (final l in lines) {
         await db.into(db.transfers).insert(TransfersCompanion.insert(
               id: _newId('tr'),
@@ -484,6 +516,7 @@ class MovementsRepo {
               notes: Value(l.notes.isEmpty ? notes : l.notes),
               createdBy: Value(createdBy),
               destWarehouse: Value(toWarehouse),
+              cylinderAction: Value(l.cylinderAction),
               campId: Value(campId),
               campName: Value(campName),
               strength: Value(strength),
@@ -501,6 +534,7 @@ class MovementsRepo {
       status: 'PENDING',
       lines: lines,
       actorEmail: createdBy,
+      actor: actor,
       risk: 'sensitive',
     );
     return SaveResult(ok: true, refNo: ref);
@@ -552,42 +586,112 @@ class MovementsRepo {
     return filtered;
   }
 
-  /// اعتماد أمر صرف: يتحول إلى سند منصرف بعد التأكد من كفاية رصيد المستودع.
-  Future<SaveResult> approveIssueOrder(String refNo, {String approvedBy = ''}) async {
-    final rows = await (db.select(db.issues)..where((t) => t.refNo.equals(refNo))).get();
+  /// اعتماد أمر صرف بمرجعه: يتحول إلى سند منصرف بعد التأكد من كفاية رصيد المستودع.
+  Future<SaveResult> approveIssueOrder(String refNo, {String approvedBy = '', User? actor}) async {
+    final rows = await (db.select(db.issues)
+          ..where((t) => t.refNo.equals(refNo) & t.status.isIn(approvableIssueStatuses)))
+        .get();
+    if (rows.isEmpty) return const SaveResult(ok: false, error: 'أمر الصرف غير موجود');
+    return approveIssues(
+      rows,
+      approvedBy: approvedBy,
+      actor: actor,
+      action: 'ISSUE_DRAFT_APPROVED',
+      summary: 'اعتماد أمر/مسودة صرف وخصم الرصيد',
+    );
+  }
+
+  /// حالات الصرف التي تنتظر الاعتماد ولا أثر لها على الرصيد قبله.
+  static const List<String> approvableIssueStatuses = ['ORDER', 'DRAFT'];
+
+  /// اعتماد سطور أمر صرف أو مسودة صرف (مجموعة سند واحد) وخصمها من الرصيد.
+  ///
+  /// الطريق الوحيد للاعتماد من الشاشات: يرفض المستودع المجمّد بأمر جرد، ويفحص
+  /// كفاية رصيد **مستودع السند نفسه** (لا الرصيد الإجمالي لكل المستودعات)،
+  /// ويعيد الفحص والتحديث داخل معاملة واحدة حتى لا يُعتمد سندان على الرصيد نفسه.
+  /// السطور التي تغيّرت حالتها منذ عرضها (اعتُمدت أو رُفضت من جهاز آخر) لا تُمس.
+  Future<SaveResult> approveIssues(
+    List<Issue> rows, {
+    String approvedBy = '',
+    User? actor,
+    String action = 'ISSUE_DRAFT_APPROVED',
+    String summary = 'اعتماد أمر/مسودة صرف وخصم الرصيد',
+  }) async {
     if (rows.isEmpty) return const SaveResult(ok: false, error: 'أمر الصرف غير موجود');
     final warehouse = rows.first.warehouse;
-
-    final frozen = await frozenOrder(warehouse);
-    if (frozen != null) {
-      return SaveResult(ok: false, error: 'المستودع مجمّد بأمر الجرد $frozen');
+    final refNo = rows.first.refNo;
+    if (rows.any((r) => r.warehouse != warehouse)) {
+      return const SaveResult(ok: false, error: '✖ سطور السند موزعة على أكثر من مستودع — راجع السند قبل اعتماده');
     }
+    final frozen = await frozenMessage(warehouse);
+    if (frozen != null) return SaveResult(ok: false, error: frozen);
 
     final required = <String, double>{};
     for (final r in rows) {
       required[r.itemId] = _round((required[r.itemId] ?? 0) + r.baseQty);
     }
-    final check = (await ledger()).check(warehouse: warehouse, requiredBaseQty: required);
-    if (!check.ok) {
-      final item =
-          await (db.select(db.items)..where((t) => t.id.equals(check.itemId))).getSingleOrNull();
-      return SaveResult(
-        ok: false,
-        error: 'رصيد «${item?.name ?? check.itemId}» في مستودع «$warehouse» لا يكفي '
-            '(${_fmt(check.available)} متاح، المطلوب ${_fmt(check.requested)})',
-      );
+    final by = approvedBy.isNotEmpty ? approvedBy : (actor?.email ?? '');
+    String? error;
+    try {
+      error = await db.transaction<String?>(() async {
+        final check = await checkStock(warehouse, required);
+        if (!check.ok) {
+          final item =
+              await (db.select(db.items)..where((t) => t.id.equals(check.itemId))).getSingleOrNull();
+          return stockError(item, warehouse, check.available, check.requested);
+        }
+        final changed = await (db.update(db.issues)
+              ..where((t) =>
+                  t.id.isIn(rows.map((r) => r.id)) & t.status.isIn(approvableIssueStatuses)))
+            .write(IssuesCompanion(status: const Value('COMPLETED'), approvedBy: Value(by)));
+        // تغيّر السند منذ عرضه ⇒ لا اعتماد جزئي: الاستثناء يُرجع المعاملة كلها.
+        if (changed != rows.length) throw _StaleDocument();
+        return null;
+      });
+    } on _StaleDocument {
+      error = '✖ تغيّر السند منذ فتحه (اعتُمد أو رُفض) — حدّث القائمة وأعد المحاولة';
     }
+    if (error != null) return SaveResult(ok: false, error: error);
 
-    await (db.update(db.issues)..where((t) => t.refNo.equals(refNo) & t.status.equals('ORDER')))
-        .write(const IssuesCompanion(status: Value('COMPLETED')));
-    await AuditRepo(db).log(
-      action: 'issue.approve',
-      entityType: 'أمر صرف',
-      summary: 'اعتماد أمر الصرف $refNo من مستودع $warehouse',
-      details: {'refNo': refNo, 'warehouse': warehouse},
-      actorEmail: approvedBy,
-    );
+    await AuditRepo(db).write(action, 'issue', summary,
+        actor: actor,
+        actorEmail: by,
+        details: {
+          'refNo': refNo,
+          'warehouse': warehouse,
+          'target': rows.first.recipientDisplay,
+          'status': 'COMPLETED',
+          'itemCount': rows.length,
+          'totalBaseQty': rows.fold<double>(0, (a, b) => a + b.baseQty),
+          'risk': 'sensitive',
+        });
     return SaveResult(ok: true, refNo: refNo);
+  }
+
+  /// اعتماد مسودة وارد (مجموعة سند واحد) وإضافة كمياتها إلى الرصيد.
+  /// يرفض المستودع المجمّد بأمر جرد، كما يرفضه الحفظ المباشر.
+  Future<SaveResult> approveReceiptDraft(List<Receipt> rows, {User? actor}) async {
+    if (rows.isEmpty) return const SaveResult(ok: false, error: 'المسودة غير موجودة');
+    final warehouse = rows.first.warehouse;
+    final frozen = await frozenMessage(warehouse);
+    if (frozen != null) return SaveResult(ok: false, error: frozen);
+    await db.transaction(() async {
+      await (db.update(db.receipts)
+            ..where((t) => t.id.isIn(rows.map((r) => r.id)) & t.status.equals('DRAFT')))
+          .write(const ReceiptsCompanion(status: Value('COMPLETED')));
+    });
+    await AuditRepo(db).write('RECEIPT_DRAFT_APPROVED', 'receipt', 'اعتماد مسودة وارد وإضافة الرصيد',
+        actor: actor,
+        details: {
+          'refNo': rows.first.refNo,
+          'warehouse': warehouse,
+          'target': rows.first.supplier,
+          'status': 'COMPLETED',
+          'itemCount': rows.length,
+          'totalBaseQty': rows.fold<double>(0, (a, b) => a + b.baseQty),
+          'risk': 'sensitive',
+        });
+    return SaveResult(ok: true, refNo: rows.first.refNo);
   }
 
   Future<void> cancelIssueOrder(String refNo, String reason, {String cancelledBy = ''}) async {
@@ -616,6 +720,7 @@ class MovementsRepo {
     String refNo = '',
     String notes = '',
     String createdBy = '',
+    User? actor,
   }) async {
     if (lines.isEmpty) return const SaveResult(ok: false, error: '✖ أضف صنفًا واحدًا على الأقل');
     if (warehouse.isEmpty) return const SaveResult(ok: false, error: '✖ اختر المستودع');
@@ -623,10 +728,7 @@ class MovementsRepo {
     if (frozenMsg != null) return SaveResult(ok: false, error: frozenMsg);
 
     if (type == 'TO_SUPPLIER') {
-      final check = (await ledger()).check(
-        warehouse: warehouse,
-        requiredBaseQty: _sumByItem(lines),
-      );
+      final check = await checkStock(warehouse, _sumByItem(lines));
       if (!check.ok) {
         final item = await (db.select(db.items)..where((t) => t.id.equals(check.itemId))).getSingleOrNull();
         return SaveResult(
@@ -639,6 +741,7 @@ class MovementsRepo {
 
     final ref = refNo.isNotEmpty ? refNo : await nextRef('returns', 'رد-');
     await db.transaction(() async {
+      await _numbering.claim('returns', 'رد-', ref);
       for (final l in lines) {
         await db.into(db.returns).insert(ReturnsCompanion.insert(
               id: _newId('re'),
@@ -661,6 +764,7 @@ class MovementsRepo {
                   Value(beneficiaryUnitName.isEmpty ? party : beneficiaryUnitName),
               condition: Value(condition),
               origRef: Value(origRef),
+              cylinderAction: Value(l.cylinderAction),
             ));
       }
     });
@@ -679,25 +783,16 @@ class MovementsRepo {
       lines: lines,
       risk: toSupplier || !good ? 'sensitive' : 'normal',
       actorEmail: createdBy,
+      actor: actor,
       extra: toSupplier ? {'origRef': origRef} : const {},
     );
     return SaveResult(ok: true, refNo: ref);
   }
 
-  /// رقم مرجع تسلسلي بنفس نمط النظام الحالي: «و-000001».
-  Future<String> nextRef(String table, String prefix) async {
-    final rows = await db.customSelect('SELECT ref_no AS r FROM $table').get();
-    var max = 0;
-    for (final row in rows) {
-      final v = (row.data['r'] ?? '').toString();
-      final m = RegExp(r'(\d+)').firstMatch(v);
-      if (m != null) {
-        final n = int.tryParse(m.group(1)!) ?? 0;
-        if (n > max) max = n;
-      }
-    }
-    return '$prefix${(max + 1).toString().padLeft(6, '0')}';
-  }
+  /// رقم المرجع التالي لهذا الجهاز («و-K7QX-000001») دون حجزه — انظر [DocNumbering].
+  Future<String> nextRef(String table, String prefix) => _numbering.peek(table, prefix);
+
+  late final DocNumbering _numbering = DocNumbering(db);
 
   static Map<String, double> _sumByItem(List<DocLineInput> lines) {
     final out = <String, double>{};
@@ -716,3 +811,5 @@ class MovementsRepo {
   static String _newId(String prefix) =>
       Ids.next(prefix);
 }
+
+class _StaleDocument implements Exception {}

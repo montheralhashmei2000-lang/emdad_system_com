@@ -6,6 +6,7 @@ import '../../core/ids.dart';
 import '../db/app_database.dart';
 import 'audit_repo.dart';
 import 'catalog_repo.dart';
+import 'doc_numbering.dart';
 import 'movements_repo.dart';
 
 /// دورة الجرد الكاملة: إنشاء الأمر ← العد الفعلي ← تحليل الفروقات ←
@@ -121,18 +122,21 @@ class StocktakeRepo {
     return id;
   }
 
-  /// `nextNo()` — STK-<السنة>-<تسلسل من ثلاث خانات> لأوامر السنة الحالية.
+  /// `nextNo()` — STK-<السنة>-<رمز الجهاز>-<تسلسل من ثلاث خانات> لأوامر السنة الحالية.
+  ///
+  /// رمز الجهاز (انظر [DocNumbering]) يمنع أن يحمل أمرا جرد من فرعين الرقم نفسه
+  /// بعد المزامنة. التسلسل يُكمل من أوامر هذا الجهاز ومن الصيغة القديمة بلا رمز.
   Future<String> _nextOrderNo() async {
     final year = DateTime.now().year;
-    final re = RegExp(r'^STK-(\d{4})-(\d+)$');
+    final code = await DocNumbering(db).deviceCode();
+    final re = RegExp('^STK-$year-(?:$code-)?(\\d+)\$');
     var max = 0;
     for (final o in await db.select(db.stocktakes).get()) {
       final m = re.firstMatch(o.orderNo);
-      if (m != null && int.parse(m.group(1)!) == year) {
-        max = max > int.parse(m.group(2)!) ? max : int.parse(m.group(2)!);
-      }
+      final n = m == null ? 0 : int.parse(m.group(1)!);
+      if (n > max) max = n;
     }
-    return 'STK-$year-${(max + 1).toString().padLeft(3, '0')}';
+    return 'STK-$year-$code-${(max + 1).toString().padLeft(3, '0')}';
   }
 
   /// أمر جرد مفتوح على المستودع (مجمّدًا كان أو لا) — يمنع فتح أمر ثانٍ له.

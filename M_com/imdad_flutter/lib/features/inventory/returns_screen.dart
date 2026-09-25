@@ -11,10 +11,10 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/repos/documents_repo.dart';
 import '../documents/doc_log_view.dart';
 import '../../data/db/app_database.dart';
-import '../../data/repos/audit_repo.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../domain/line_consolidation.dart';
+import '../../domain/cylinders.dart';
 import 'doc_kit.dart';
 
 /// المرتجعات — نقل مطابق لـ `renderReturns()`: مرتجع من وحدة (صالح يُعاد للرصيد أو تالف توثيقي)،
@@ -31,6 +31,9 @@ class _Row {
   String itemId;
   String unit;
   final TextEditingController qty;
+
+  /// حالة الأسطوانات المرتجعة (للأصناف القابلة للتعبئة) — العهدة تعود فارغة غالبًا.
+  String cy = CylAction.returnEmpty;
   final key = UniqueKey();
 }
 
@@ -157,8 +160,9 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
 
   Future<void> _refreshBal() async {
     final wh = _tab == 'unit' ? _uWh : _sWh;
-    if (wh.isEmpty) return;
-    final b = await _moves.balances(warehouse: wh);
+    // بلا مستودع محدد: إجمالي مستودعات نطاق المستخدم من دفتر الحركات نفسه —
+    // لا عمود `items.qty` القديم الذي لا يعرف المستودعات ولا الحركات.
+    final b = await _moves.balances(warehouse: wh, scope: Perm.of(context).scope);
     if (mounted) setState(() => _whBal = b);
   }
 
@@ -248,6 +252,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
         unitName: r.unit,
         factor: f,
         qty: qty,
+        cylinderAction: it.isRefillable ? r.cy : '',
       ));
     }
     return (rows: out, err: '');
@@ -483,7 +488,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
     final meta = it == null
         ? ''
         : () {
-            final b = displayBalance(it, wh.isNotEmpty ? (_whBal[it.id] ?? 0) : it.qty);
+            final b = displayBalance(it, _whBal[it.id] ?? 0);
             return wh.isNotEmpty
                 ? 'رصيد «$wh»: ${nf(b.qty)} ${b.unit}'
                 : '$metaLabel: ${nf(b.qty)} ${b.unit}';
@@ -540,10 +545,19 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
         }),
       ),
     );
+    final cyBox = it != null && it.isRefillable
+        ? ImdCyBox(
+            label: '🛢️ أسطوانات — حالتها عند الإرجاع:',
+            value: r.cy,
+            options: CylAction.returnOptions,
+            onChanged: (v) => setState(() => r.cy = v),
+          )
+        : null;
     return ImdRvRow(
       index: index,
       trailing: _baseHint(r),
-      child: narrow
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        narrow
           ? Column(children: [
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: picker), const SizedBox(width: 10), Expanded(child: unit)]),
               const SizedBox(height: 10),
@@ -558,6 +572,8 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
               const SizedBox(width: 10),
               del,
             ]),
+        if (cyBox != null) cyBox,
+      ]),
     );
   }
 
@@ -637,20 +653,10 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
         refNo: _uRef,
         notes: _uNotes.text.trim(),
         createdBy: actor?.email ?? '',
+        actor: actor,
       );
       if (!mounted) return;
       if (!res.ok) return showImdToast(context, res.error);
-      await AuditRepo(_db).write('RETURN_FROM_UNIT', 'return', isGood ? 'تسجيل مرتجع من وحدة وإضافة الرصيد' : 'تسجيل مرتجع من وحدة كتالف',
-          details: {
-            'refNo': _uRef,
-            'warehouse': _uWh,
-            'target': _uUnit,
-            'status': isGood ? 'GOOD' : 'DAMAGED',
-            'itemCount': c.rows.length,
-            'totalBaseQty': c.rows.fold<double>(0, (a, b) => a + b.baseQty),
-            'risk': isGood ? 'normal' : 'sensitive',
-          },
-          actor: actor);
       if (!mounted) return;
       showImdToast(context, isGood ? '🎉 تم تسجيل المرتجع وإضافته للرصيد' : '✔ تم تسجيل المرتجع كإتلاف');
       await _fetch();
@@ -697,21 +703,10 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
         refNo: _sRef,
         notes: _sNotes.text.trim(),
         createdBy: actor?.email ?? '',
+        actor: actor,
       );
       if (!mounted) return;
       if (!res.ok) return showImdToast(context, res.error);
-      await AuditRepo(_db).write('RETURN_TO_SUPPLIER', 'return', 'تسجيل مرتجع إلى المورد وخصم الرصيد',
-          details: {
-            'refNo': _sRef,
-            'warehouse': _sWh,
-            'target': _sSup,
-            'status': 'TO_SUPPLIER',
-            'itemCount': c.rows.length,
-            'totalBaseQty': c.rows.fold<double>(0, (a, b) => a + b.baseQty),
-            'origRef': _sOrig.text.trim(),
-            'risk': 'sensitive',
-          },
-          actor: actor);
       if (!mounted) return;
       showImdToast(context, '✔ تم تسجيل مرتجع المورّد وخصم الرصيد');
       await _fetch();

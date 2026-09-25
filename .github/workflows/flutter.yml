@@ -1,0 +1,50 @@
+# فحص تطبيق Flutter (M_com/imdad_flutter) مع كل دفع أو طلب دمج يمسّه:
+# توليد كود Drift ثم التحليل الساكن ثم الاختبارات.
+name: Flutter
+
+on:
+  push:
+    paths:
+      - "M_com/imdad_flutter/**"
+      - ".github/workflows/flutter.yml"
+  pull_request:
+    paths:
+      - "M_com/imdad_flutter/**"
+      - ".github/workflows/flutter.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: flutter-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: M_com/imdad_flutter
+    steps:
+      - uses: actions/checkout@v4
+
+      # الاختبارات تفتح قواعد SQLite في الذاكرة عبر مكتبة النظام.
+      - name: Install SQLite
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Dependencies
+        run: flutter pub get
+
+      # ملفات *.g.dart لا تُرفع إلى المستودع؛ تُولَّد هنا كما على جهاز المطوّر.
+      - name: Generate Drift code
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test

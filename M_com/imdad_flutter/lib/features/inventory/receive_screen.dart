@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -16,6 +15,7 @@ import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/documents_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../domain/line_consolidation.dart';
+import '../../domain/cylinders.dart';
 import '../documents/doc_log_view.dart';
 import 'doc_kit.dart';
 
@@ -29,12 +29,15 @@ class ReceiveScreen extends StatefulWidget {
 
 /// سطر `.rvrow` في سند الوارد.
 class _Row {
-  _Row({this.itemId = '', this.unit = '', double? qty, this.cy = 'RECEIVE_FULL', this.noAuto = false})
+  _Row({this.itemId = '', this.unit = '', double? qty, this.cy = 'RECEIVE_FULL', this.expiry = '', this.noAuto = false})
       : qty = TextEditingController(text: qty == null ? '' : _num(qty));
   String itemId;
   String unit;
   final TextEditingController qty;
   String cy;
+
+  /// تاريخ انتهاء صلاحية الدفعة (اختياري).
+  String expiry;
   bool noAuto;
   final key = UniqueKey();
 }
@@ -134,8 +137,9 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
   }
 
   Future<void> _refreshBal() async {
-    if (_wh.isEmpty) return;
-    final b = await _moves.balances(warehouse: _wh);
+    // بلا مستودع محدد: إجمالي مستودعات نطاق المستخدم من دفتر الحركات نفسه —
+    // لا عمود `items.qty` القديم الذي لا يعرف المستودعات ولا الحركات.
+    final b = await _moves.balances(warehouse: _wh, scope: Perm.of(context).scope);
     if (mounted) setState(() => _whBal = b);
   }
 
@@ -170,7 +174,8 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
       if (qty <= 0) return (rows: rows, err: '✖ الكميات يجب أن تكون أكبر من صفر');
       final f = _catalog.factorOf(it, r.unit);
       final cy = it.isRefillable ? r.cy : '';
-      final key = '${r.itemId}|${r.unit}|$cy';
+      // دفعتان بتاريخي صلاحية مختلفين سطران مختلفان.
+      final key = '${r.itemId}|${r.unit}|$cy|${r.expiry}';
       if (!map.containsKey(key)) {
         map[key] = rows.length;
         rows.add(DocLineInput(
@@ -181,6 +186,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
           factor: f,
           qty: qty,
           cylinderAction: cy,
+          expiryDate: r.expiry,
         ));
       } else {
         final i = map[key]!;
@@ -193,6 +199,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
           factor: o.factor,
           qty: o.qty + qty,
           cylinderAction: o.cylinderAction,
+          expiryDate: o.expiryDate,
         );
       }
     }
@@ -221,7 +228,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
 
     String keyOf(_Row r) {
       final it = _item(r.itemId)!;
-      return '${r.itemId}|${it.isRefillable ? r.cy : ''}';
+      return '${r.itemId}|${it.isRefillable ? r.cy : ''}|${r.expiry}';
     }
 
     final consolidated = consolidateLines([
@@ -248,10 +255,11 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
         ..addAll([
           for (final l in consolidated)
             _Row(
-              itemId: l.groupKey.split('|').first,
+              itemId: l.groupKey.split('|')[0],
               unit: l.unitName,
               qty: l.qty,
-              cy: l.groupKey.split('|').last.isEmpty ? 'RECEIVE_FULL' : l.groupKey.split('|').last,
+              cy: l.groupKey.split('|')[1].isEmpty ? 'RECEIVE_FULL' : l.groupKey.split('|')[1],
+              expiry: l.groupKey.split('|')[2],
               noAuto: true,
             ),
           ...pending,
@@ -291,6 +299,11 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     if (imdIsFuture(_date)) items.add(const ImdCheck('err', 'تاريخ غير صالح', 'تاريخ سند الوارد لا يمكن أن يكون في المستقبل.'));
     if (c.err.isNotEmpty) items.add(ImdCheck('err', 'مشكلة في الأصناف', c.err.replaceFirst(RegExp(r'^✖\s*'), '')));
     if (c.rows.isEmpty) items.add(const ImdCheck('warn', 'لا توجد أصناف بعد', 'أضف صنفًا واحدًا على الأقل قبل الحفظ أو الاعتماد.'));
+    final expired = c.rows.where((r) => r.expiryDate.isNotEmpty && r.expiryDate.compareTo(_date) <= 0).toList();
+    if (expired.isNotEmpty) {
+      items.add(ImdCheck('warn', 'دفعة منتهية الصلاحية',
+          '«${expired.first.itemName}» تنتهي صلاحيته في تاريخ السند أو قبله — تأكد من التاريخ قبل الاستلام.'));
+    }
     if (imdDuplicateCount(c.rows, (r) => '${r.itemId}|${r.unitName}|${r.cylinderAction}') > 0) {
     }
     if (c.rows.isNotEmpty) {
@@ -342,24 +355,10 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
         draft: draft,
         replaceDraft: _loadedDraftRef == _ref,
         createdBy: actor?.email ?? '',
+        actor: actor,
       );
       if (!mounted) return;
       if (!res.ok) return showImdToast(context, res.error);
-      await AuditRepo(_db).write(
-        draft ? 'RECEIPT_DRAFT_SAVED' : 'RECEIPT_COMPLETED',
-        'receipt',
-        draft ? 'حفظ مسودة سند وارد' : 'اعتماد سند وارد',
-        details: {
-          'refNo': _ref,
-          'warehouse': _wh,
-          'target': _sup,
-          'status': draft ? 'DRAFT' : 'COMPLETED',
-          'itemCount': c.rows.length,
-          'totalBaseQty': c.rows.fold<double>(0, (a, b) => a + b.baseQty),
-          'risk': 'normal',
-        },
-        actor: actor,
-      );
       if (!mounted) return;
       _loadedDraftRef = '';
       showImdToast(context, draft ? '💾 حُفظت المسودة — لم تُؤثر على الأرصدة' : '🎉 تم الاستلام وإضافة الأرصدة بنجاح');
@@ -605,7 +604,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                 return 'رصيد «$_wh»: ${nf(b.qty)} ${b.unit}';
               }()
             : () {
-                final b = displayBalance(it, it.qty);
+                final b = displayBalance(it, _whBal[it.id] ?? 0);
                 return 'الرصيد: ${nf(b.qty)} ${b.unit}'
                     '${it.barcode.isNotEmpty ? ' • باركود: ${it.barcode}' : ''}';
               }());
@@ -649,6 +648,16 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
         child: ImdFld(controller: r.qty, number: true, onChanged: (_) => setState(() {})),
       ),
     ]);
+    // الأسطوانات أصول تُعبّأ لا مواد تنتهي، فلا صلاحية لها.
+    final hasExpiry = it != null && !it.isRefillable;
+    final expiry = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const ImdRowLabel('تاريخ الانتهاء (اختياري)'),
+      Row(children: [
+        Expanded(child: ImdDateField(value: r.expiry, onChanged: (v) => setState(() => r.expiry = v))),
+        if (r.expiry.isNotEmpty)
+          ImdIconButton(icon: 'x', tooltip: 'بلا صلاحية', onPressed: () => setState(() => r.expiry = '')),
+      ]),
+    ]);
     final del = Padding(
       padding: const EdgeInsets.only(top: 19),
       child: ImdIconButton(
@@ -667,7 +676,12 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
         if (mobile) ...[
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: picker), const SizedBox(width: 10), Expanded(child: unit)]),
           const SizedBox(height: 10),
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: qty), const SizedBox(width: 10), del]),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: qty),
+            if (hasExpiry) ...[const SizedBox(width: 10), Expanded(child: expiry)],
+            const SizedBox(width: 10),
+            del,
+          ]),
         ] else
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(child: picker),
@@ -675,6 +689,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
             SizedBox(width: 150, child: unit),
             const SizedBox(width: 10),
             SizedBox(width: 120, child: qty),
+            if (hasExpiry) ...[const SizedBox(width: 10), SizedBox(width: 190, child: expiry)],
             const SizedBox(width: 10),
             del,
           ]),
@@ -682,7 +697,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
           ImdCyBox(
             label: '🛢️ صنف قابل للتعبئة — نوع العملية:',
             value: r.cy,
-            options: const [('RECEIVE_FULL', 'توريد ممتلئ'), ('RECEIVE_EMPTY', 'توريد فارغ'), ('REFILL', 'تعبئة')],
+            options: CylAction.receiveOptions,
             onChanged: (v) => setState(() => r.cy = v),
           ),
       ]),
@@ -739,28 +754,16 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
   }
 
   Future<void> _approveDraft(String k, List<Receipt> g) async {
+    if (!Perm.of(context).guard(context, 'receive', 'approve')) return;
     if (!await _scopeOk(g.first.warehouse) || !mounted) return;
     if (!await imdConfirm(context, 'اعتماد المسودة $k وإضافة أرصدتها إلى الأصناف؟')) return;
     if (!mounted) return;
     final actor = context.read<AuthService>().currentUser;
     try {
-      await _db.transaction(() async {
-        for (final d in g) {
-          await (_db.update(_db.receipts)..where((t) => t.id.equals(d.id))).write(const ReceiptsCompanion(status: Value('COMPLETED')));
-        }
-      });
-      await AuditRepo(_db).write('RECEIPT_DRAFT_APPROVED', 'receipt', 'اعتماد مسودة وارد وإضافة الرصيد',
-          details: {
-            'refNo': k,
-            'warehouse': g.first.warehouse,
-            'target': g.first.supplier,
-            'status': 'COMPLETED',
-            'itemCount': g.length,
-            'totalBaseQty': g.fold<double>(0, (a, b) => a + b.baseQty),
-            'risk': 'sensitive',
-          },
-          actor: actor);
-      if (mounted) showImdToast(context, '🎉 اعتُمدت المسودة وأُضيف الرصيد');
+      final res = await _moves.approveReceiptDraft(g, actor: actor);
+      if (!mounted) return;
+      if (!res.ok) return showImdToast(context, res.error);
+      showImdToast(context, '🎉 اعتُمدت المسودة وأُضيف الرصيد');
     } catch (e) {
       if (mounted) showImdToast(context, '✖ $e');
       return;
@@ -819,7 +822,14 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
         ..clear()
         ..addAll([
           for (final d in g)
-            _Row(itemId: d.itemId, unit: d.unitName, qty: d.qty, cy: d.cylinderAction.isEmpty ? 'RECEIVE_FULL' : d.cylinderAction, noAuto: true),
+            _Row(
+              itemId: d.itemId,
+              unit: d.unitName,
+              qty: d.qty,
+              cy: d.cylinderAction.isEmpty ? 'RECEIVE_FULL' : d.cylinderAction,
+              expiry: d.expiryDate,
+              noAuto: true,
+            ),
         ]);
       if (_rows.isEmpty) _rows.add(_Row());
       _loadedDraftRef = f.refNo;

@@ -10,6 +10,7 @@ import 'core/print/print_preview.dart';
 import 'core/security/auth_service.dart';
 import 'core/ui/imd_fonts.dart';
 import 'core/ui/imd_widgets.dart';
+import 'core/ui/imd_window.dart';
 import 'core/theme/app_theme.dart';
 import 'data/db/app_database.dart';
 import 'data/repos/camp_ledger_repo.dart';
@@ -22,30 +23,36 @@ import 'features/settings/device_activation_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Platform غير متاح في المتصفح، فيُفحص kIsWeb أولًا.
-  if (!kIsWeb && Platform.isWindows) {
+  final db = AppDatabase();
+  final auth = AuthService(db);
+  final restored = await auth.restoreSession();
+  final identity = await SettingsRepo(db).identity();
+
+  if (ImdWindow.supported) {
+    // تظهر النافذة من البداية بوضعها الصحيح: بطاقة الدخول وحدها، أو الرئيسية
+    // مكبّرة بشريط عنوانها. (الجهاز الجديد يعرض بوابة التفعيل، وهي شاشة كاملة.)
+    final compact = restored == null && await auth.hasAnyUser();
     await windowManager.ensureInitialized();
     await windowManager.waitUntilReadyToShow(
-      const WindowOptions(
-        size: Size(1280, 820),
-        // حد أدنى بمقاس هاتف: الواجهة متجاوبة حتى 360 بكسل، فلا داعي لحبس
-        // النافذة على عرض مكتبي — وبه يمكن معاينة تخطيط الجوال على ويندوز.
-        minimumSize: Size(360, 600),
+      WindowOptions(
+        size: compact ? ImdWindow.loginSize : const Size(1280, 820),
+        minimumSize: compact ? ImdWindow.loginSize : const Size(360, 600),
         title: 'نظام الإمداد والتموين',
         center: true,
+        titleBarStyle: compact ? TitleBarStyle.hidden : TitleBarStyle.normal,
+        windowButtonVisibility: !compact,
       ),
       () async {
-        await _restoreNormalWindow();
+        if (compact) {
+          await ImdWindow.login();
+        } else {
+          await ImdWindow.main();
+        }
         await windowManager.show();
         await windowManager.focus();
       },
     );
   }
-
-  final db = AppDatabase();
-  final auth = AuthService(db);
-  final restored = await auth.restoreSession();
-  final identity = await SettingsRepo(db).identity();
 
   runApp(ImdadApp(
     db: db,
@@ -54,28 +61,6 @@ Future<void> main() async {
     themeMode: ImdTheme.parse(identity.themePref),
     fontFamily: identity.fontFamily,
   ));
-}
-
-/// نافذة عادية مؤطَّرة، داخل حدود الشاشة — تُضبط عند كل إقلاع.
-///
-/// ويندوز يستعيد للنافذة وضعها السابق: فإن تركها المستخدم في ملء الشاشة، أو
-/// جرّها حتى صار شريط عنوانها فوق حافة الشاشة، فتحها في المرة القادمة كذلك.
-/// فيختفي الشريط ومعه زرّا التصغير والتكبير، ويبدو التطبيق معطوبًا وهو سليم
-/// — ولا يبقى للمستخدم إلا اختصارات لوحة مفاتيح لا يعرفها.
-///
-/// فلا يُترك الأمر لويندوز: كل إقلاع يبدأ بنافذة سويّة.
-Future<void> _restoreNormalWindow() async {
-  try {
-    if (await windowManager.isFullScreen()) await windowManager.setFullScreen(false);
-    await windowManager.setTitleBarStyle(TitleBarStyle.normal);
-    await windowManager.setResizable(true);
-    await windowManager.setMaximizable(true);
-    // إحداثيّ سالب يعني أن أعلى النافذة خارج الشاشة — وهناك يقع الشريط.
-    final at = await windowManager.getPosition();
-    if (at.dy < 0 || at.dx < 0) await windowManager.center();
-  } catch (_) {
-    // الإضافة غير مُهيّأة في بيئة الاختبار، وفشل التجميل لا يمنع التطبيق.
-  }
 }
 
 /// تفضيل السمة المحفوظ في شاشة الهوية (`APP_CFG.themePref`) — يطبَّق على التطبيق كله.
@@ -214,11 +199,15 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
             ? HomeShell(onSignOut: () async {
                 await widget.auth.logout();
                 if (mounted) setState(() => _signedIn = false);
+                await ImdWindow.login();
               })
             : _DeviceGate(
                 db: widget.db,
                 auth: widget.auth,
-                onSignedIn: () => setState(() => _signedIn = true),
+                onSignedIn: () async {
+                  await ImdWindow.main();
+                  if (mounted) setState(() => _signedIn = true);
+                },
               ),
         ),
       ),
@@ -278,6 +267,12 @@ class _DeviceGateState extends State<_DeviceGate> {
       _fresh = fresh;
       _loading = false;
     });
+    // بوابة التفعيل شاشة كاملة؛ الدخول نافذة صغيرة بمقاس بطاقته.
+    if (gateFor(fresh: fresh) == GateTarget.activation) {
+      await ImdWindow.main();
+    } else {
+      await ImdWindow.login();
+    }
   }
 
   @override

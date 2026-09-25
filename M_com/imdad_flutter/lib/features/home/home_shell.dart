@@ -34,6 +34,7 @@ import '../inventory/pending_screen.dart';
 import '../inventory/receive_screen.dart';
 import '../inventory/returns_screen.dart';
 import '../inventory/transfer_screen.dart';
+import '../alerts/stock_alerts_screen.dart';
 import 'notification_bell.dart';
 import '../reports/camp_ledger_screen.dart';
 import '../reports/camp_settlement_screen.dart';
@@ -105,6 +106,7 @@ const _menu = <_MenuSection>[
   ]),
   _MenuSection('reports', 'trending', 'التقارير والجرد', [
     _MenuItem('balances', 'calculator', 'الأرصدة الحالية'),
+    _MenuItem('stockAlerts', 'alert', 'تنبيهات المخزون'),
     _MenuItem('stocktake', 'clipboard', 'جرد المخزون'),
     _MenuItem('reports', 'chart', 'التقارير'),
     _MenuItem('auditTrail', 'scan', 'سجل النشاط والتدقيق'),
@@ -174,8 +176,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   bool _isAdmin(AuthService auth) => auth.currentUser?.role == 'admin';
 
-  bool _hasPerm(AuthService auth, String page,
-      [String action = PermAction.view]) {
+  /// صفحات بلا صلاحية خاصة بها تتبع صلاحية صفحة أخرى، فلا يلزم تعديل الأدوار.
+  static const _permPage = {'lanSync': 'settings', 'stockAlerts': 'balances'};
+
+  bool _hasPerm(AuthService auth, String page, [String action = PermAction.view]) {
+    page = _permPage[page] ?? page;
     if (page == 'dailyOperations') {
       return _hasPerm(auth, 'mealPlans', action) ||
           _hasPerm(auth, 'kitchenLog', action);
@@ -243,6 +248,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return const RatiosScreen();
       case 'balances':
         return const BalancesScreen();
+      case 'stockAlerts':
+        return const StockAlertsScreen();
       case 'stocktake':
         return const StocktakeScreen();
       case 'reports':
@@ -282,8 +289,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final c = context.imd;
     final wide = MediaQuery.sizeOf(context).width > 920;
 
-    final allowed = _page == 'dash' ||
-        _hasPerm(auth, _page == 'lanSync' ? 'settings' : _page);
+    final allowed = _page == 'dash' || _hasPerm(auth, _page);
     final body = allowed ? _pageBody(_page) : const _NoAccess();
 
     final side = _Sidebar(
@@ -518,9 +524,13 @@ class _Sidebar extends StatelessWidget {
     return Container(
       width: ImdSizes.sideWidth,
       decoration: BoxDecoration(
-        color: c.side,
-        border: const BorderDirectional(
-            start: BorderSide(color: Color(0xFF26272B))),
+        // تدرّج خفيف من لون الشريط إلى أغمق منه أسفلًا.
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [c.side, Color.lerp(c.side, Colors.black, .22)!],
+        ),
+        border: BorderDirectional(start: BorderSide(color: c.sideLine)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       child: LayoutBuilder(
@@ -711,10 +721,8 @@ class _SideTileState extends State<_SideTile> {
         fw = FontWeight.w600;
         radius = 8;
       case _SideKind.item:
-        bg = widget.on
-            ? c.sideActive
-            : (_hover ? c.sideHover : Colors.transparent);
-        fg = (widget.on || _hover) ? Colors.white : const Color(0xFFD4D4D8);
+        bg = widget.on ? c.sideActive : (_hover ? c.sideHover : Colors.transparent);
+        fg = (widget.on || _hover) ? Colors.white : c.sideText.withValues(alpha: .86);
         iconColor = widget.on ? const Color(0xFF5EEAD4) : null;
         pad = const EdgeInsetsDirectional.fromSTEB(14, 11, 10, 11)
             .resolve(TextDirection.rtl);
@@ -724,9 +732,8 @@ class _SideTileState extends State<_SideTile> {
         radius = 8;
       case _SideKind.logout:
         bg = _hover ? c.sideHover : Colors.transparent;
-        fg = const Color(0xFFF4F4F5);
-        border = Border.all(
-            color: _hover ? const Color(0xFF52525B) : const Color(0xFF3F3F46));
+        fg = c.sideText;
+        border = Border.all(color: _hover ? c.sideMuted : c.sideBorder);
         pad = const EdgeInsets.all(13);
         margin = EdgeInsets.zero;
         fs = 14;

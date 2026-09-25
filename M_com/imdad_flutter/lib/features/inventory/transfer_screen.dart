@@ -20,6 +20,7 @@ import '../../data/repos/daily_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../domain/line_consolidation.dart';
 import '../../domain/strength.dart';
+import '../../domain/cylinders.dart';
 import 'doc_kit.dart';
 
 /// التحويل المخزني — نقل مطابق لـ `renderTransfer()`: إرسال تحويل جديد (مع الاحتساب التلقائي
@@ -32,11 +33,14 @@ class TransferScreen extends StatefulWidget {
 }
 
 class _Row {
-  _Row({this.itemId = '', this.unit = '', double? qty, this.noAuto = false})
+  _Row({this.itemId = '', this.unit = '', double? qty, this.noAuto = false, this.cy = CylAction.transferFull})
       : qty = TextEditingController(text: qty == null ? '' : _num(qty));
   String itemId;
   String unit;
   final TextEditingController qty;
+
+  /// حالة الأسطوانات المحوَّلة (للأصناف القابلة للتعبئة).
+  String cy;
   bool noAuto;
   final key = UniqueKey();
 }
@@ -64,14 +68,17 @@ class _TransferScreenState extends State<TransferScreen> {
     final consolidated = consolidateLines([
       for (final r in complete)
         LineQty(
-          groupKey: r.itemId,
+          // الممتلئة والفارغة لا تُدمجان في سطر واحد.
+          groupKey: '${r.itemId}|${_item(r.itemId)!.isRefillable ? r.cy : ''}',
           unitName: r.unit,
           factor: _catalog.factorOf(_item(r.itemId)!, r.unit),
           qty: double.parse(r.qty.text.trim()),
         ),
     ]);
 
-    final before = [for (final r in complete) '${r.itemId}|${r.unit}|${r.qty.text.trim()}'];
+    final before = [
+      for (final r in complete) '${r.itemId}|${_item(r.itemId)!.isRefillable ? r.cy : ''}|${r.unit}|${r.qty.text.trim()}'
+    ];
     final after = [for (final l in consolidated) '${l.groupKey}|${l.unitName}|${_num(l.qty)}'];
     if (before.join('§') == after.join('§')) return;
 
@@ -83,7 +90,13 @@ class _TransferScreenState extends State<TransferScreen> {
         ..clear()
         ..addAll([
           for (final l in consolidated)
-            _Row(itemId: l.groupKey, unit: l.unitName, qty: l.qty, noAuto: true),
+            _Row(
+              itemId: l.groupKey.split('|')[0],
+              unit: l.unitName,
+              qty: l.qty,
+              noAuto: true,
+              cy: l.groupKey.split('|')[1].isEmpty ? CylAction.transferFull : l.groupKey.split('|')[1],
+            ),
           ...pending,
         ]);
       if (_rows.isEmpty) _rows.add(_Row());
@@ -185,8 +198,9 @@ class _TransferScreenState extends State<TransferScreen> {
   }
 
   Future<void> _refreshBal() async {
-    if (_from.isEmpty) return;
-    final b = await _moves.balances(warehouse: _from);
+    // بلا مستودع محدد: إجمالي مستودعات نطاق المستخدم من دفتر الحركات نفسه —
+    // لا عمود `items.qty` القديم الذي لا يعرف المستودعات ولا الحركات.
+    final b = await _moves.balances(warehouse: _from, scope: Perm.of(context).scope);
     if (mounted) setState(() => _fromBal = b);
   }
 
@@ -229,6 +243,7 @@ class _TransferScreenState extends State<TransferScreen> {
         unitName: r.unit,
         factor: _catalog.factorOf(it, r.unit),
         qty: qty,
+        cylinderAction: it.isRefillable ? r.cy : '',
       ));
     }
     return (rows: rows, err: '');
@@ -355,20 +370,10 @@ class _TransferScreenState extends State<TransferScreen> {
         refNo: _ref,
         notes: _notes.text.trim(),
         createdBy: actor?.email ?? '',
+        actor: actor,
       );
       if (!mounted) return;
       if (!res.ok) return showImdToast(context, res.error);
-      await AuditRepo(_db).write('TRANSFER_SENT', 'transfer', 'إرسال تحويل مخزني معلق',
-          details: {
-            'refNo': _ref,
-            'warehouse': _from,
-            'target': _to,
-            'status': 'PENDING',
-            'itemCount': c.rows.length,
-            'totalBaseQty': c.rows.fold<double>(0, (a, b) => a + b.baseQty),
-            'risk': 'sensitive',
-          },
-          actor: actor);
       if (!mounted) return;
       showImdToast(context, '📤 أُرسل أمر التحويل — بانتظار تأكيد الاستلام من «$_to»');
       await _form();
@@ -607,7 +612,7 @@ class _TransferScreenState extends State<TransferScreen> {
     final meta = it == null
         ? ''
         : () {
-            final b = displayBalance(it, _from.isNotEmpty ? (_fromBal[it.id] ?? 0) : it.qty);
+            final b = displayBalance(it, _fromBal[it.id] ?? 0);
             return _from.isNotEmpty
                 ? 'رصيد «$_from»: ${nf(b.qty)} ${b.unit}'
                 : 'الرصيد الكلي: ${nf(b.qty)} ${b.unit}';
@@ -664,10 +669,19 @@ class _TransferScreenState extends State<TransferScreen> {
         }),
       ),
     );
+    final cyBox = it != null && it.isRefillable
+        ? ImdCyBox(
+            label: '🛢️ أسطوانات — حالتها عند التحويل:',
+            value: r.cy,
+            options: CylAction.transferOptions,
+            onChanged: (v) => setState(() => r.cy = v),
+          )
+        : null;
     return ImdRvRow(
       index: index,
       trailing: _baseHint(r),
-      child: narrow
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        narrow
           ? Column(children: [
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: picker), const SizedBox(width: 10), Expanded(child: unit)]),
               const SizedBox(height: 10),
@@ -682,6 +696,8 @@ class _TransferScreenState extends State<TransferScreen> {
               const SizedBox(width: 10),
               del,
             ]),
+        if (cyBox != null) cyBox,
+      ]),
     );
   }
 
@@ -731,6 +747,10 @@ class _TransferScreenState extends State<TransferScreen> {
     // النطاق: الاستلام يتطلب أن يكون مستودع الوصول ضمن نطاق المستخدم.
     final perm = Perm.of(context);
     if (!perm.canWh(g.first.destWarehouse)) return showImdToast(context, Perm.scopeBlock(g.first.destWarehouse));
+    // الاستلام يزيد رصيد المستودع الهدف، فيُمنع إن كان مجمّدًا بأمر جرد كبقية الحركات.
+    final frozen = await _moves.frozenMessage(g.first.destWarehouse);
+    if (!mounted) return;
+    if (frozen != null) return showImdToast(context, frozen);
     if (!await imdConfirm(context, 'تأكيد استلام التحويل «$k» في المستودع الهدف؟')) return;
     if (!mounted) return;
     final actor = context.read<AuthService>().currentUser;

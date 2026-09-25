@@ -31,10 +31,17 @@ class ImdIcon extends StatelessWidget {
 
   static final Map<String, String> _cache = {};
 
+  /// أيقونات خاصة بالتطبيق الأصلي، غير موجودة في مكتبة الويب المولَّدة
+  /// (`imd_icon_data.dart` يُعاد توليده فلا يُعدَّل يدويًا).
+  static const Map<String, String> _extra = {
+    'log-in': '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/>',
+    'log-out': '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>',
+  };
+
   static String _svg(String name, double stroke) {
     final key = '$name@$stroke';
     return _cache.putIfAbsent(key, () {
-      final body = kImdIconBodies[name] ?? kImdIconBodies['dot'] ?? '';
+      final body = kImdIconBodies[name] ?? _extra[name] ?? kImdIconBodies['dot'] ?? '';
       return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
           'stroke="#000" stroke-width="$stroke" stroke-linecap="round" stroke-linejoin="round">$body</svg>';
     });

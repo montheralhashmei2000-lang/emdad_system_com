@@ -12,6 +12,7 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/movements_repo.dart';
+import '../../domain/stock_alerts.dart';
 import '../home/home_shell.dart';
 import '../inventory/doc_kit.dart';
 import '../settings/audit_screen.dart';
@@ -99,7 +100,7 @@ class _HealthOpsScreenState extends State<HealthOpsScreen> {
     final warehouses = (await catalog.warehouses(scope: _perm.scope)).length;
     final facilities = (await catalog.facilities()).length;
 
-    final low = items.where((x) => x.minQty > 0 && (balances[x.id] ?? 0) <= x.minQty).length;
+    final low = items.where((x) => StockAlerts.isLow(balances[x.id] ?? 0, x.minQty)).length;
     final zero = items.where((x) => (balances[x.id] ?? 0) <= 0).length;
 
     Set<String> refs(Iterable<dynamic> rows, bool Function(dynamic) test) =>

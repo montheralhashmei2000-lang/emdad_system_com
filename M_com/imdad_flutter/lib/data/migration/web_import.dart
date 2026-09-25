@@ -547,7 +547,7 @@ class WebImporter {
             saltHex: hasSecret ? Value(salt) : const Value.absent(),
             hashHex: hasSecret ? Value(hash) : const Value.absent(),
             iterations: hasSecret
-                ? Value(_i(u, 'iterations', Pbkdf2.iterations))
+                ? Value(_i(u, 'iterations', Pbkdf2.legacyIterations))
                 : const Value.absent(),
             active: Value(_b(u, 'active', true)),
             approved: Value(_b(u, 'approved', true)),
@@ -587,7 +587,8 @@ class WebImporter {
             baseUnit: Value(_s(it, 'baseUnit')),
             units: Value(_json(it['units'])),
             qty: Value(_d(it, 'qty')),
-            minQty: Value(_d(it, 'min')),
+            // `min` في ملف الويب، و`minQty` في تصدير هذا التطبيق.
+            minQty: Value(_d(it, 'minQty', _d(it, 'min'))),
             barcode: Value(_s(it, 'barcode')),
             isRefillable: Value(_b(it, 'isRefillable')),
             reportUnit: Value(_s(it, 'reportUnit')),
@@ -697,6 +698,13 @@ class WebImporter {
             supervision: Value(_s(r, 'supervision')),
             audit: Value(_s(r, 'audit')),
             cylinderAction: Value(_s(r, 'cylinderAction')),
+            expiryDate: Value(_s(r, 'expiryDate')),
+            editCount: Value(_i(r, 'editCount')),
+            editLog: Value(_json(r['editLog'])),
+            editedBy: Value(_s(r, 'editedBy')),
+            cancelReason: Value(_s(r, 'cancelReason')),
+            cancelledBy: Value(_s(r, 'cancelledBy')),
+            prevStatus: Value(_s(r, 'prevStatus')),
           ));
     }
     _count(res, 'receipts', rows.length);
@@ -735,6 +743,12 @@ class WebImporter {
             approvedBy: Value(_s(r, 'approvedBy')),
             rejectReason: Value(_s(r, 'rejectReason')),
             rejectedBy: Value(_s(r, 'rejectedBy')),
+            editCount: Value(_i(r, 'editCount')),
+            editLog: Value(_json(r['editLog'])),
+            editedBy: Value(_s(r, 'editedBy')),
+            cancelReason: Value(_s(r, 'cancelReason')),
+            cancelledBy: Value(_s(r, 'cancelledBy')),
+            prevStatus: Value(_s(r, 'prevStatus')),
           ));
     }
     _count(res, 'issues', rows.length);
@@ -766,6 +780,13 @@ class WebImporter {
             strength: Value(_d(r, 'strength')),
             durationDays: Value(_i(r, 'durationDays', 1)),
             rejectReason: Value(_s(r, 'rejectReason')),
+            cylinderAction: Value(_s(r, 'cylinderAction')),
+            editCount: Value(_i(r, 'editCount')),
+            editLog: Value(_json(r['editLog'])),
+            editedBy: Value(_s(r, 'editedBy')),
+            cancelReason: Value(_s(r, 'cancelReason')),
+            cancelledBy: Value(_s(r, 'cancelledBy')),
+            prevStatus: Value(_s(r, 'prevStatus')),
           ));
     }
     _count(res, 'transfers', rows.length);
@@ -797,6 +818,13 @@ class WebImporter {
             type: Value(_s(r, 'type', 'FROM_UNIT')),
             condition: Value(_s(r, 'condition', 'صالحة')),
             origRef: Value(_s(r, 'origRef')),
+            cylinderAction: Value(_s(r, 'cylinderAction')),
+            editCount: Value(_i(r, 'editCount')),
+            editLog: Value(_json(r['editLog'])),
+            editedBy: Value(_s(r, 'editedBy')),
+            cancelReason: Value(_s(r, 'cancelReason')),
+            cancelledBy: Value(_s(r, 'cancelledBy')),
+            prevStatus: Value(_s(r, 'prevStatus')),
           ));
     }
     _count(res, 'returns', rows.length);
@@ -839,13 +867,22 @@ class WebImporter {
             itemCode: Value(_s(a, 'itemCode')),
             itemName: Value(_s(a, 'itemName')),
             unitName: Value(_s(a, 'unitName')),
+            factor: Value(_d(a, 'factor', 1)),
             qty: Value(_d(a, 'qty')),
             baseQty: Value(_d(a, 'baseQty')),
             status: Value(_s(a, 'status', 'COMPLETED')),
+            notes: Value(_s(a, 'notes')),
+            createdBy: Value(_s(a, 'createdBy')),
             createdAt: Value(_created(a)),
             sessionId: Value(_s(a, 'sessionId')),
             reason: Value(_s(a, 'reason')),
             approvedBy: Value(_s(a, 'approvedBy')),
+            editCount: Value(_i(a, 'editCount')),
+            editLog: Value(_json(a['editLog'])),
+            editedBy: Value(_s(a, 'editedBy')),
+            cancelReason: Value(_s(a, 'cancelReason')),
+            cancelledBy: Value(_s(a, 'cancelledBy')),
+            prevStatus: Value(_s(a, 'prevStatus')),
           ));
     }
     if (rows.isNotEmpty) _count(res, 'adjustments', rows.length);
@@ -905,8 +942,10 @@ class WebImporter {
       final itemId = _s(r, 'itemId', _id(r));
       if (!_accept('entitlements', itemId)) continue;
       final unitName = _s(r, 'measureUnitName', _s(r, 'unitName'));
-      // `entFactor(ent,item)`: المعامل من وحدات الصنف بالاسم (الويب لا يخزّنه في المقرر).
-      var factor = 1.0;
+      // `entFactor(ent,item)`: المعامل من وحدات الصنف بالاسم (الويب لا يخزّنه في المقرر)،
+      // وإلا فالمعامل المصدَّر مع المقرر (تصدير هذا التطبيق) حين لا يكون الصنف هنا بعد.
+      var factor = _d(r, 'measureFactor', 1);
+      if (factor <= 0) factor = 1;
       final item = await (db.select(db.items)..where((t) => t.id.equals(itemId))).getSingleOrNull();
       if (item != null) {
         try {
@@ -929,6 +968,7 @@ class WebImporter {
             qtyPerPerson: Value((measureQty * 1000).round() / 1000),
             measureUnitName: Value(unitName),
             measureFactor: Value(factor),
+            notes: Value(_s(r, 'notes')),
             updatedAt: Value(DateTime.now()),
           ));
     }

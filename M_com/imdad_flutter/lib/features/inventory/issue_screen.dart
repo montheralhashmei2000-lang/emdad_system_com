@@ -15,14 +15,16 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/repos/documents_repo.dart';
 import '../documents/doc_log_view.dart';
 import '../../data/db/app_database.dart';
-import '../../data/repos/audit_repo.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/daily_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../domain/line_consolidation.dart';
 import '../../data/repos/settings_repo.dart';
+import '../../domain/issue_rules.dart';
 import '../../domain/strength.dart';
+import '../../domain/cylinders.dart';
 import 'doc_kit.dart';
+import 'issue_drafts_view.dart';
 
 /// صرف بضاعة — نقل مطابق لـ `renderIssue()`: سند صرف جديد (أربعة أنواع توجيه، القوة والاستحقاق،
 /// موعد الصرف القادم)، المسودات والأوامر، وسجل الصادرات مع تعديل القوة/الأيام والطباعة المجمّعة.
@@ -89,8 +91,6 @@ class _IssueScreenState extends State<IssueScreen> {
   final _notes = TextEditingController();
   final List<_Row> _rows = [];
 
-  // المسودات والسجل
-  List<Issue>? _drafts;
 
   @override
   void initState() {
@@ -112,7 +112,6 @@ class _IssueScreenState extends State<IssueScreen> {
   void _switch(String t) {
     setState(() => _tab = t);
     if (t == 'form') _form();
-    if (t == 'drafts') _loadDrafts();
   }
 
   // ───────────────────────── النموذج ─────────────────────────
@@ -162,8 +161,9 @@ class _IssueScreenState extends State<IssueScreen> {
   }
 
   Future<void> _refreshBal() async {
-    if (_wh.isEmpty) return;
-    final b = await _moves.balances(warehouse: _wh);
+    // بلا مستودع محدد: إجمالي مستودعات نطاق المستخدم من دفتر الحركات نفسه —
+    // لا عمود `items.qty` القديم الذي لا يعرف المستودعات ولا الحركات.
+    final b = await _moves.balances(warehouse: _wh, scope: Perm.of(context).scope);
     if (mounted) setState(() => _whBal = b);
   }
 
@@ -236,7 +236,7 @@ class _IssueScreenState extends State<IssueScreen> {
     _recalcAll();
   }
 
-  /// `issCheckNextDue(unitId)`
+  /// `issCheckNextDue(unitId)` — الحساب في [IssueRules.nextDue].
   Future<void> _checkNextDue(String unitId) async {
     final rows = await (_db.select(_db.issues)
           ..where((t) => t.unitId.equals(unitId))
@@ -244,35 +244,28 @@ class _IssueScreenState extends State<IssueScreen> {
         .get();
     rows.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     if (!mounted) return;
-    if (rows.isEmpty) {
+    final due = IssueRules.nextDue([
+      for (final v in rows) (date: v.date.isNotEmpty ? v.date : isoDay(v.createdAt), durationDays: v.durationDays),
+    ], DateTime.now());
+    if (!due.hasHistory) {
       setState(() {
         _nextDue = 'لا يوجد صرف سابق';
         _nextDueColor = const Color(0xFF155724);
       });
       return;
     }
-    DateTime? maxNext;
-    for (final v in rows.take(10)) {
-      final dt = v.date.isNotEmpty ? v.date : isoDay(v.createdAt);
-      final d = DateTime.tryParse(dt);
-      if (d == null) continue;
-      final next = d.add(Duration(days: v.durationDays <= 0 ? 1 : v.durationDays));
-      if (maxNext == null || next.isAfter(maxNext)) maxNext = next;
-    }
-    if (maxNext == null) return;
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final diff = (maxNext.difference(today).inHours / 24).round();
-    final str = isoDay(maxNext);
+    final date = due.date;
+    if (date == null) return;
+    final str = isoDay(date);
     setState(() {
-      if (diff < 0) {
+      if (due.overdue) {
         _nextDue = '⚠️ متأخر! كان يجب الصرف في $str';
         _nextDueColor = context.imd.danger;
-      } else if (diff == 0) {
+      } else if (due.dueToday) {
         _nextDue = '📢 اليوم! موعد الصرف $str';
         _nextDueColor = const Color(0xFFB78103);
       } else {
-        _nextDue = '📅 $str (بعد $diff يوم)';
+        _nextDue = '📅 $str (بعد ${due.daysLeft} يوم)';
         _nextDueColor = const Color(0xFF155724);
       }
     });
@@ -286,12 +279,15 @@ class _IssueScreenState extends State<IssueScreen> {
     final ent = _ents[r.itemId];
     final it = _item(r.itemId);
     if (ent == null || ent.qtyPerPerson == 0 || it == null) return false;
-    final days = int.tryParse(_days.text.trim()) ?? 1;
-    final measureFactor = _catalog.factorOf(it, ent.measureUnitName);
-    final perDay = ent.qtyPerPerson * measureFactor / 30.0;
-    final total = perDay * _strength * (days <= 0 ? 1 : days);
-    final factor = _catalog.factorOf(it, r.unit);
-    r.qty.text = _num(((total / factor) * 1000).round() / 1000);
+    final qty = IssueRules.entitledQty(
+      monthlyPerPerson: ent.qtyPerPerson,
+      measureFactor: _catalog.factorOf(it, ent.measureUnitName),
+      strength: _strength,
+      days: int.tryParse(_days.text.trim()) ?? 1,
+      lineFactor: _catalog.factorOf(it, r.unit),
+    );
+    if (qty == null) return false;
+    r.qty.text = _num(qty);
     return true;
   }
 
@@ -374,9 +370,8 @@ class _IssueScreenState extends State<IssueScreen> {
       final qty = double.tryParse(r.qty.text.trim()) ?? 0;
       if (qty <= 0) return (rows: rows, err: '✖ أدخل كمية صالحة للصنف ${it.name}');
       final factor = _catalog.factorOf(it, r.unit);
-      final base = qty * factor;
       final have = _whBal[it.id] ?? 0;
-      if (_wh.isNotEmpty && base > have + 1e-9) {
+      if (_wh.isNotEmpty && IssueRules.shortage([(it.id, qty * factor)], _whBal) != null) {
         return (rows: rows, err: '✖ رصيد «${it.name}» في مستودع «$_wh» لا يكفي (${nf(have)} متاح)');
       }
       final ben = _type == 3 ? _units.where((u) => u.id == r.benUnit).firstOrNull : null;
@@ -398,17 +393,8 @@ class _IssueScreenState extends State<IssueScreen> {
 
   /// مجموع الخصم لكل صنف مقابل رصيد المستودع (`stockErrorFromMap`).
   String _balError(List<DocLineInput> rows) {
-    final sum = <String, double>{};
-    for (final r in rows) {
-      sum[r.itemId] = (sum[r.itemId] ?? 0) + r.baseQty;
-    }
-    for (final e in sum.entries) {
-      final have = _whBal[e.key] ?? 0;
-      if (e.value > have + 1e-9) {
-        return MovementsRepo.stockError(_item(e.key), _wh, have, e.value);
-      }
-    }
-    return '';
+    final short = IssueRules.shortage([for (final r in rows) (r.itemId, r.baseQty)], _whBal);
+    return short == null ? '' : MovementsRepo.stockError(_item(short.itemId), _wh, short.available, short.requested);
   }
 
   /// التجميع التلقائي وإعادة التوزيع على الوحدات — يحل محل زر «دمج التكرار».
@@ -497,11 +483,9 @@ class _IssueScreenState extends State<IssueScreen> {
   /// `issValidateLive()`
   List<ImdCheck> _validate() {
     final items = <ImdCheck>[];
-    if (_wh.isEmpty) items.add(const ImdCheck('warn', 'المستودع غير محدد', 'اختَر المستودع المصروف منه قبل التنفيذ.'));
-    if (imdIsFuture(_date)) items.add(const ImdCheck('err', 'تاريخ غير صالح', 'تاريخ الصرف لا يمكن أن يكون في المستقبل.'));
-    if (_type == 0 && _ben.isEmpty) items.add(const ImdCheck('warn', 'الوحدة المستفيدة غير محددة', 'اختَر الوحدة التابعة قبل الاعتماد.'));
-    if (_type == 1 && _fac.isEmpty) items.add(const ImdCheck('warn', 'المطبخ/الفرن غير محدد', 'اختَر الجهة التشغيلية قبل الاعتماد.'));
-    if (_type == 2 && _custom.text.trim().isEmpty) items.add(const ImdCheck('warn', 'اسم المستلم ناقص', 'اكتب اسم المستلم أو الجهة الاستثنائية.'));
+    for (final p in IssueRules.headerProblems(_header, today: DateTime.now())) {
+      items.add(ImdCheck(p.isError ? 'err' : 'warn', p.title, p.detail));
+    }
     final c = _collect();
     if (c.err.isNotEmpty) items.add(ImdCheck('err', 'مشكلة في السطور', c.err.replaceFirst(RegExp(r'^✖\s*'), '')));
     if (c.rows.isEmpty) items.add(const ImdCheck('warn', 'لا توجد أصناف بعد', 'أضف صنفًا واحدًا على الأقل قبل التنفيذ.'));
@@ -515,6 +499,18 @@ class _IssueScreenState extends State<IssueScreen> {
     }
     return items;
   }
+
+  /// رأس السند الحالي لقواعد [IssueRules].
+  IssueHeader get _header => IssueHeader(
+        target: IssueTarget.of(_type),
+        warehouse: _wh,
+        date: _date,
+        unitId: _ben,
+        unitName: _benName,
+        facilityId: _fac,
+        facilityLabel: _facLabel,
+        customRecipient: _custom.text,
+      );
 
   String get _benName {
     final u = _units.where((x) => x.id == _ben).firstOrNull;
@@ -534,24 +530,11 @@ class _IssueScreenState extends State<IssueScreen> {
     final frozen = await _moves.frozenMessage(_wh);
     if (!mounted) return;
     if (frozen != null) return showImdToast(context, frozen);
-    if (_wh.isEmpty) return showImdToast(context, '✖ اختر المستودع');
-    if (_date.isEmpty) return showImdToast(context, '✖ اختر تاريخ الصرف');
-    if (imdIsFuture(_date)) return showImdToast(context, '✖ تاريخ الصرف لا يمكن أن يكون في المستقبل');
+    final header = _header;
+    final problems = IssueRules.headerProblems(header, today: DateTime.now());
+    if (problems.isNotEmpty) return showImdToast(context, problems.first.message);
     if (_ref.isEmpty) return showImdToast(context, '✖ المرجع غير جاهز — أعد فتح الشاشة');
-    String target;
-    switch (_type) {
-      case 0:
-        if (_ben.isEmpty) return showImdToast(context, '✖ اختر الوحدة المستفيدة');
-        target = _benName;
-      case 1:
-        if (_fac.isEmpty) return showImdToast(context, '✖ اختر المطبخ أو الفرن');
-        target = _facLabel;
-      case 2:
-        target = _custom.text.trim();
-        if (target.isEmpty) return showImdToast(context, '✖ اكتب اسم المستلم');
-      default:
-        target = 'صرف لوحدات متعددة';
-    }
+    final target = header.recipient;
     final c = _collect();
     if (c.err.isNotEmpty) return showImdToast(context, c.err);
     if (c.rows.isEmpty) return showImdToast(context, '✖ أضف صنفًا واحدًا على الأقل');
@@ -583,24 +566,10 @@ class _IssueScreenState extends State<IssueScreen> {
         notes: _notes.text.trim(),
         status: status,
         createdBy: actor?.email ?? '',
+        actor: actor,
       );
       if (!mounted) return;
       if (!res.ok) return showImdToast(context, res.error);
-      await AuditRepo(_db).write(
-        status == 'COMPLETED' ? 'ISSUE_COMPLETED' : (status == 'ORDER' ? 'ISSUE_ORDER_CREATED' : 'ISSUE_DRAFT_SAVED'),
-        'issue',
-        status == 'COMPLETED' ? 'اعتماد سند صرف وخصم الرصيد' : (status == 'ORDER' ? 'إرسال أمر صرف للمستودع' : 'حفظ مسودة صرف'),
-        details: {
-          'refNo': _ref,
-          'warehouse': _wh,
-          'target': target,
-          'status': status,
-          'itemCount': c.rows.length,
-          'totalBaseQty': c.rows.fold<double>(0, (a, b) => a + b.baseQty),
-          'risk': status == 'DRAFT' ? 'normal' : 'sensitive',
-        },
-        actor: actor,
-      );
       if (!mounted) return;
       showImdToast(
           context,
@@ -678,7 +647,7 @@ class _IssueScreenState extends State<IssueScreen> {
       return ImdPage(children: [
         ...head,
         if (_tab == 'drafts')
-          _draftsView(context)
+          const IssueDraftsView()
         else ...[
           Align(
             alignment: AlignmentDirectional.centerStart,
@@ -933,7 +902,7 @@ class _IssueScreenState extends State<IssueScreen> {
     // الرصيد يُعرض بوحدة العرض المختارة في بطاقة الصنف لا بالأساسية دائمًا.
     final shown = it == null
         ? null
-        : displayBalance(it, _wh.isNotEmpty ? (_whBal[it.id] ?? 0) : it.qty);
+        : displayBalance(it, _whBal[it.id] ?? 0);
     final meta = it == null
         ? ''
         : (_wh.isNotEmpty
@@ -944,7 +913,7 @@ class _IssueScreenState extends State<IssueScreen> {
       ImdItemPicker(
         items: _items,
         value: r.itemId,
-        labelOf: (i) => '${i.code} — ${i.name} (رصيد: ${nf(_whBal[i.id] ?? i.qty)})',
+        labelOf: (i) => '${i.code} — ${i.name} (رصيد: ${nf(_whBal[i.id] ?? 0)})',
         onChanged: (v) => _onItem(r, v),
       ),
       ImdRowMeta(meta),
@@ -1051,7 +1020,7 @@ class _IssueScreenState extends State<IssueScreen> {
           ImdCyBox(
             label: '🛢️ صنف قابل للتعبئة/الاستبدال — العملية:',
             value: r.cy,
-            options: const [('EXCHANGE', 'استبدال أسطوانات'), ('ISSUE_FULL', 'صرف ممتلئ'), ('ISSUE_EMPTY', 'صرف فارغ'), ('CONSUME', 'استهلاك داخلي')],
+            options: CylAction.issueOptions,
             onChanged: (v) => setState(() => r.cy = v),
           ),
         Padding(
@@ -1065,123 +1034,6 @@ class _IssueScreenState extends State<IssueScreen> {
         ),
       ]),
     );
-  }
-
-  // ───────────────────────── المسودات والأوامر ─────────────────────────
-  Future<void> _loadDrafts() async {
-    setState(() => _drafts = null);
-    final rows = await (_db.select(_db.issues)..where((t) => t.status.isIn(const ['DRAFT', 'ORDER']))).get();
-    if (mounted) setState(() => _drafts = rows);
-  }
-
-  Map<String, List<Issue>> _group(List<Issue> docs) {
-    final g = <String, List<Issue>>{};
-    for (final d in docs) {
-      g.putIfAbsent(d.refNo.isNotEmpty ? d.refNo : '_${d.id}', () => []).add(d);
-    }
-    return g;
-  }
-
-  Widget _draftsView(BuildContext context) {
-    final docs = _drafts;
-    if (docs == null) return const ImdLd('جارٍ تحميل المسودات…');
-    final groups = _group(docs);
-    if (groups.isEmpty) return const ImdICard(child: ImdLdText('لا توجد مسودات أو أوامر معلقة 👌'));
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      ImdChipsRow(children: [ImdChip('أوامر ومسودات: ${nf(groups.length)}', tone: ImdTone.code)]),
-      for (final e in groups.entries)
-        () {
-          final f = e.value.first;
-          final isOrder = f.status == 'ORDER';
-          return ImdDocCard(
-            head: [
-              ImdChip(isOrder ? '📤 أمر توجيه' : '💾 مسودة', tone: isOrder ? ImdTone.ok : ImdTone.pend),
-              ImdChip(e.key, tone: ImdTone.code),
-              Text(f.recipientDisplay.isEmpty ? '—' : f.recipientDisplay, style: const TextStyle(fontWeight: FontWeight.w700)),
-              ImdChip(f.date.isEmpty ? '—' : f.date, tone: ImdTone.off),
-              ImdChip('${nf(e.value.length)} صنف', tone: ImdTone.ok),
-              ImdDocWarehouse(f.warehouse),
-            ],
-            actions: [
-              ImdButton(label: 'اعتماد وصرف الرصيد', icon: 'check', small: true, onPressed: () => _approveDraft(e.key, e.value)),
-              ImdButton(label: 'حذف', icon: 'trash', small: true, kind: ImdBtnKind.danger, onPressed: () => _deleteDraft(e.key, e.value)),
-            ],
-          );
-        }(),
-    ]);
-  }
-
-  Future<void> _approveDraft(String k, List<Issue> g) async {
-    final perm = Perm.of(context);
-    if (!perm.canWh(g.first.warehouse)) return showImdToast(context, Perm.scopeBlock(g.first.warehouse));
-    final need = <String, double>{};
-    for (final d in g) {
-      need[d.itemId] = (need[d.itemId] ?? 0) + d.baseQty;
-    }
-    final totals = await _moves.balances();
-    final items = {for (final i in await _db.select(_db.items).get()) i.id: i};
-    for (final e in need.entries) {
-      final bal = (items[e.key]?.qty ?? 0) + (totals[e.key] ?? 0);
-      if (bal < e.value) {
-        if (mounted) {
-          showImdToast(context, '✖ الرصيد الحالي لا يكفي لاعتماد السند بالكامل (${nf(bal)} متاح، المطلوب ${nf(e.value)})');
-        }
-        return;
-      }
-    }
-    if (!mounted || !await imdConfirm(context, 'اعتماد أمر الصرف وخصم الرصيد المخزني لجميع الأصناف؟')) return;
-    if (!mounted) return;
-    final actor = context.read<AuthService>().currentUser;
-    try {
-      await _db.transaction(() async {
-        for (final d in g) {
-          await (_db.update(_db.issues)..where((t) => t.id.equals(d.id))).write(const IssuesCompanion(status: Value('COMPLETED')));
-        }
-      });
-      await AuditRepo(_db).write('ISSUE_DRAFT_APPROVED', 'issue', 'اعتماد أمر/مسودة صرف وخصم الرصيد',
-          details: {
-            'refNo': k,
-            'warehouse': g.first.warehouse,
-            'target': g.first.recipientDisplay,
-            'status': 'COMPLETED',
-            'itemCount': g.length,
-            'totalBaseQty': g.fold<double>(0, (a, b) => a + b.baseQty),
-            'risk': 'sensitive',
-          },
-          actor: actor);
-      if (mounted) showImdToast(context, '✔ اعتُمد السند وتم خصم الرصيد');
-      await _loadDrafts();
-    } catch (e) {
-      if (mounted) showImdToast(context, '✖ $e');
-    }
-  }
-
-  Future<void> _deleteDraft(String k, List<Issue> g) async {
-    if (!Perm.of(context).canWh(g.first.warehouse)) return showImdToast(context, Perm.scopeBlock(g.first.warehouse));
-    if (!await imdConfirm(context, 'حذف هذه المسودة نهائياً؟', ok: 'حذف', danger: true)) return;
-    if (!mounted) return;
-    final actor = context.read<AuthService>().currentUser;
-    try {
-      await _db.transaction(() async {
-        for (final d in g) {
-          await (_db.delete(_db.issues)..where((t) => t.id.equals(d.id))).go();
-        }
-      });
-      await AuditRepo(_db).write('ISSUE_DRAFT_DELETED', 'issue', 'حذف مسودة صرف',
-          details: {
-            'refNo': k,
-            'warehouse': g.first.warehouse,
-            'target': g.first.recipientDisplay,
-            'status': 'DELETED',
-            'itemCount': g.length,
-            'risk': 'sensitive',
-          },
-          actor: actor);
-      if (mounted) showImdToast(context, '✔ حُذفت المسودة');
-      await _loadDrafts();
-    } catch (e) {
-      if (mounted) showImdToast(context, '✖ $e');
-    }
   }
 
   // ───────────────────────── السجل ─────────────────────────

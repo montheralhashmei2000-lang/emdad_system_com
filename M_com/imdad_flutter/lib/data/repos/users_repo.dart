@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 
 import '../db/app_database.dart';
-import '../../core/security/pbkdf2.dart';
+import '../../core/security/password_hash.dart';
 import '../../domain/access_control.dart';
 import 'audit_repo.dart';
 
@@ -71,7 +71,7 @@ class UsersRepo {
     final exists = await (db.select(db.users)..where((t) => t.username.equals(u))).get();
     if (exists.isNotEmpty) throw ArgumentError('اسم المستخدم مستخدم بالفعل');
 
-    final salt = Pbkdf2.newSaltHex();
+    final ph = await PasswordHash.create(password);
     final id = 'local-$u';
     await db.into(db.users).insert(UsersCompanion.insert(
           id: id,
@@ -82,8 +82,9 @@ class UsersRepo {
           roles: Value(jsonEncode(roleIds)),
           permissions: Value(jsonEncode(permissions ?? permissionsForRoles(roleIds))),
           warehouseScope: Value(warehouseScope == null ? 'ALL' : jsonEncode(warehouseScope)),
-          saltHex: Value(salt),
-          hashHex: Value(Pbkdf2.deriveHex(password, salt)),
+          saltHex: Value(ph.saltHex),
+          hashHex: Value(ph.hashHex),
+          iterations: Value(ph.iterations),
         ));
 
     await AuditRepo(db).log(
@@ -140,10 +141,13 @@ class UsersRepo {
 
   Future<void> resetPassword({required String id, required String password}) async {
     if (password.length < 8) throw ArgumentError('كلمة المرور 8 أحرف فأكثر');
-    final salt = Pbkdf2.newSaltHex();
+    // الأعمدة الثلاثة معًا: لو بقي `iterations` القديم (حساب مُرحَّل بعدد مختلف)
+    // لما طابقت البصمة الجديدة أبدًا وأُغلق الحساب بعد إعادة التعيين.
+    final ph = await PasswordHash.create(password);
     await (db.update(db.users)..where((t) => t.id.equals(id))).write(UsersCompanion(
-      saltHex: Value(salt),
-      hashHex: Value(Pbkdf2.deriveHex(password, salt)),
+      saltHex: Value(ph.saltHex),
+      hashHex: Value(ph.hashHex),
+      iterations: Value(ph.iterations),
       failedAttempts: const Value(0),
       lockedUntil: const Value(null),
       updatedAt: Value(DateTime.now()),
