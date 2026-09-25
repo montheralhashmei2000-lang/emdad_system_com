@@ -99,6 +99,7 @@ class DataExporter {
                 'location': w.location,
                 'feedsAllCamps': w.feedsAllCamps,
                 'isMain': w.isMain,
+                'fuelCapacityLiters': w.fuelCapacityLiters,
                 'campIds': w.campIds,
                 'notes': w.notes,
               })
@@ -471,6 +472,129 @@ class DataExporter {
                 'fulfillKind': o.fulfillKind,
                 'fulfillDate': o.fulfillDate,
                 'createdAt': o.createdAt.toIso8601String(),
+              })
+          .toList(),
+      'fuelAllocations':
+          (await _rows(db.fuelAllocations, ids('fuel_allocations'), (t) => t.id))
+              .map((a) => {
+                    'id': a.id,
+                    'refNo': a.refNo,
+                    'unitId': a.unitId,
+                    'unitName': a.unitName,
+                    'fuelType': a.fuelType,
+                    'periodType': a.periodType,
+                    'quantityPerPeriod': a.quantityPerPeriod,
+                    'totalQuantity': a.totalQuantity,
+                    'weeklyLiters': a.weeklyLiters,
+                    'monthlyLiters': a.monthlyLiters,
+                    'issueLocation': a.issueLocation,
+                    'startDate': a.startDate,
+                    'endDate': a.endDate,
+                    'active': a.active,
+                    'disbursable': a.disbursable,
+                    'notes': a.notes,
+                    'createdBy': a.createdBy,
+                    'createdAt': a.createdAt.toIso8601String(),
+                  })
+              .toList(),
+      'fuelIssues': (await _rows(db.fuelIssues, ids('fuel_issues'), (t) => t.id))
+          .map((i) => {
+                'id': i.id,
+                'refNo': i.refNo,
+                'date': i.date,
+                'fuelType': i.fuelType,
+                'warehouse': i.warehouse,
+                'source': i.source,
+                'quantityLiters': i.quantityLiters,
+                'driverName': i.driverName,
+                'vehicleType': i.vehicleType,
+                'chassisNo': i.chassisNo,
+                'allocationId': i.allocationId,
+                'beneficiaryUnitId': i.beneficiaryUnitId,
+                'beneficiaryName': i.beneficiaryName,
+                'entitledLiters': i.entitledLiters,
+                'periodType': i.periodType,
+                'customFrom': i.customFrom,
+                'customTo': i.customTo,
+                'justification': i.justification,
+                'orderAuthority': i.orderAuthority,
+                'purpose': i.purpose,
+                'notes': i.notes,
+                'createdBy': i.createdBy,
+                'createdAt': i.createdAt.toIso8601String(),
+              })
+          .toList(),
+      'fuelSupplies':
+          (await _rows(db.fuelSupplies, ids('fuel_supplies'), (t) => t.id))
+              .map((x) => {
+                    'id': x.id,
+                    'refNo': x.refNo,
+                    'date': x.date,
+                    'fuelType': x.fuelType,
+                    'quantityLiters': x.quantityLiters,
+                    'supplierName': x.supplierName,
+                    'warehouse': x.warehouse,
+                    'transportVehicleType': x.transportVehicleType,
+                    'driverName': x.driverName,
+                    'notes': x.notes,
+                    'createdBy': x.createdBy,
+                    'createdAt': x.createdAt.toIso8601String(),
+                  })
+              .toList(),
+      'fuelOpenings':
+          (await _rows(db.fuelOpenings, ids('fuel_openings'), (t) => t.id))
+              .map((x) => {
+                    'id': x.id,
+                    'warehouse': x.warehouse,
+                    'fuelType': x.fuelType,
+                    'liters': x.liters,
+                    'asOfDate': x.asOfDate,
+                    'note': x.note,
+                    'createdAt': x.createdAt.toIso8601String(),
+                  })
+              .toList(),
+      'fuelTransfers':
+          (await _rows(db.fuelTransfers, ids('fuel_transfers'), (t) => t.id))
+              .map((x) => {
+                    'id': x.id,
+                    'refNo': x.refNo,
+                    'date': x.date,
+                    'fuelType': x.fuelType,
+                    'quantityLiters': x.quantityLiters,
+                    'fromWarehouse': x.fromWarehouse,
+                    'toWarehouse': x.toWarehouse,
+                    'driverName': x.driverName,
+                    'transportVehicleType': x.transportVehicleType,
+                    'notes': x.notes,
+                    'createdBy': x.createdBy,
+                    'createdAt': x.createdAt.toIso8601String(),
+                  })
+              .toList(),
+      'fuelStocktakes':
+          (await _rows(db.fuelStocktakes, ids('fuel_stocktakes'), (t) => t.id))
+              .map((x) => {
+                    'id': x.id,
+                    'refNo': x.refNo,
+                    'date': x.date,
+                    'warehouse': x.warehouse,
+                    'kind': x.kind,
+                    'fuelFilter': x.fuelFilter,
+                    'committee': x.committee,
+                    'status': x.status,
+                    'notes': x.notes,
+                    'createdBy': x.createdBy,
+                    'createdAt': x.createdAt.toIso8601String(),
+                  })
+              .toList(),
+      'fuelStocktakeLines': (await _rows(
+              db.fuelStocktakeLines, ids('fuel_stocktake_lines'), (t) => t.id))
+          .map((x) => {
+                'id': x.id,
+                'stocktakeId': x.stocktakeId,
+                'fuelType': x.fuelType,
+                'bookLiters': x.bookLiters,
+                'counted': x.counted,
+                'countedLiters': x.countedLiters,
               })
           .toList(),
       'warehouseStockLimits': (await _rows(

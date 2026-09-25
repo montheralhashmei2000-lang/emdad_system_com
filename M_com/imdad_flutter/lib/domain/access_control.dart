@@ -39,6 +39,12 @@ class AccessControl {
 
   /// طلبيات الإعاشة ضمن العمليات: من يستلم ويصرف هو من يطلب، ومن يعتمد سندًا
   /// هو من يعتمد طلبية.
+  /// صفحات المحروقات — قسمٌ مستقل عن مخزون الإعاشة: أمين المحروقات ليس
+  /// بالضرورة أمين المستودع، وصلاحية أحدهما لا تُعطى للآخر ضمنًا.
+  static const List<String> fuelPages = [
+    'fuelDashboard', 'fuelAllocations', 'fuelMoves', 'fuelStocktake',
+  ];
+
   static const List<String> opsPages = [
     'receive', 'issue', 'transfer', 'returns', 'rationOrders',
   ];
@@ -88,6 +94,13 @@ class AccessControl {
           PermAction.view, PermAction.create, PermAction.edit, PermAction.approve, PermAction.print,
         ]),
         grant(['pendingOrders'], [PermAction.view, PermAction.approve, PermAction.print]),
+        // ركن الإمداد يضع تفريدة المحروقات ويعتمد جردها — وهو من يوازن بين
+        // الوحدات، فبيده توزيع الاستحقاق لا بيد من يصرفه.
+        grant(fuelPages, [PermAction.view, PermAction.print, PermAction.export]),
+        grant(['fuelAllocations'], [
+          PermAction.view, PermAction.create, PermAction.edit, PermAction.delete,
+        ]),
+        grant(['fuelStocktake'], [PermAction.view, PermAction.approve]),
         // ركن الإمداد هو من تُرفع إليه طلبيات الإعاشة وبه تُجاز: لا تتحرك
         // إعاشةٌ بين مستودعين ولا تُطلب من جهةٍ إلا بإذنه.
         grant(['rationOrders'], [

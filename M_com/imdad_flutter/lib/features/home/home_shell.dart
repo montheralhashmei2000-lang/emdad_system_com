@@ -13,6 +13,10 @@ import '../../core/ui/imd_window.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../domain/access_control.dart';
 import '../catalog/assets_screen.dart';
+import '../fuel/fuel_allocations_screen.dart';
+import '../fuel/fuel_dashboard_screen.dart';
+import '../fuel/fuel_moves_screen.dart';
+import '../fuel/fuel_stocktake_screen.dart';
 import '../catalog/kitchens_screen.dart';
 import '../catalog/items_screen.dart';
 import '../catalog/suppliers_screen.dart';
@@ -97,6 +101,12 @@ const _menu = <_MenuSection>[
     _MenuItem('returns', 'undo', 'المرتجعات'),
     _MenuItem('opening', 'clipboard', 'الأرصدة الافتتاحية'),
     _MenuItem('rationOrders', 'clipboard', 'طلبيات الإعاشة'),
+  ]),
+  _MenuSection('fuel', 'zap', 'المحروقات', [
+    _MenuItem('fuelDashboard', 'zap', 'لوحة المحروقات'),
+    _MenuItem('fuelAllocations', 'sliders', 'تفريدة المحروقات'),
+    _MenuItem('fuelMoves', 'swap', 'حركة المحروقات'),
+    _MenuItem('fuelStocktake', 'clipboard', 'جرد المحروقات'),
   ]),
   _MenuSection('daily', 'chart', 'التشغيل اليومي', [
     _MenuItem('feeding', 'calendar', 'التغذية اليومية (حصر القوة)'),
@@ -221,6 +231,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return const DailyOperationsScreen();
       case 'assets':
         return const AssetsScreen();
+      case 'fuelDashboard':
+        return const FuelDashboardScreen();
+      case 'fuelAllocations':
+        return const FuelAllocationsScreen();
+      case 'fuelMoves':
+        return const FuelMovesScreen();
+      case 'fuelStocktake':
+        return const FuelStocktakeScreen();
       case 'rationOrders':
         return const RationOrderScreen();
       case 'stores':
