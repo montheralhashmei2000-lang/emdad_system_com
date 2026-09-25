@@ -11,6 +11,7 @@ import '../../data/db/app_database.dart';
 import '../../data/repos/fuel_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/fuel.dart';
+import 'fuel_print.dart';
 
 /// حركة المحروقات: الصرف والتوريد والتحويل والرصيد الافتتاحي.
 ///
@@ -224,6 +225,29 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
     }
   }
 
+  /// طباعة سند الصرف مع استحقاق تفريدته وقت الطباعة.
+  Future<void> _printIssue(FuelIssue issue) async {
+    final row = issue.allocationId.isEmpty
+        ? null
+        : _allocations
+            .where((a) => a.allocation.id == issue.allocationId)
+            .firstOrNull;
+    await FuelPrint.issueVoucher(_db, issue, allocation: row);
+  }
+
+  Future<void> _printLog() async {
+    switch (_tab) {
+      case 'issue':
+        if (_issues.isEmpty) {
+          showImdToast(context, '✖ لا سندات للطباعة');
+          return;
+        }
+        await FuelPrint.issuesReport(_db, _issues);
+      default:
+        showImdToast(context, 'ℹ الكشف المجمّع متاح لسجل الصرف');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -272,7 +296,26 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
           icon: 'plus-square',
           child: _form(),
         ),
-      ImdPanel(title: 'السجل', icon: 'list', child: _log()),
+      ImdPanel(
+        title: 'السجل',
+        icon: 'list',
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (_tab == 'issue')
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: ImdButton.outline(
+                  label: 'طباعة كشف الصرف',
+                  icon: 'printer',
+                  small: true,
+                  onPressed: _printLog,
+                ),
+              ),
+            ),
+          _log(),
+        ]),
+      ),
     ]);
   }
 
@@ -465,6 +508,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
             ImdCol('المصدر'),
             ImdCol('الشاصي'),
             ImdCol('الكمية', numeric: true),
+            ImdCol('', center: true),
           ],
           rows: [
             for (final i in _issues)
@@ -480,6 +524,10 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
                 Text(i.chassisNo.isEmpty ? '—' : i.chassisNo),
                 Text('${nf(i.quantityLiters)} ${Fuel.unit}',
                     style: const TextStyle(fontWeight: FontWeight.w600)),
+                ImdIconButton(
+                    icon: 'printer',
+                    tooltip: 'طباعة السند',
+                    onPressed: () => _printIssue(i)),
               ],
           ],
         ),
@@ -493,6 +541,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
             ImdCol('المستودع'),
             ImdCol('المورّد'),
             ImdCol('الكمية', numeric: true),
+            ImdCol('', center: true),
           ],
           rows: [
             for (final s in _supplies)
@@ -504,6 +553,10 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
                 Text(s.supplierName.isEmpty ? '—' : s.supplierName),
                 Text('${nf(s.quantityLiters)} ${Fuel.unit}',
                     style: const TextStyle(fontWeight: FontWeight.w600)),
+                ImdIconButton(
+                    icon: 'printer',
+                    tooltip: 'طباعة السند',
+                    onPressed: () => FuelPrint.supplyVoucher(_db, s)),
               ],
           ],
         ),
@@ -517,6 +570,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
             ImdCol('من ← إلى'),
             ImdCol('السائق'),
             ImdCol('الكمية', numeric: true),
+            ImdCol('', center: true),
           ],
           rows: [
             for (final t in _transfers)
@@ -528,6 +582,10 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
                 Text(t.driverName.isEmpty ? '—' : t.driverName),
                 Text('${nf(t.quantityLiters)} ${Fuel.unit}',
                     style: const TextStyle(fontWeight: FontWeight.w600)),
+                ImdIconButton(
+                    icon: 'printer',
+                    tooltip: 'طباعة السند',
+                    onPressed: () => FuelPrint.transferVoucher(_db, t)),
               ],
           ],
         ),

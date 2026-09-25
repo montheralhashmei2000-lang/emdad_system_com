@@ -9,6 +9,7 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/fuel_repo.dart';
 import '../../domain/fuel.dart';
+import 'fuel_print.dart';
 
 /// لوحة المحروقات: الرصيد والتنبيهات وسجل المركبات.
 ///
@@ -92,6 +93,12 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
         child: Wrap(spacing: 10, runSpacing: 10, children: [
           ImdButton.outline(
               label: 'تحديث', icon: 'refresh', small: true, onPressed: _load),
+          ImdButton.outline(
+            label: 'طباعة كشف الأرصدة',
+            icon: 'printer',
+            small: true,
+            onPressed: () => FuelPrint.stocksReport(_db, _stocks),
+          ),
         ]),
       ),
       if (_alerts.isNotEmpty)

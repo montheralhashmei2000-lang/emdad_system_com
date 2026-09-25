@@ -13,6 +13,7 @@ import '../../data/repos/fuel_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/fuel.dart';
 import '../inventory/doc_kit.dart';
+import 'fuel_print.dart';
 
 /// جرد المحروقات: أمرٌ يمرّ بأربع مراحل قبل أن يمسّ الرصيد.
 ///
@@ -351,6 +352,12 @@ class _FuelStocktakeScreenState extends State<FuelStocktakeScreen> {
             busy: _busy,
             onPressed: () => _advance(take),
           ),
+        ImdButton.outline(
+          label: 'طباعة المحضر',
+          icon: 'printer',
+          small: true,
+          onPressed: () => FuelPrint.stocktakeReport(_db, take, _lines),
+        ),
         ImdButton.outline(
             label: 'إغلاق',
             icon: 'x',
