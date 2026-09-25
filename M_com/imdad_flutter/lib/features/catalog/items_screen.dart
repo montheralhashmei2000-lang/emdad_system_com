@@ -315,6 +315,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
 
   /// `importItems(rows)` — يحدّث الصنف بنفس الكود أو يُنشئه.
   Future<void> _import() async {
+    final actor = Perm.of(context).email;
     final rows = await ImdExcel.pickAndRead(context);
     if (rows == null) return;
     var ok = 0, skip = 0, qtyPending = 0;
@@ -322,7 +323,6 @@ class _ItemsScreenState extends State<ItemsScreen> {
     // الوحيد. مع مستودع واحد يُعرف مكانه؛ ومع أكثر يُترك لشاشة الأرصدة الافتتاحية.
     final whs = await _db.select(_db.warehouses).get();
     final soleWh = whs.length == 1 ? whs.single.name : '';
-    final actor = Perm.of(context).email;
     for (final r in rows) {
       final code = (r['code'] ?? '').trim();
       final name = (r['name'] ?? '').trim();

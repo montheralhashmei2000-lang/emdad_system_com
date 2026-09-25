@@ -47,11 +47,11 @@ void main() {
           value: ImdNav(navigated.add, () => 'formsDesigner'),
         ),
       ],
-      child: MaterialApp(
-        locale: const Locale('ar'),
+      child: const MaterialApp(
+        locale: Locale('ar'),
         home: Directionality(
           textDirection: TextDirection.rtl,
-          child: const Scaffold(body: FormsDesignerScreen()),
+          child: Scaffold(body: FormsDesignerScreen()),
         ),
       ),
     ));

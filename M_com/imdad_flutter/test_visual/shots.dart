@@ -58,6 +58,8 @@ class ShotHarness {
   late AuthService auth;
 
   Future<void> setUp() async {
+    // أداة لقطات تعمل تحت flutter test لكنها خارج مجلد test/ فلا يعرفها المحلل.
+    // ignore: invalid_use_of_visible_for_testing_member
     SharedPreferences.setMockInitialValues({});
     db = AppDatabase.forTesting(NativeDatabase.memory());
     auth = AuthService(db);
