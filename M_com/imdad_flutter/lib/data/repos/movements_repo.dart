@@ -5,6 +5,7 @@ import '../../core/ids.dart';
 import '../../core/ui/imd_format.dart';
 import '../db/app_database.dart';
 import 'audit_repo.dart';
+import 'doc_numbering.dart';
 
 /// سطر إدخال في سند (قبل الحفظ).
 class DocLineInput {
@@ -255,6 +256,7 @@ class MovementsRepo {
       if (replaceDraft) {
         await (db.delete(db.receipts)..where((t) => t.refNo.equals(ref) & t.status.equals('DRAFT'))).go();
       }
+      await _numbering.claim('receipts', 'و-', ref);
       for (final l in lines) {
         await db.into(db.receipts).insert(ReceiptsCompanion.insert(
               id: _newId('rc'),
@@ -367,6 +369,7 @@ class MovementsRepo {
 
     final ref = refNo.isNotEmpty ? refNo : await nextRef('issues', 'ص-');
     await db.transaction(() async {
+      await _numbering.claim('issues', 'ص-', ref);
       for (final l in lines) {
         await db.into(db.issues).insert(IssuesCompanion.insert(
               id: _newId('is'),
@@ -451,6 +454,7 @@ class MovementsRepo {
     }
     final ref = refNo.isNotEmpty ? refNo : await nextRef('transfers', 'ح-');
     await db.transaction(() async {
+      await _numbering.claim('transfers', 'ح-', ref);
       for (final l in lines) {
         await db.into(db.transfers).insert(TransfersCompanion.insert(
               id: _newId('tr'),
@@ -690,6 +694,7 @@ class MovementsRepo {
 
     final ref = refNo.isNotEmpty ? refNo : await nextRef('returns', 'رد-');
     await db.transaction(() async {
+      await _numbering.claim('returns', 'رد-', ref);
       for (final l in lines) {
         await db.into(db.returns).insert(ReturnsCompanion.insert(
               id: _newId('re'),
@@ -733,20 +738,10 @@ class MovementsRepo {
     return SaveResult(ok: true, refNo: ref);
   }
 
-  /// رقم مرجع تسلسلي بنفس نمط النظام الحالي: «و-000001».
-  Future<String> nextRef(String table, String prefix) async {
-    final rows = await db.customSelect('SELECT ref_no AS r FROM $table').get();
-    var max = 0;
-    for (final row in rows) {
-      final v = (row.data['r'] ?? '').toString();
-      final m = RegExp(r'(\d+)').firstMatch(v);
-      if (m != null) {
-        final n = int.tryParse(m.group(1)!) ?? 0;
-        if (n > max) max = n;
-      }
-    }
-    return '$prefix${(max + 1).toString().padLeft(6, '0')}';
-  }
+  /// رقم المرجع التالي لهذا الجهاز («و-K7QX-000001») دون حجزه — انظر [DocNumbering].
+  Future<String> nextRef(String table, String prefix) => _numbering.peek(table, prefix);
+
+  late final DocNumbering _numbering = DocNumbering(db);
 
   static Map<String, double> _sumByItem(List<DocLineInput> lines) {
     final out = <String, double>{};
