@@ -12,6 +12,7 @@ import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../domain/access_control.dart';
 import '../catalog/assets_screen.dart';
+import '../catalog/authorities_screen.dart';
 import '../catalog/kitchens_screen.dart';
 import '../catalog/items_screen.dart';
 import '../catalog/suppliers_screen.dart';
@@ -87,6 +88,7 @@ const _menu = <_MenuSection>[
     _MenuItem('stores', 'warehouse', 'المستودعات'),
     _MenuItem('kitchens', 'utensils', 'المطابخ والأفران'),
     _MenuItem('assets', 'package', 'الأصول الثابتة'),
+    _MenuItem('supplyAuthorities', 'users', 'جهات الإمداد'),
   ]),
   _MenuSection('stock', 'package', 'العمليات المخزنية', [
     _MenuItem('pendingOrders', 'bell', 'أوامر التوريد المعلقة'),
@@ -221,6 +223,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return const AssetsScreen();
       case 'rationOrders':
         return const RationOrderScreen();
+      case 'supplyAuthorities':
+        return const AuthoritiesScreen();
       case 'stores':
         return const WarehousesScreen();
       case 'pendingOrders':

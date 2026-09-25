@@ -51,18 +51,127 @@ class RationResult {
   final String refNo;
 }
 
-/// طلبيات الإعاشة: الطلب والاعتماد والاستلام.
+/// طلبيات الإعاشة: الطلب والاعتماد والربط بالمستند المنفِّذ.
 ///
-/// **الاستلام يولّد سند استلام حقيقي.** طلبيةٌ تُعلَّم «مستلمة» بلا أن يتحرك
-/// الرصيد ورقةٌ تكذب على صاحبها: يظن المستودع أن البضاعة دخلت وهي لم تدخل،
-/// فيصرف ما لا يملك. لذلك يمرّ الاستلام بـ[MovementsRepo.saveReceipt] نفسه
-/// الذي يمرّ به أي استلام آخر — بفحوصه وتجميده وسجله.
+/// **الطلبية لا تحرّك المخزون.** هي طلبٌ وإذنٌ به، لا حركة. ومن يحرّك الرصيد
+/// مستندٌ مستقل له فحوصه وتجميده وسجله:
+///
+/// * **مخزن فرعي** ← سند تحويل من المخزن الرئيسي، يُنشئه أمين المخزن من شاشة
+///   التحويل بخيار «سحب من طلبية» بعد أن يأذن ركن الإمداد.
+/// * **المخزن الرئيسي** ← سند توريد يأتي بالإعاشة من خارج الفرقة، تُطابَق به
+///   الطلبية لاحقًا.
+///
+/// وكان الاستلام قبلُ يولّد سند استلام في المستودع الطالب بلا أن يُنقص أحدًا،
+/// فيزيد مخزون النظام من العدم كلما حُوِّلت بضاعةٌ بين مستودعين. فصار التنفيذ
+/// **ربطًا** بمستندٍ قائم عبر [fulfill]، لا توليدًا لحركة.
 class RationRepo {
   RationRepo(this.db);
 
   final AppDatabase db;
 
+  // ───────────────────────── دليل الجهات
+
+  Future<List<SupplyAuthority>> authorities({bool onlyActive = false}) async {
+    final q = db.select(db.supplyAuthorities);
+    if (onlyActive) q.where((t) => t.active.equals(true));
+    final rows = await q.get();
+    rows.sort((a, b) => a.name.compareTo(b.name));
+    return rows;
+  }
+
+  Future<RationResult> saveAuthority({
+    String? id,
+    required String name,
+    String title = '',
+    String notes = '',
+    bool active = true,
+    String actor = '',
+  }) async {
+    if (name.trim().isEmpty) {
+      return const RationResult(ok: false, error: '✖ اسم الجهة مطلوب');
+    }
+    final all = await authorities();
+    if (all.any((a) => a.id != id && a.name.trim() == name.trim())) {
+      return const RationResult(ok: false, error: '✖ توجد جهة بهذا الاسم');
+    }
+    final newId = id ?? Ids.next('auth');
+    await db
+        .into(db.supplyAuthorities)
+        .insertOnConflictUpdate(SupplyAuthoritiesCompanion.insert(
+          id: newId,
+          name: name.trim(),
+          title: Value(title.trim()),
+          notes: Value(notes.trim()),
+          active: Value(active),
+        ));
+    await AuditRepo(db).log(
+      action: id == null ? 'authority.create' : 'authority.update',
+      entityType: 'جهة إمداد',
+      summary: '${id == null ? 'إضافة' : 'تعديل'} الجهة ${name.trim()}',
+      details: {'authorityId': newId},
+      actorEmail: actor,
+    );
+    return RationResult(ok: true, refNo: newId);
+  }
+
+  /// الجهة لا تُحذف إن عُلّقت بها طلبية: حذفها يترك طلبيةً بلا مَن طُلب منه.
+  Future<RationResult> deleteAuthority(String id, {String actor = ''}) async {
+    final used = await (db.select(db.rationOrders)
+          ..where((t) => t.authorityId.equals(id))
+          ..limit(1))
+        .get();
+    if (used.isNotEmpty) {
+      return const RationResult(
+        ok: false,
+        error: '✖ لا تُحذف جهة عليها طلبيات — عطّلها بدل حذفها',
+      );
+    }
+    await (db.delete(db.supplyAuthorities)..where((t) => t.id.equals(id))).go();
+    await AuditRepo(db).log(
+      action: 'authority.delete',
+      entityType: 'جهة إمداد',
+      summary: 'حذف جهة إمداد',
+      details: {'authorityId': id},
+      risk: AuditRepo.riskHigh,
+      actorEmail: actor,
+    );
+    return const RationResult(ok: true);
+  }
+
   // ───────────────────────── قراءة
+
+  /// اسم المخزن الرئيسي، أو فراغ إن لم يُعيَّن.
+  Future<String> mainWarehouseName() async {
+    final rows = await (db.select(db.warehouses)
+          ..where((t) => t.isMain.equals(true))
+          ..limit(1))
+        .get();
+    return rows.isEmpty ? '' : rows.first.name;
+  }
+
+  /// الطلبيات المعتمدة الجاهزة للتحويل من [warehouse] — ما يسحبه أمين المخزن.
+  Future<List<RationOrderFull>> readyForTransfer(String warehouse) async {
+    if (warehouse.trim().isEmpty) return const [];
+    final rows = await (db.select(db.rationOrders)
+          ..where((t) =>
+              t.orderKind.equals(RationKind.branch) &
+              t.status.equals(RationStatus.approved) &
+              t.supplyingWarehouse.equals(warehouse.trim()))
+          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+        .get();
+    return [
+      for (final o in rows) RationOrderFull(order: o, lines: await lines(o.id)),
+    ];
+  }
+
+  /// طلبيات المخزن الرئيسي المعتمدة التي تنتظر مطابقةً بسند توريد.
+  Future<List<RationOrder>> awaitingReceiptMatch() =>
+      (db.select(db.rationOrders)
+            ..where((t) =>
+                t.orderKind.equals(RationKind.main) &
+                t.status.equals(RationStatus.approved))
+            ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+          .get();
 
   Future<List<RationOrder>> orders({
     String status = '',
@@ -101,19 +210,32 @@ class RationRepo {
   Future<RationResult> save({
     String? id,
     required String requestingWarehouse,
-    required String supplyingWarehouse,
+    String supplyingWarehouse = '',
     required String date,
     required List<RationLineInput> lines,
+    String kind = RationKind.branch,
+    String authorityId = '',
+    String authorityName = '',
     String requiredDate = '',
     String priority = RationPriority.normal,
     String notes = '',
     String actor = '',
   }) async {
-    final whError = RationRules.validateWarehouses(
+    final main = await mainWarehouseName();
+    // المخزن الفرعي يطلب من الرئيسي دائمًا، فيُملأ عنه بدل أن يُترك لاختياره.
+    final supplying = RationKind.isMain(kind)
+        ? ''
+        : (supplyingWarehouse.trim().isEmpty ? main : supplyingWarehouse.trim());
+    final routeError = RationRules.validateRouting(
+      kind: kind,
       requesting: requestingWarehouse,
-      supplying: supplyingWarehouse,
+      supplying: supplying,
+      authorityId: authorityId,
+      mainWarehouse: main,
     );
-    if (whError != null) return RationResult(ok: false, error: '✖ $whError');
+    if (routeError != null) {
+      return RationResult(ok: false, error: '✖ $routeError');
+    }
 
     final dateError = RationRules.validateRequiredDate(date, requiredDate);
     if (dateError != null) return RationResult(ok: false, error: '✖ $dateError');
@@ -142,7 +264,10 @@ class RationRepo {
             id: orderId,
             refNo: Value(ref),
             requestingWarehouse: Value(requestingWarehouse),
-            supplyingWarehouse: Value(supplyingWarehouse),
+            supplyingWarehouse: Value(supplying),
+            orderKind: Value(kind),
+            authorityId: Value(RationKind.isMain(kind) ? authorityId : ''),
+            authorityName: Value(RationKind.isMain(kind) ? authorityName : ''),
             date: Value(date),
             requiredDate: Value(requiredDate),
             status: const Value(RationStatus.draft),
@@ -233,49 +358,45 @@ class RationRepo {
     return RationResult(ok: true, refNo: full.order.refNo);
   }
 
-  /// الاستلام: يولّد سند استلام في المستودع الطالب ثم يقفل الطلبية.
+  /// تنفيذ الطلبية: **ربطها بمستندٍ قائم، لا توليدُ حركة**.
   ///
-  /// الكمية المستلمة هي المعتمدة، والصفر يُتخطّى: سطرٌ اعتُمد بصفر لم يُورَّد،
-  /// وإدخاله في السند يضيف حركةً بلا بضاعة.
-  Future<RationResult> receive(String id, {String actor = ''}) async {
+  /// كان هذا `receive` فيُنشئ سند استلام في المستودع الطالب بلا أن يُنقص
+  /// المورِّد شيئًا — فيزيد مخزون النظام من العدم كلما حُوِّلت بضاعة بين
+  /// مستودعين، ويبقى الصنف في رصيد الاثنين معًا.
+  ///
+  /// أما الآن فالحركة يصنعها مستندها: سندُ تحويلٍ يخرج من الرئيسي ويدخل
+  /// الفرعي، أو سندُ توريدٍ يأتي من خارج الفرقة. وهنا تُربط الطلبية بمرجعه
+  /// فيُعرف ما وصل مما طُلب.
+  Future<RationResult> fulfill(
+    String id, {
+    required String ref,
+    required String kind,
+    String date = '',
+    String actor = '',
+  }) async {
     final full = await byId(id);
-    if (full == null) return const RationResult(ok: false, error: '✖ الطلبية غير موجودة');
-    if (!RationRules.canReceive(full.order.status)) {
+    if (full == null) {
+      return const RationResult(ok: false, error: '✖ الطلبية غير موجودة');
+    }
+    if (!RationRules.canFulfill(full.order.status)) {
       return RationResult(
         ok: false,
-        error: '✖ لا تُستلم طلبية ${RationStatus.label(full.order.status)} — '
+        error: '✖ لا تُنفَّذ طلبية ${RationStatus.label(full.order.status)} — '
             'تُعتمد أولًا',
       );
     }
-
-    final docLines = [
-      for (final l in full.lines)
-        if (l.approvedQty > 0)
-          DocLineInput(
-            itemId: l.itemId,
-            itemCode: l.itemCode,
-            itemName: l.itemName,
-            unitName: l.unitName,
-            factor: l.factor,
-            qty: l.approvedQty,
-            notes: l.notes,
-          ),
-    ];
-    if (docLines.isEmpty) {
-      return const RationResult(ok: false, error: '✖ لا سطر معتمَد بكمية — راجع الاعتماد');
+    if (ref.trim().isEmpty) {
+      return const RationResult(ok: false, error: '✖ مرجع المستند مطلوب');
+    }
+    final approved = full.lines.where((l) => l.approvedQty > 0).toList();
+    if (approved.isEmpty) {
+      return const RationResult(
+          ok: false, error: '✖ لا سطر معتمَد بكمية — راجع الاعتماد');
     }
 
-    // السند يمرّ بالمسار المعتاد: تجميد المستودع وفحوصه وسجله كلها تنطبق.
-    final saved = await MovementsRepo(db).saveReceipt(
-      warehouse: full.order.requestingWarehouse,
-      supplier: 'طلبية ${full.order.refNo} — ${full.order.supplyingWarehouse}',
-      date: DateTime.now().toIso8601String().substring(0, 10),
-      lines: docLines,
-      notes: 'استلام طلبية إعاشة ${full.order.refNo}',
-      createdBy: actor,
-    );
-    if (!saved.ok) return RationResult(ok: false, error: saved.error);
-
+    final stamp = date.trim().isEmpty
+        ? DateTime.now().toIso8601String().substring(0, 10)
+        : date.trim();
     await db.transaction(() async {
       for (final l in full.lines) {
         await (db.update(db.rationOrderLines)..where((t) => t.id.equals(l.id)))
@@ -285,20 +406,54 @@ class RationRepo {
         RationOrdersCompanion(
           status: const Value(RationStatus.received),
           receivedBy: Value(actor),
-          receiptRef: Value(saved.refNo),
+          fulfillRef: Value(ref.trim()),
+          fulfillKind: Value(kind),
+          fulfillDate: Value(stamp),
           updatedAt: Value(DateTime.now()),
         ),
       );
     });
     await AuditRepo(db).log(
-      action: 'ration.receive',
+      action: 'ration.fulfill',
       entityType: 'طلبية إعاشة',
-      summary: 'استلام الطلبية ${full.order.refNo} بالسند ${saved.refNo}',
-      details: {'orderId': id, 'receiptRef': saved.refNo, 'lines': docLines.length},
+      summary: 'تنفيذ الطلبية ${full.order.refNo} بـ'
+          '${RationFulfillKind.label(kind)} ${ref.trim()}',
+      details: {
+        'orderId': id,
+        'ref': ref.trim(),
+        'kind': kind,
+        'lines': approved.length,
+      },
       actorEmail: actor,
     );
-    return RationResult(ok: true, refNo: saved.refNo);
+    return RationResult(ok: true, refNo: full.order.refNo);
   }
+
+  /// ربط طلبية مخزن فرعي بسند التحويل الذي نفّذها.
+  Future<RationResult> linkTransfer(
+    String id, {
+    required String transferRef,
+    String date = '',
+    String actor = '',
+  }) =>
+      fulfill(id,
+          ref: transferRef,
+          kind: RationFulfillKind.transfer,
+          date: date,
+          actor: actor);
+
+  /// مطابقة طلبية المخزن الرئيسي بسند التوريد الذي جاء بالإعاشة.
+  Future<RationResult> matchReceipt(
+    String id, {
+    required String receiptRef,
+    String date = '',
+    String actor = '',
+  }) =>
+      fulfill(id,
+          ref: receiptRef,
+          kind: RationFulfillKind.receipt,
+          date: date,
+          actor: actor);
 
   Future<RationResult> reject(String id, {required String reason, String actor = ''}) async {
     final error = RationRules.validateRejectReason(reason);

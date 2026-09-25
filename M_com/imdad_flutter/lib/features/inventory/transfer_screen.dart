@@ -17,6 +17,7 @@ import '../../data/db/app_database.dart';
 import '../../data/repos/audit_repo.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/daily_repo.dart';
+import '../../data/repos/ration_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../domain/line_consolidation.dart';
 import '../../domain/strength.dart';
@@ -116,6 +117,16 @@ class _TransferScreenState extends State<TransferScreen> {
   final List<_Row> _rows = [];
 
   // الاحتساب التلقائي
+  /// الطلبيات المعتمدة الجاهزة للتحويل من [_from] — ما يُسحب منه.
+  List<RationOrderFull> _readyOrders = const [];
+
+  /// الطلبية التي بُني منها هذا التحويل — تُربط بمرجعه عند الإرسال.
+  String _orderId = '';
+  String _orderRef = '';
+
+  /// مقارنة أصناف الطلبية بالمقرر — عرضٌ لا منع.
+  bool _matchEnt = false;
+
   String _acDate = imdToday();
   final _acHead = TextEditingController();
   final _acDays = TextEditingController(text: '1');
@@ -182,6 +193,7 @@ class _TransferScreenState extends State<TransferScreen> {
       _ready = true;
     });
     await _refreshBal();
+    await _loadReady();
   }
 
   Future<void> _refreshBal() async {
@@ -312,6 +324,147 @@ class _TransferScreenState extends State<TransferScreen> {
   }
 
   /// `trfSend()`
+  /// يقرأ الطلبيات المعتمدة التي ينتظر أصحابها تحويلها من هذا المستودع.
+  Future<void> _loadReady() async {
+    final wh = _from;
+    if (wh.isEmpty) {
+      if (mounted) setState(() => _readyOrders = const []);
+      return;
+    }
+    final rows = await RationRepo(_db).readyForTransfer(wh);
+    if (!mounted || _from != wh) return;
+    setState(() => _readyOrders = rows);
+  }
+
+  /// يسحب أصناف الطلبية وكمياتها المعتمدة إلى سطور التحويل.
+  ///
+  /// الكميات المسحوبة هي **المعتمدة** لا المطلوبة: ما أذن به ركن الإمداد هو
+  /// ما يُحوَّل. وتبقى قابلة للتعديل هنا، لأن الرصيد وقت التنفيذ قد يقلّ عمّا
+  /// كان وقت الاعتماد — ومن يوقّع على الحركة هو من يملك البضاعة.
+  void _pullFrom(RationOrderFull full) {
+    final approved = full.lines.where((l) => l.approvedQty > 0).toList();
+    if (approved.isEmpty) {
+      showImdToast(context, '✖ لا سطر معتمَد بكمية في هذه الطلبية');
+      return;
+    }
+    setState(() {
+      for (final r in _rows) {
+        r.qty.dispose();
+      }
+      _rows.clear();
+      for (final l in approved) {
+        final it = _item(l.itemId);
+        if (it == null) continue;
+        _rows.add(_Row(
+          itemId: l.itemId,
+          unit: l.unitName.isEmpty ? it.baseUnit : l.unitName,
+          qty: l.approvedQty,
+          noAuto: true,
+        ));
+      }
+      if (_rows.isEmpty) _rows.add(_Row());
+      _to = full.order.requestingWarehouse;
+      _orderId = full.order.id;
+      _orderRef = full.order.refNo;
+    });
+    showImdToast(
+      context,
+      '✔ سُحب ${nf(approved.length)} صنفًا من الطلبية ${full.order.refNo} — '
+      'راجع الكميات قبل الإرسال',
+    );
+  }
+
+  /// المستحق الشهري للفرد من الصنف، أو `null` إن كان خارج المقرر.
+  double? _scaleOf(String itemId) {
+    final e = _ents[itemId];
+    if (e == null || e.qtyPerPerson <= 0) return null;
+    return e.qtyPerPerson;
+  }
+
+  /// بطاقة السحب من طلبية — لا تظهر إلا إن كان هناك ما يُسحب.
+  Widget _pullCard(bool mobile) {
+    final outOfPlan = <String>[];
+    if (_matchEnt && _orderId.isNotEmpty) {
+      for (final r in _rows) {
+        if (r.itemId.isEmpty) continue;
+        if (_scaleOf(r.itemId) == null) {
+          outOfPlan.add(_item(r.itemId)?.name ?? r.itemId);
+        }
+      }
+    }
+    return ImdICard(
+      title: 'سحب من طلبية معتمدة',
+      icon: 'clipboard',
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const ImdPrintTip(
+            'الطلبية طلبٌ لا حركة — والتحويل هو ما يحرّك الرصيد. اختر طلبية '
+            'أذن بها ركن الإمداد فتُملأ أصنافها وكمياتها المعتمدة هنا، ثم '
+            'راجعها وأرسلها. وعند الإرسال تُربط الطلبية بمرجع هذا التحويل.'),
+        const SizedBox(height: 10),
+        if (_readyOrders.isEmpty)
+          const ImdEmptyBox('لا طلبيات معتمدة بانتظار التحويل من هذا المستودع')
+        else
+          ImdRbar(bottom: 0, children: [
+            for (final f in _readyOrders)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: ImdButton.outline(
+                  label: '${f.order.refNo} → ${f.order.requestingWarehouse} '
+                      '(${nf(f.lines.where((l) => l.approvedQty > 0).length)} صنف)',
+                  icon: 'download',
+                  small: true,
+                  onPressed: () => _pullFrom(f),
+                ),
+              ),
+          ]),
+        if (_orderId.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          ImdChipsRow(children: [
+            ImdChip('مبنيّ على الطلبية $_orderRef', tone: ImdTone.info),
+            if (outOfPlan.isNotEmpty)
+              ImdChip('خارج المقرر: ${outOfPlan.length}', tone: ImdTone.pend),
+          ]),
+          const SizedBox(height: 8),
+          ImdCheckbox(
+            value: _matchEnt,
+            label: 'مطابقة الأصناف بخطة الاستحقاق (عرضٌ لا منع)',
+            onChanged: (v) => setState(() => _matchEnt = v),
+          ),
+          if (_matchEnt) ...[
+            const SizedBox(height: 8),
+            ImdTable(
+              empty: 'لا سطور',
+              columns: const [
+                ImdCol('الصنف'),
+                ImdCol('كمية التحويل', numeric: true),
+                ImdCol('المقرر للفرد/شهر', numeric: true),
+                ImdCol('المطابقة'),
+              ],
+              rows: [
+                for (final r in _rows)
+                  if (r.itemId.isNotEmpty)
+                    [
+                      Text(_item(r.itemId)?.name ?? r.itemId),
+                      Text(nf(double.tryParse(r.qty.text.trim()) ?? 0)),
+                      Text(_scaleOf(r.itemId) == null
+                          ? '—'
+                          : nf(_scaleOf(r.itemId)!)),
+                      _scaleOf(r.itemId) == null
+                          ? const ImdChip('خارج المقرر', tone: ImdTone.pend)
+                          : const ImdChip('ضمن المقرر', tone: ImdTone.ok),
+                    ],
+              ],
+            ),
+            const SizedBox(height: 6),
+            const ImdPrintTip(
+                'الأصناف خارج المقرر ليست خطأً بالضرورة — قد تكون طلبًا '
+                'استثنائيًّا. لكنها تُعلَّم لتُراجَع قبل الإرسال.'),
+          ],
+        ],
+      ]),
+    );
+  }
+
   Future<void> _send() async {
     final perm = Perm.of(context);
     if (!perm.guard(context, 'transfer', 'create')) return;
@@ -370,8 +523,27 @@ class _TransferScreenState extends State<TransferScreen> {
           },
           actor: actor);
       if (!mounted) return;
+      // الطلبية تُربط بمرجع التحويل هنا: التنفيذ يقع مع الحركة لا قبلها،
+      // فلا تُعلَّم طلبيةٌ منفَّذةً وسندها لم يُرسَل بعد.
+      if (_orderId.isNotEmpty) {
+        final link = await RationRepo(_db).linkTransfer(
+          _orderId,
+          transferRef: _ref,
+          date: _date,
+          actor: actor?.email ?? '',
+        );
+        if (!mounted) return;
+        if (!link.ok) {
+          showImdToast(context, 'ℹ أُرسل التحويل، لكن ربط الطلبية تعذّر: '
+              '${link.error}');
+        }
+        _orderId = '';
+        _orderRef = '';
+      }
+      if (!mounted) return;
       showImdToast(context, '📤 أُرسل أمر التحويل — بانتظار تأكيد الاستلام من «$_to»');
       await _form();
+      await _loadReady();
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -511,6 +683,7 @@ class _TransferScreenState extends State<TransferScreen> {
             lab('من مستودع (المصدر) *', _whSelect(_from, _whs, (v) {
               setState(() => _from = v);
               _refreshBal();
+              _loadReady();
             })),
             const SizedBox(height: 8),
             lab('إلى مستودع (الهدف) *', _whSelect(_to, toOpts, (v) => setState(() => _to = v))),
@@ -524,6 +697,7 @@ class _TransferScreenState extends State<TransferScreen> {
                 child: lab('من مستودع (المصدر) *', _whSelect(_from, _whs, (v) {
                   setState(() => _from = v);
                   _refreshBal();
+                  _loadReady();
                 })),
               ),
               const SizedBox(width: 8),
@@ -546,6 +720,8 @@ class _TransferScreenState extends State<TransferScreen> {
           lab('مبررات التحويل / ملاحظات', ImdFld(controller: _notes)),
         ]),
       ),
+      if (_from.isNotEmpty && (_readyOrders.isNotEmpty || _orderId.isNotEmpty))
+        _pullCard(mobile),
       if (_camp.isNotEmpty)
         ImdICard(
           title: 'احتساب تلقائي بالاستحقاقات (بدل إدخال كل صنف يدويًا)',
