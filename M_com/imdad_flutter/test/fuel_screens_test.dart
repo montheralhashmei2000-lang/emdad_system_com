@@ -98,7 +98,7 @@ void main() {
   }
 
   final screens = <String, Widget Function()>{
-    'لوحة المحروقات': () => const FuelDashboardScreen(),
+    'قسم المحروقات': () => const FuelDashboardScreen(),
     'تفريدة المحروقات': () => const FuelAllocationsScreen(),
     'حركة المحروقات': () => const FuelMovesScreen(),
     'جرد المحروقات': () => const FuelStocktakeScreen(),

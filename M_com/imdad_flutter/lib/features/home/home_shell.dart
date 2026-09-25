@@ -120,21 +120,26 @@ const _menu = <_MenuSection>[
     _MenuItem('opening', 'clipboard', 'الأرصدة الافتتاحية'),
     _MenuItem('rationOrders', 'clipboard', 'طلبيات الإعاشة'),
   ]),
+  // قسم المحروقات: قائمةٌ مسطّحة بشاشاته وحدها، بترتيب العمل اليومي —
+  // يُصرف ويُورَّد قبل أن تُراجَع التفريدة أو تُقرأ التقارير.
   _MenuSection('fuel', 'zap', 'المحروقات', [
-    _MenuItem('fuelDashboard', 'zap', 'لوحة المحروقات', space: AppSpace.fuel),
-    _MenuItem('fuelAllocations', 'sliders', 'تفريدة المحروقات', space: AppSpace.fuel),
-    _MenuItem('fuelMoves', 'swap', 'حركة المحروقات', space: AppSpace.fuel),
-    _MenuItem('fuelStocktake', 'clipboard', 'جرد المحروقات', space: AppSpace.fuel),
-    _MenuItem('fuelWarehouses', 'warehouse', 'مستودعات المحروقات',
+    _MenuItem('fuelDashboard', 'home', 'الرئيسية', space: AppSpace.fuel),
+    _MenuItem('fuelIssue', 'upload', 'الصرف', space: AppSpace.fuel),
+    _MenuItem('fuelSupply', 'download', 'التوريد', space: AppSpace.fuel),
+    _MenuItem('fuelAllocations', 'clipboard', 'التفريدة', space: AppSpace.fuel),
+    _MenuItem('fuelUnits', 'building', 'الوحدات', space: AppSpace.fuel),
+    _MenuItem('fuelWarehouses', 'warehouse', 'المستودعات',
         space: AppSpace.fuel),
-    _MenuItem('fuelUnits', 'users', 'وحدات المحروقات', space: AppSpace.fuel),
+    _MenuItem('fuelTransfer', 'swap', 'التحويل', space: AppSpace.fuel),
     _MenuItem('fuelVehicles', 'truck', 'سجل المركبات', space: AppSpace.fuel),
-    _MenuItem('fuelReports', 'chart', 'تقارير المحروقات',
+    _MenuItem('fuelOpening', 'compass', 'الرصيد الافتتاحي',
+        space: AppSpace.fuel),
+    _MenuItem('fuelReports', 'chart', 'التقارير', space: AppSpace.fuel),
+    _MenuItem('fuelStocktake', 'clipboard', 'الجرد المخزني',
         space: AppSpace.fuel),
     _MenuItem('fuelConsumption', 'trending', 'تقرير الاستهلاك',
         space: AppSpace.fuel),
-    _MenuItem('fuelSettings', 'settings', 'إعدادات المحروقات',
-        space: AppSpace.fuel),
+    _MenuItem('fuelSettings', 'settings', 'الإعدادات', space: AppSpace.fuel),
   ]),
   _MenuSection('daily', 'chart', 'التشغيل اليومي', [
     _MenuItem('feeding', 'calendar', 'التغذية اليومية (حصر القوة)'),
@@ -146,14 +151,14 @@ const _menu = <_MenuSection>[
     _MenuItem('stockAlerts', 'alert', 'تنبيهات المخزون'),
     _MenuItem('stocktake', 'clipboard', 'جرد المخزون'),
     _MenuItem('reports', 'chart', 'التقارير'),
-    _MenuItem('auditTrail', 'scan', 'سجل النشاط والتدقيق', space: AppSpace.both),
+    _MenuItem('auditTrail', 'scan', 'سجل النشاط والتدقيق'),
     _MenuItem('activityIntel', 'bulb', 'ذكاء النشاط والانحرافات'),
     _MenuItem('executiveCmd', 'target', 'مركز القيادة التنفيذية'),
     _MenuItem('sensitiveOps', 'alert', 'التغييرات الحساسة والمراجعة'),
     _MenuItem('healthOps', 'shield', 'صحة النظام والعمليات'),
   ]),
   _MenuSection('settings', 'wrench', 'الإعدادات', [
-    _MenuItem('settings', 'settings', 'الإعدادات', space: AppSpace.both),
+    _MenuItem('settings', 'settings', 'الإعدادات'),
   ]),
 ];
 
@@ -251,7 +256,15 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   bool _isAdmin(AuthService auth) => auth.currentUser?.role == 'admin';
 
   /// صفحات بلا صلاحية خاصة بها تتبع صلاحية صفحة أخرى، فلا يلزم تعديل الأدوار.
-  static const _permPage = {'lanSync': 'settings', 'stockAlerts': 'balances'};
+  static const _permPage = {
+    'lanSync': 'settings',
+    'stockAlerts': 'balances',
+    // بنود الحركة الأربعة شاشةٌ واحدة بتبويبات، فصلاحيتها واحدة.
+    'fuelIssue': 'fuelMoves',
+    'fuelSupply': 'fuelMoves',
+    'fuelTransfer': 'fuelMoves',
+    'fuelOpening': 'fuelMoves',
+  };
 
   bool _hasPerm(AuthService auth, String page, [String action = PermAction.view]) {
     page = _permPage[page] ?? page;
@@ -275,7 +288,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   Widget _pageBody(String page) {
     switch (page) {
       case 'dash':
-        return const DashboardScreen();
+        // «الرئيسية» تتبع القسم: لوحة الإمداد في مكانها، ولوحة المحروقات في
+        // مكانها — ولا يرى صاحب قسمٍ لوحةَ القسم الآخر.
+        return _space == AppSpace.fuel
+            ? const FuelDashboardScreen()
+            : const DashboardScreen();
       case 'items':
         return const ItemsScreen();
       case 'suppliers':
@@ -298,6 +315,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return const AssetsScreen();
       case 'fuelDashboard':
         return const FuelDashboardScreen();
+      case 'fuelIssue':
+        return const FuelMovesScreen(initialTab: 'issue');
+      case 'fuelSupply':
+        return const FuelMovesScreen(initialTab: 'supply');
+      case 'fuelTransfer':
+        return const FuelMovesScreen(initialTab: 'transfer');
+      case 'fuelOpening':
+        return const FuelMovesScreen(initialTab: 'opening');
       case 'fuelAllocations':
         return const FuelAllocationsScreen();
       case 'fuelMoves':
@@ -648,6 +673,14 @@ class _Sidebar extends StatelessWidget {
     required this.onLogout,
   });
 
+  /// هل للمساحة قسمٌ واحد فيُعرض مسطّحًا بلا رأس؟
+  static bool _flat(String space, bool Function(String) hasPerm) =>
+      _menu
+          .where((s) => s.items
+              .any((i) => AppSpace.shows(i.space, space) && hasPerm(i.id)))
+          .length <=
+      1;
+
   final String page;
 
   /// مساحة العمل الحالية — تُرشَّح بها بنود القائمة.
@@ -747,13 +780,32 @@ class _Sidebar extends StatelessWidget {
                       ),
                     ]),
                   ),
-                  _SideTile(
-                    icon: 'home',
-                    label: 'الرئيسية',
-                    kind: _SideKind.home,
-                    on: page == 'dash',
-                    onTap: () => onGo('dash'),
-                  ),
+                  // زر الرئيسية العام لا يظهر في المحروقات: قائمته تبدأ به
+                  // أصلًا، فزرّان لشاشةٍ واحدة يربكان لا يُيسّران.
+                  if (space != AppSpace.fuel)
+                    _SideTile(
+                      icon: 'home',
+                      label: 'الرئيسية',
+                      kind: _SideKind.home,
+                      on: page == 'dash',
+                      onTap: () => onGo('dash'),
+                    ),
+                  // قسمٌ بقائمةٍ واحدة يُعرض مسطّحًا: رأسُ قسمٍ يُطوى على كل
+                  // ما في الشاشة ليس تصنيفًا، بل نقرةٌ تُدفع قبل كل شيء.
+                  if (_flat(space, hasPerm))
+                    for (final i in _menu
+                        .expand((x) => x.items)
+                        .where((i) =>
+                            AppSpace.shows(i.space, space) && hasPerm(i.id)))
+                      _SideTile(
+                        icon: i.icon,
+                        label: i.name,
+                        kind: _SideKind.item,
+                        on: page == i.id ||
+                            (i.id == 'fuelDashboard' && page == 'dash'),
+                        onTap: () => onGo(i.id),
+                      )
+                  else
                   for (final s in _menu)
                     if (s.items.any((i) =>
                         AppSpace.shows(i.space, space) && hasPerm(i.id))) ...[

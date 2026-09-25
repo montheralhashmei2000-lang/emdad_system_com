@@ -66,6 +66,24 @@ void main() {
     });
   });
 
+  group('الفصل بعد إخراج المشترك', () {
+    test('لا بند مشترك: كل بند لقسمه', () {
+      // المستخدم أراد الفصل نهائيًّا، فلم يبقَ بندٌ يظهر في القسمين.
+      expect(AppSpace.shows(AppSpace.supply, AppSpace.fuel), isFalse);
+      expect(AppSpace.shows(AppSpace.fuel, AppSpace.supply), isFalse);
+    });
+
+    test('صفحات الإمداد لا تتضمن شيئًا من المحروقات', () {
+      final supply = AppSpace.pages[AppSpace.supply]!;
+      expect(supply.where((p) => p.startsWith('fuel')), isEmpty);
+    });
+
+    test('صفحات المحروقات كلها تبدأ بـfuel', () {
+      final fuel = AppSpace.pages[AppSpace.fuel]!;
+      expect(fuel.every((p) => p.startsWith('fuel')), isTrue);
+    });
+  });
+
   group('ترشيح البنود', () {
     test('المشترك يظهر في المساحتين', () {
       expect(AppSpace.shows(AppSpace.both, AppSpace.supply), isTrue);

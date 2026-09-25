@@ -19,7 +19,10 @@ import 'fuel_print.dart';
 /// أمين المحروقات يورّد صباحًا ويصرف نهارًا ويحوّل عند الطلب، وتفريقها على
 /// أربع شاشات يجعله يبحث عن الشاشة أكثر مما يكتب فيها.
 class FuelMovesScreen extends StatefulWidget {
-  const FuelMovesScreen({super.key});
+  const FuelMovesScreen({super.key, this.initialTab = 'issue'});
+
+  /// issue | supply | transfer | opening — يُفتح عليه القادم من القائمة.
+  final String initialTab;
 
   @override
   State<FuelMovesScreen> createState() => _FuelMovesScreenState();
@@ -37,7 +40,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
   List<FuelTransfer> _transfers = const [];
   List<FuelOpening> _openings = const [];
 
-  String _tab = 'issue';
+  late String _tab = widget.initialTab;
   bool _loading = true;
   bool _busy = false;
 
@@ -70,6 +73,15 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant FuelMovesScreen old) {
+    super.didUpdateWidget(old);
+    // التنقّل بين بنود القائمة يعيد بناء الشاشة نفسها بتبويبٍ آخر.
+    if (old.initialTab != widget.initialTab) {
+      setState(() => _tab = widget.initialTab);
+    }
   }
 
   @override
