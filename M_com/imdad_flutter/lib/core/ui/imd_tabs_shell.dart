@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../../core/security/perm.dart';
-import '../../core/ui/imd_tokens.dart';
-import '../../core/ui/imd_widgets.dart';
+import '../security/perm.dart';
+import 'imd_tokens.dart';
+import 'imd_widgets.dart';
 import '../../domain/access_control.dart';
 
 /// تبويبةٌ في غلافٍ يجمع شاشاتٍ متقاربة.
-class FuelTab {
-  const FuelTab({
+class ImdShellTab {
+  const ImdShellTab({
     required this.id,
     required this.label,
     required this.icon,
@@ -29,33 +29,33 @@ class FuelTab {
 
 /// غلافٌ يجمع شاشاتِ قسمٍ فرعيّ في بندٍ واحد بالقائمة.
 ///
-/// **الشريط الجانبي فهرسٌ لا سجل.** ثلاث عشرة شاشة في قائمةٍ واحدة تُقرأ
-/// بالبحث لا بالنظر؛ وجمعُ المتقارب منها — حركةٌ، وبياناتٌ أساسية، وتقارير —
-/// يُعيد للقائمة معناها.
+/// **الشريط الجانبي فهرسٌ لا سجل.** عشرون شاشةً في قائمةٍ واحدة تُقرأ بالبحث
+/// لا بالنظر؛ وجمعُ المتقارب منها — حركةٌ، وبياناتٌ أساسية، وتقارير — يُعيد
+/// للقائمة معناها.
 ///
 /// والشاشات تبقى كما هي: يُعلَّق فوقها شريط تبويبات ويُترك لها تمريرُها
 /// الخاص، فلا تمريرٌ داخل تمرير ولا عنوانٌ يُكرَّر.
-class FuelTabsShell extends StatefulWidget {
-  const FuelTabsShell({
+class ImdTabsShell extends StatefulWidget {
+  const ImdTabsShell({
     super.key,
     required this.tabs,
     this.initial = '',
     this.emptyMessage = 'لا صلاحية لأي شاشة في هذا القسم',
   });
 
-  final List<FuelTab> tabs;
+  final List<ImdShellTab> tabs;
   final String initial;
   final String emptyMessage;
 
   @override
-  State<FuelTabsShell> createState() => _FuelTabsShellState();
+  State<ImdTabsShell> createState() => _ImdTabsShellState();
 }
 
-class _FuelTabsShellState extends State<FuelTabsShell> {
+class _ImdTabsShellState extends State<ImdTabsShell> {
   String _tab = '';
 
   @override
-  void didUpdateWidget(covariant FuelTabsShell old) {
+  void didUpdateWidget(covariant ImdTabsShell old) {
     super.didUpdateWidget(old);
     // التنقّل من اختصارٍ في اللوحة يفتح الغلاف نفسه على تبويبةٍ أخرى.
     if (old.initial != widget.initial && widget.initial.isNotEmpty) {

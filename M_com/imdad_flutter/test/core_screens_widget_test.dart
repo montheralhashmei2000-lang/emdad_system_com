@@ -23,6 +23,7 @@ import 'package:imdad/features/inventory/receive_screen.dart';
 import 'package:imdad/features/inventory/returns_screen.dart';
 import 'package:imdad/features/inventory/transfer_screen.dart';
 import 'package:imdad/features/reports/balances_screen.dart';
+import 'package:imdad/features/home/supply_groups.dart';
 import 'package:imdad/features/reports/reports_center_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -196,6 +197,49 @@ void main() {
         expect(tester.takeException(), isNull);
       });
     }
+  });
+
+  group('أبواب الإمداد', () {
+    final doors = <String, (Widget Function(), String)>{
+      'حركة المخزون': (() => const SupplyMovesScreen(), 'الاستلام'),
+      'الطلبيات': (() => const SupplyOrdersScreen(), 'طلبيات الإعاشة'),
+      'الأدلّة': (() => const SupplyDataScreen(), 'الأصناف'),
+      'التشغيل اليومي': (() => const SupplyDailyScreen(), 'التغذية اليومية'),
+      'التقارير': (() => const SupplyReportsScreen(), 'مركز التقارير'),
+      'الرقابة': (() => const SupplyAuditScreen(), 'سجل النشاط'),
+    };
+
+    for (final e in doors.entries) {
+      testWidgets('باب «${e.key}» يُبنى بتبويباته', (tester) async {
+        await seed();
+        await show(tester, e.value.$1());
+        expect(tester.takeException(), isNull);
+        expect(find.text(e.value.$2), findsWidgets,
+            reason: 'تبويبة «${e.value.$2}» غائبة');
+      });
+    }
+
+    testWidgets('الباب يُفتح على التبويبة المطلوبة', (tester) async {
+      await seed();
+      await show(tester, const SupplyMovesScreen(initialTab: 'returns'));
+      expect(tester.takeException(), isNull);
+      // المعرّف القديم يفتح تبويبته، فلا ينكسر اختصارٌ ولا رابط.
+      expect(find.textContaining('مرتجع'), findsWidgets);
+    });
+
+    testWidgets('التنقّل بين تبويبتين لا يُسقط الشاشة', (tester) async {
+      await seed();
+      await show(tester, const SupplyDataScreen());
+      final tab = find.text('المستودعات').first;
+      await tester.ensureVisible(tab);
+      await tester.pumpAndSettle();
+      await tester.tap(tab, warnIfMissed: false);
+      await tester.pump();
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 80)));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
   });
 
   testWidgets('مركز التقارير يتنقّل بين تقاريره بلا انهيار', (tester) async {

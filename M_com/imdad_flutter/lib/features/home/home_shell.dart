@@ -17,42 +17,19 @@ import '../../core/ui/imd_widgets.dart';
 import '../../domain/access_control.dart';
 import '../../domain/app_space.dart';
 import 'space_chooser_screen.dart';
-import '../catalog/assets_screen.dart';
 import '../fuel/fuel_allocations_screen.dart';
 import '../fuel/fuel_groups.dart';
+import 'supply_groups.dart';
 import '../fuel/fuel_settings_screen.dart';
 import '../fuel/fuel_dashboard_screen.dart';
 import '../fuel/fuel_moves_screen.dart';
 import '../fuel/fuel_stocktake_screen.dart';
-import '../catalog/kitchens_screen.dart';
-import '../catalog/items_screen.dart';
-import '../catalog/suppliers_screen.dart';
-import '../catalog/units_screen.dart';
-import '../catalog/warehouses_screen.dart';
-import '../daily/daily_operations_screen.dart';
 import '../daily/meal_plan_screen.dart';
 import '../daily/kitchen_log_screen.dart';
-import '../daily/ratios_screen.dart';
-import '../daily/strength_screen.dart';
-import '../insights/activity_intel_screen.dart';
-import '../insights/executive_cmd_screen.dart';
-import '../insights/health_ops_screen.dart';
-import '../insights/sensitive_ops_screen.dart';
-import '../inventory/ration_order_screen.dart';
-import '../inventory/issue_screen.dart';
-import '../inventory/opening_screen.dart';
-import '../inventory/pending_screen.dart';
-import '../inventory/receive_screen.dart';
-import '../inventory/returns_screen.dart';
-import '../inventory/transfer_screen.dart';
-import '../alerts/stock_alerts_screen.dart';
 import 'notification_bell.dart';
 import '../reports/camp_ledger_screen.dart';
 import '../reports/camp_settlement_screen.dart';
 import '../reports/actual_entitlement_screen.dart';
-import '../reports/balances_screen.dart';
-import '../reports/reports_center_screen.dart';
-import '../settings/audit_screen.dart';
 import '../settings/branding_screen.dart';
 import '../settings/forms_designer_screen.dart';
 import '../settings/device_activation_screen.dart';
@@ -101,22 +78,18 @@ class _MenuSection {
 }
 
 const _menu = <_MenuSection>[
-  _MenuSection('basic', 'settings', 'البيانات الأساسية', [
-    _MenuItem('items', 'package', 'إدارة الأصناف'),
-    _MenuItem('suppliers', 'truck', 'الموردون'),
-    _MenuItem('units', 'users', 'الوحدات المستفيدة'),
-    _MenuItem('stores', 'warehouse', 'المستودعات'),
-    _MenuItem('kitchens', 'utensils', 'المطابخ والأفران'),
-    _MenuItem('assets', 'package', 'الأصول الثابتة'),
-  ]),
+  // قسم الإمداد: تسعةُ أبوابٍ لا ستةٌ وعشرون بندًا.
+  //
+  // **الشريط فهرسٌ لا سجل.** سندات الحركة الخمسة يحرّرها أمينُ مستودعٍ واحد
+  // في جلسةٍ واحدة، والأدلّة الستة تُعرَّف مرةً وتُقرأ دائمًا، والرقابة خمسُ
+  // نظراتٍ على السجل نفسه — فكلُّ مجموعةٍ بابٌ بتبويباته.
   _MenuSection('stock', 'package', 'العمليات المخزنية', [
-    _MenuItem('pendingOrders', 'bell', 'أوامر التوريد المعلقة'),
-    _MenuItem('receive', 'download', 'استلام بضاعة'),
-    _MenuItem('issue', 'upload', 'صرف بضاعة'),
-    _MenuItem('transfer', 'refresh', 'تحويل مخزني'),
-    _MenuItem('returns', 'undo', 'المرتجعات'),
-    _MenuItem('opening', 'clipboard', 'الأرصدة الافتتاحية'),
-    _MenuItem('rationOrders', 'clipboard', 'طلبيات الإعاشة'),
+    _MenuItem('supplyMoves', 'swap', 'حركة المخزون'),
+    _MenuItem('supplyOrders', 'clipboard', 'الطلبيات'),
+    _MenuItem('stocktake', 'clipboard', 'جرد المخزون'),
+  ]),
+  _MenuSection('basic', 'database', 'البيانات الأساسية', [
+    _MenuItem('supplyData', 'database', 'الأدلّة الأساسية'),
   ]),
   // قسم المحروقات: ستّة أبوابٍ لا ثلاثة عشر بندًا.
   //
@@ -135,20 +108,11 @@ const _menu = <_MenuSection>[
     _MenuItem('fuelSettings', 'settings', 'الإعدادات', space: AppSpace.fuel),
   ]),
   _MenuSection('daily', 'chart', 'التشغيل اليومي', [
-    _MenuItem('feeding', 'calendar', 'التغذية اليومية (حصر القوة)'),
-    _MenuItem('dailyOperations', 'calendar', 'التخطيط والتشغيل اليومي'),
-    _MenuItem('ratios', 'scale', 'نسب الاستهلاك'),
+    _MenuItem('supplyDaily', 'calendar', 'التشغيل اليومي'),
   ]),
-  _MenuSection('reports', 'trending', 'التقارير والجرد', [
-    _MenuItem('balances', 'calculator', 'الأرصدة الحالية'),
-    _MenuItem('stockAlerts', 'alert', 'تنبيهات المخزون'),
-    _MenuItem('stocktake', 'clipboard', 'جرد المخزون'),
+  _MenuSection('reports', 'trending', 'التقارير والرقابة', [
     _MenuItem('reports', 'chart', 'التقارير'),
-    _MenuItem('auditTrail', 'scan', 'سجل النشاط والتدقيق'),
-    _MenuItem('activityIntel', 'bulb', 'ذكاء النشاط والانحرافات'),
-    _MenuItem('executiveCmd', 'target', 'مركز القيادة التنفيذية'),
-    _MenuItem('sensitiveOps', 'alert', 'التغييرات الحساسة والمراجعة'),
-    _MenuItem('healthOps', 'shield', 'صحة النظام والعمليات'),
+    _MenuItem('supplyAudit', 'scan', 'الرقابة والتدقيق'),
   ]),
   _MenuSection('settings', 'wrench', 'الإعدادات', [
     _MenuItem('settings', 'settings', 'الإعدادات'),
@@ -249,6 +213,29 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   bool _isAdmin(AuthService auth) => auth.currentUser?.role == 'admin';
 
   /// صفحات بلا صلاحية خاصة بها تتبع صلاحية صفحة أخرى، فلا يلزم تعديل الأدوار.
+  /// أبوابٌ تُفتح لمن ملك إحدى تبويباتها.
+  static const _anyOf = {
+    'supplyMoves': ['receive', 'issue', 'transfer', 'returns', 'opening'],
+    'supplyOrders': ['rationOrders', 'pendingOrders'],
+    'supplyData': [
+      'items',
+      'stores',
+      'units',
+      'suppliers',
+      'kitchens',
+      'assets',
+    ],
+    'supplyDaily': ['feeding', 'dailyOperations', 'ratios'],
+    'supplyAudit': [
+      'auditTrail',
+      'activityIntel',
+      'sensitiveOps',
+      'executiveCmd',
+      'healthOps',
+    ],
+    'reports': ['reports', 'balances'],
+  };
+
   static const _permPage = {
     'lanSync': 'settings',
     'stockAlerts': 'balances',
@@ -267,8 +254,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   bool _hasPerm(AuthService auth, String page,
       [String action = PermAction.view]) {
     page = _permPage[page] ?? page;
-    // بابُ الأدلّة يُفتح لمن ملك أحدها، والتبويبات تُخفي ما لا يملك —
+    // بابٌ بتبويبات يُفتح لمن ملك إحداها، والتبويبات تُخفي ما لا يملك —
     // فالجمع تنظيمٌ للقائمة لا توسيعٌ للأذونات.
+    final any = _anyOf[page];
+    if (any != null) {
+      return any.any((p) => _hasPerm(auth, p, action));
+    }
     if (page == 'fuelData') {
       return _hasPerm(auth, 'fuelWarehouses', action) ||
           _hasPerm(auth, 'fuelUnits', action) ||
@@ -300,13 +291,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             ? const FuelDashboardScreen()
             : const DashboardScreen();
       case 'items':
-        return const ItemsScreen();
+        return const SupplyDataScreen(initialTab: 'items');
       case 'suppliers':
-        return const SuppliersScreen();
+        return const SupplyDataScreen(initialTab: 'suppliers');
       case 'kitchens':
-        return const KitchensScreen();
+        return const SupplyDataScreen(initialTab: 'kitchens');
       case 'units':
-        return const UnitsScreen();
+        return const SupplyDataScreen(initialTab: 'units');
       case 'campLedger':
         return const CampLedgerScreen();
       case 'campSettlement':
@@ -316,9 +307,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       case 'mealPlans':
         return const MealPlanScreen();
       case 'dailyOperations':
-        return const DailyOperationsScreen();
+        return const SupplyDailyScreen(initialTab: 'dailyOperations');
       case 'assets':
-        return const AssetsScreen();
+        return const SupplyDataScreen(initialTab: 'assets');
       case 'fuelDashboard':
         return const FuelDashboardScreen();
       case 'fuelIssue':
@@ -359,46 +350,58 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return const FuelReportsHubScreen();
       case 'fuelSettings':
         return const FuelSettingsScreen();
+      // أبواب الإمداد — والمعرّفات القديمة تفتحها على تبويبتها، فلا ينكسر
+      // اختصارٌ في اللوحة ولا رابطٌ من تنبيه.
+      case 'supplyMoves':
+        return const SupplyMovesScreen();
+      case 'supplyOrders':
+        return const SupplyOrdersScreen();
+      case 'supplyData':
+        return const SupplyDataScreen();
+      case 'supplyDaily':
+        return const SupplyDailyScreen();
+      case 'supplyAudit':
+        return const SupplyAuditScreen();
       case 'rationOrders':
-        return const RationOrderScreen();
+        return const SupplyOrdersScreen(initialTab: 'rationOrders');
       case 'stores':
-        return const WarehousesScreen();
+        return const SupplyDataScreen(initialTab: 'stores');
       case 'pendingOrders':
-        return const PendingScreen();
+        return const SupplyOrdersScreen(initialTab: 'pendingOrders');
       case 'receive':
-        return const ReceiveScreen();
+        return const SupplyMovesScreen(initialTab: 'receive');
       case 'issue':
-        return const IssueScreen();
+        return const SupplyMovesScreen(initialTab: 'issue');
       case 'transfer':
-        return const TransferScreen();
+        return const SupplyMovesScreen(initialTab: 'transfer');
       case 'returns':
-        return const ReturnsScreen();
+        return const SupplyMovesScreen(initialTab: 'returns');
       case 'opening':
-        return const OpeningScreen();
+        return const SupplyMovesScreen(initialTab: 'opening');
       case 'feeding':
-        return const StrengthScreen();
+        return const SupplyDailyScreen(initialTab: 'feeding');
       case 'kitchenLog':
         return const KitchenLogScreen();
       case 'ratios':
-        return const RatiosScreen();
+        return const SupplyDailyScreen(initialTab: 'ratios');
       case 'balances':
-        return const BalancesScreen();
+        return const SupplyReportsScreen(initialTab: 'balances');
       case 'stockAlerts':
-        return const StockAlertsScreen();
+        return const SupplyReportsScreen(initialTab: 'stockAlerts');
       case 'stocktake':
         return const StocktakeScreen();
       case 'reports':
-        return const ReportsCenterScreen();
+        return const SupplyReportsScreen();
       case 'auditTrail':
-        return const AuditScreen();
+        return const SupplyAuditScreen(initialTab: 'auditTrail');
       case 'activityIntel':
-        return const ActivityIntelScreen();
+        return const SupplyAuditScreen(initialTab: 'activityIntel');
       case 'executiveCmd':
-        return const ExecutiveCmdScreen();
+        return const SupplyAuditScreen(initialTab: 'executiveCmd');
       case 'sensitiveOps':
-        return const SensitiveOpsScreen();
+        return const SupplyAuditScreen(initialTab: 'sensitiveOps');
       case 'healthOps':
-        return const HealthOpsScreen();
+        return const SupplyAuditScreen(initialTab: 'healthOps');
       case 'settings':
         return const SettingsScreen();
       case 'formsDesigner':

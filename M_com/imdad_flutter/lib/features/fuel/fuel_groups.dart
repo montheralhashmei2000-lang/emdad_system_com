@@ -5,7 +5,7 @@ import 'fuel_daily_report_screen.dart';
 import 'fuel_directories_screen.dart';
 import 'fuel_ledger_screen.dart';
 import 'fuel_official_report_screen.dart';
-import 'fuel_tabs_shell.dart';
+import '../../core/ui/imd_tabs_shell.dart';
 import 'fuel_vehicles_screen.dart';
 
 /// البيانات الأساسية — أدلّة القسم التي تُعرَّف مرةً ويُبنى عليها كل سند.
@@ -18,25 +18,25 @@ class FuelDataScreen extends StatelessWidget {
   final String initialTab;
 
   @override
-  Widget build(BuildContext context) => FuelTabsShell(
+  Widget build(BuildContext context) => ImdTabsShell(
         initial: initialTab,
         emptyMessage: 'لا صلاحية لأي من أدلّة المحروقات',
         tabs: [
-          FuelTab(
+          ImdShellTab(
             id: 'warehouses',
             label: 'المستودعات',
             icon: 'warehouse',
             perm: 'fuelWarehouses',
             builder: (_) => const FuelWarehousesScreen(),
           ),
-          FuelTab(
+          ImdShellTab(
             id: 'units',
             label: 'الوحدات المستفيدة',
             icon: 'building',
             perm: 'fuelUnits',
             builder: (_) => const FuelUnitsScreen(),
           ),
-          FuelTab(
+          ImdShellTab(
             id: 'vehicles',
             label: 'سجل المركبات',
             icon: 'truck',
@@ -58,46 +58,46 @@ class FuelReportsHubScreen extends StatelessWidget {
   final String initialTab;
 
   @override
-  Widget build(BuildContext context) => FuelTabsShell(
+  Widget build(BuildContext context) => ImdTabsShell(
         initial: initialTab,
         emptyMessage: 'لا صلاحية لأي من تقارير المحروقات',
         tabs: [
-          FuelTab(
+          ImdShellTab(
             id: 'daily',
             label: 'الحركة اليومية',
             icon: 'calendar',
             perm: 'fuelReports',
             builder: (_) => const FuelDailyReportScreen(),
           ),
-          FuelTab(
+          ImdShellTab(
             id: 'official',
             label: 'التقرير الرسمي',
             icon: 'file',
             perm: 'fuelReports',
             builder: (_) => const FuelOfficialReportScreen(),
           ),
-          FuelTab(
+          ImdShellTab(
             id: 'consumption',
             label: 'الاستهلاك',
             icon: 'trending',
             perm: 'fuelConsumption',
             builder: (_) => const FuelConsumptionScreen(),
           ),
-          FuelTab(
+          ImdShellTab(
             id: 'stocks',
             label: 'أرصدة المستودعات',
             icon: 'package',
             perm: 'fuelReports',
             builder: (_) => const FuelStocksReportScreen(),
           ),
-          FuelTab(
+          ImdShellTab(
             id: 'ledger',
             label: 'كشف حركة المستودع',
             icon: 'list',
             perm: 'fuelReports',
             builder: (_) => const FuelLedgerScreen(),
           ),
-          FuelTab(
+          ImdShellTab(
             id: 'plan',
             label: 'الاستحقاق مقابل الصرف',
             icon: 'scale',
