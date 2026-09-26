@@ -154,6 +154,28 @@ class ReportCell {
   final double? value;
 }
 
+/// سطر الإجمالي لتقريرٍ ما — أو `null` إن لم يكن له معنى.
+///
+/// **الورقة تُوقَّع بمجموعها**، فالحساب هنا لا في الشاشة: منه تُبنى الشاشة
+/// والورقة وملف Excel، فلا يختلف مجموعٌ عن مجموع.
+///
+/// ولا يُجمع سطرٌ وحيد: «الإجمالي ١٠٠» تحت «١٠٠» تكرارٌ لا خبر.
+List<String>? reportTotalsRow(
+  List<ReportColumn> columns,
+  List<List<ReportCell>> rows, {
+  String label = 'الإجمالي',
+}) {
+  if (rows.length < 2 || !columns.any((c) => c.numeric && c.sum)) return null;
+  return [
+    label,
+    for (final (i, c) in columns.indexed)
+      c.numeric && c.sum
+          ? nf(rows.fold<double>(
+              0, (a, r) => a + (i < r.length ? (r[i].value ?? 0) : 0)))
+          : '',
+  ];
+}
+
 class ReportResult {
   const ReportResult({
     this.columns = const [],

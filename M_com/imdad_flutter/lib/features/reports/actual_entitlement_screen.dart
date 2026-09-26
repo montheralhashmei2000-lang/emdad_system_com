@@ -227,6 +227,8 @@ class _ActualEntitlementScreenState extends State<ActualEntitlementScreen> {
       sheetName: 'الاستحقاق الفعلي',
       headers: _headers,
       rows: _exportRows(),
+      // المستحق والمصروف والمرتجع والصافي — كمّياتٌ تُجمع في Excel.
+      numericColumns: const {2, 3, 4, 5},
     );
     if (!mounted) return;
     final path = await ImdFiles.saveBytes(

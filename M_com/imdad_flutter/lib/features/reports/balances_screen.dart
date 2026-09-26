@@ -147,6 +147,8 @@ class _BalancesScreenState extends State<BalancesScreen> {
       sheetName: 'الأرصدة',
       headers: _headers,
       rows: _reportRows(rows),
+      // الرصيد الحالي وحده كمّية؛ والكود نصٌّ تسقط أصفاره إن قُرئ رقمًا.
+      numericColumns: const {4},
     );
     if (!mounted) return;
     final path = await ImdFiles.saveBytes(context, 'الأرصدة الحالية.xlsx', bytes);

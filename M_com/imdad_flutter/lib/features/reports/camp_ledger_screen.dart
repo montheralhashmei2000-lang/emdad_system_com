@@ -178,6 +178,8 @@ class _CampLedgerScreenState extends State<CampLedgerScreen> {
       sheetName: 'سجل المعسكر',
       headers: _headers,
       rows: _exportRows(),
+      // كل أعمدة الكشف كمّيات عدا «م» و«الصنف» و«الحالة».
+      numericColumns: const {2, 3, 4, 5, 6, 7, 9, 10, 11},
     );
     if (!mounted) return;
     final path = await ImdFiles.saveBytes(

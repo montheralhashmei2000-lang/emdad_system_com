@@ -236,11 +236,18 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
   Future<void> _print() async {
     if (!_hasRows()) return;
     final layout = await SettingsRepo(_db).printLayout();
+    final totals = _totalTexts(_rows());
     await DocumentPdf.printDoc(
       doc: PrintDoc(
         title: _title,
-        headers: _headers,
-        rows: _exportRows(),
+        sections: [
+          PrintSection(
+            title: '',
+            headers: _headers,
+            rows: _exportRows(),
+            totalRow: totals,
+          ),
+        ],
         leftValues: {'date': ReportsRepo.today()},
         fieldValues: {
           'notes': _filterText.isEmpty ? 'بدون فلاتر' : _filterText,
@@ -254,10 +261,12 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
   /// `doXlsx()`
   Future<void> _export() async {
     if (!_hasRows()) return;
+    final totals = _totalTexts(_rows());
     final bytes = ExcelExport.build(
       sheetName: _report.name,
       headers: _headers,
-      rows: _exportRows(),
+      rows: [..._exportRows(), if (totals != null) totals],
+      numericColumns: _numericColumns,
     );
     if (!mounted) return;
     final name =
@@ -521,22 +530,30 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
         _ => ImdTone.code,
       };
 
-  /// سطر الإجمالي للأعمدة المجمَّعة (`rc-sum`).
+  /// سطر الإجمالي للأعمدة المجمَّعة (`rc-sum`) — نصًّا.
+  ///
+  /// **الورقة تُوقَّع بمجموعها.** كان الإجمالي يُرسم على الشاشة ولا يدخل
+  /// الطباعة ولا التصدير، فيخرج التقرير المجمَّع بلا الرقم الذي يُقرأ أولًا.
+  /// فصار نصًّا واحدًا تُبنى منه الشاشة والورقة والملف.
+  List<String>? _totalTexts(List<List<ReportCell>> rows) =>
+      reportTotalsRow(_out.columns, rows);
+
   List<Widget>? _totals(List<List<ReportCell>> rows) {
-    if (rows.length < 2 || !_out.columns.any((c) => c.numeric && c.sum)) {
-      return null;
-    }
+    final texts = _totalTexts(rows);
+    if (texts == null) return null;
     return [
-      const Text('الإجمالي', style: TextStyle(fontWeight: FontWeight.w700)),
-      for (final (i, c) in _out.columns.indexed)
-        Text(
-          c.numeric && c.sum
-              ? nf(rows.fold<double>(0, (a, r) => a + (r[i].value ?? 0)))
-              : '',
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
+      for (final t in texts)
+        Text(t, style: const TextStyle(fontWeight: FontWeight.w700)),
     ];
   }
+
+  /// أعمدة الكميات في ملف Excel — بها تُجمع وتُفرز وتُرسم.
+  ///
+  /// العمود الأول «م» ترقيمٌ لا كمية، فتُزاح الفهارس بواحد.
+  Set<int> get _numericColumns => {
+        for (final (i, c) in _out.columns.indexed)
+          if (c.numeric) i + 1,
+      };
 
   /// `paintFilters()` — شبكة الفلاتر المتجاوبة.
   Widget _filtersBar() {

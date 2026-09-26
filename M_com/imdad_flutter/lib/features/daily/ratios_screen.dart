@@ -214,6 +214,8 @@ class _RatiosScreenState extends State<RatiosScreen> {
     }
     final bytes = ExcelExport.build(
       sheetName: 'المقررات',
+      // الاستحقاق الشهري واليومي — والكود والوحدة نصّان.
+      numericColumns: const {3, 5},
       headers: const [
         'م',
         'كود الصنف',
