@@ -203,8 +203,7 @@ void main() {
     await show(tester, const FuelDailyReportScreen());
     expect(tester.takeException(), isNull);
     expect(find.textContaining('ملخّص الحركة اليومية'), findsWidgets);
-    expect(find.textContaining('تقرير الحركة اليومية للمحروقات بـ'),
-        findsWidgets);
+    expect(find.textContaining('الحركة اليومية بـ'), findsWidgets);
     expect(find.text('الوارد'), findsWidgets);
     expect(find.text('المنصرف'), findsWidgets);
     expect(find.textContaining('إجمالي المنصرف'), findsWidgets);
@@ -238,10 +237,11 @@ void main() {
     await seed();
     await show(tester, const FuelOfficialReportScreen());
     expect(tester.takeException(), isNull);
-    // الترويسة تأتي من الإعدادات لا من الكود.
-    expect(find.text('قيادة الفرقة الأولى'), findsWidgets);
+    expect(find.textContaining('محطة الوقود في'), findsWidgets);
     expect(find.textContaining('الصادر من مادة البترول'), findsWidgets);
     expect(find.textContaining('الصادر من مادة الديزل'), findsWidgets);
+    // الترويسة صارت شأنَ الورقة المطبوعة، وتُذكر في الشاشة سطرًا.
+    expect(find.textContaining('إعدادات المحروقات'), findsWidgets);
   });
 
   testWidgets('شاشة الحركة تُظهر المتاح وتتنقّل بين تبويباتها', (tester) async {

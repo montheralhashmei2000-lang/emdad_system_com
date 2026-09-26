@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
+import '../../core/ui/imd_layout.dart';
+import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/fuel_repo.dart';
@@ -10,12 +12,14 @@ import '../../domain/fuel.dart';
 import '../../domain/fuel_daily_report.dart';
 import '../../domain/fuel_report.dart';
 import 'fuel_daily_pdf.dart';
-import 'fuel_paper.dart';
 
 /// تقرير الحركة اليومية للمحروقات — الدفتر اليومي بجميع معسكراته.
 ///
-/// يُعرض كما سيُطبع: ملخصٌ أولًا يُقرأ في نظرة، ثم تفصيلُ كل معسكر في ثلاثة
-/// جداول — الوارد، فالمنصرف، فالتحويل إن وُجد — ولكلٍّ إجماليه في ذيله.
+/// ملخّصٌ أولًا يُقرأ في نظرة، ثم تفصيلُ كل معسكر في ثلاثة جداول — الوارد،
+/// فالمنصرف، فالتحويل إن وُجد — ولكلٍّ إجماليه في ذيله.
+///
+/// **الشاشة لوحةٌ والورقة ورقة**: هنا جداول النظام وألوانه كبقية تقارير
+/// القسم، وفي الطابعة البرقية بترويستها وتواقيعها.
 class FuelDailyReportScreen extends StatefulWidget {
   const FuelDailyReportScreen({super.key});
 
@@ -163,7 +167,7 @@ class _FuelDailyReportScreenState extends State<FuelDailyReportScreen> {
         ImdLd('⏳ جارٍ التحميل…'),
       ]);
     }
-    final report = _report;
+    final r = _report;
 
     return ImdPage(children: [
       ImdPageTitle(
@@ -177,7 +181,8 @@ class _FuelDailyReportScreenState extends State<FuelDailyReportScreen> {
       ImdICard(
         title: 'نطاق التقرير',
         icon: 'sliders',
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ImdF2(children: [
             ImdLabeled(
               'من تاريخ',
@@ -226,110 +231,124 @@ class _FuelDailyReportScreenState extends State<FuelDailyReportScreen> {
           ),
         ]),
       ),
-      FuelPaper(
-        minWidth: 900,
-        child: _sheet(report),
-      ),
+      ImdKpis(children: [
+        ImdKpi(
+          label: 'رصيد أول المدى',
+          value: '${nf(_openingTotal(r))} ${Fuel.unit}',
+          extra: const ImdChip('مُرحَّل', tone: ImdTone.off),
+        ),
+        ImdKpi(label: 'الوارد', value: nf(r.totalOf((b) => b.incoming))),
+        ImdKpi(label: 'المنصرف', value: nf(r.totalOf((b) => b.issued))),
+        ImdKpi(
+          label: 'المحوَّل',
+          value: nf(r.totalOf((b) => b.transferOut)),
+          extra: r.totalOf((b) => b.transferOut) == 0
+              ? null
+              : const ImdChip('بين المعسكرات', tone: ImdTone.info),
+        ),
+        ImdKpi(
+            label: 'رصيد آخر المدى',
+            value: '${nf(_closingTotal(r))} ${Fuel.unit}'),
+      ]),
+      _summary(r),
+      if (r.isEmpty)
+        const ImdEmptyBox('لا حركة في هذا المدى')
+      else
+        for (final day in r.days) ..._day(r, day),
     ]);
   }
 
-  Widget _sheet(FuelDailyReport r) {
-    final s = _settings!;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        FuelPaperLetterhead(settings: s),
-        const SizedBox(height: 12),
-        FuelPaperAddressee(settings: s, span: r.range.label),
-        const SizedBox(height: 16),
-        Center(
-          child: Text(
-            '${r.title} — ${r.range.label} م',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-                color: FuelPaper.title,
-                fontSize: 15,
-                fontWeight: FontWeight.w800),
-          ),
-        ),
-        const SizedBox(height: 20),
-        _summary(r),
-        for (final day in r.days) ..._day(r, day),
-        const SizedBox(height: 30),
-        FuelPaperSignatures(settings: s),
-      ],
-    );
-  }
+  /// أرصدة أول يومٍ وآخره — لا مجموع الأعمدة كلها، فذاك يجمع اليوم بتاليه.
+  double _openingTotal(FuelDailyReport r) => r.days.isEmpty
+      ? 0
+      : r.days.first.balances.fold<double>(0, (t, b) => t + b.opening);
 
-  // ───────────────────────── الملخّص
-
-  /// **الملخّص قبل التفصيل.** من يقرأ الورقة يسأل أولًا «كم بقي وأين»، ثم
-  /// يفتّش عن السند إن استغرب رقمًا — فالإجماليات في الصدر والتفاصيل بعدها.
-  Widget _summary(FuelDailyReport r) {
-    final adj = r.hasAdjustments;
-    final many = r.days.length > 1;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const FuelPaperHeading('ملخّص الحركة اليومية'),
-        const SizedBox(height: 6),
-        FuelPaperTable(
-          headers: [
-            if (many) 'اليوم',
-            'المعسكر / المحطة',
-            'الوقود',
-            'الرصيد الافتتاحي / المتبقي من السابق',
-            'الوارد',
-            'المنصرف',
-            'التحويل',
-            if (adj) 'تسوية جرد',
-            'المتبقي',
-          ],
-          flex: [
-            if (many) 3,
-            5,
-            2,
-            5,
-            3,
-            3,
-            3,
-            if (adj) 3,
-            3,
-          ],
-          rows: [
-            for (final day in r.days)
-              for (final b in day.balances)
-                [
-                  if (many) FuelDateRange.slash(day.date),
-                  b.warehouse,
-                  FuelType.label(b.fuelType),
-                  nf(b.opening),
-                  nf(b.incoming),
-                  nf(b.issued),
-                  _signed(b.transferNet),
-                  if (adj) _signed(b.adjustment),
-                  nf(b.closing),
-                ],
-          ],
-          totalRow: [
-            if (many) '',
-            'الإجمالي',
-            '',
-            nf(r.totalOf((b) => b.opening)),
-            nf(r.totalOf((b) => b.incoming)),
-            nf(r.totalOf((b) => b.issued)),
-            _signed(r.totalOf((b) => b.transferNet)),
-            if (adj) _signed(r.totalOf((b) => b.adjustment)),
-            nf(r.totalOf((b) => b.closing)),
-          ],
-        ),
-      ],
-    );
-  }
+  double _closingTotal(FuelDailyReport r) => r.days.isEmpty
+      ? 0
+      : r.days.last.balances.fold<double>(0, (t, b) => t + b.closing);
 
   static String _signed(double v) {
     if (v == 0) return '—';
     return v > 0 ? '+${nf(v)}' : '−${nf(-v)}';
+  }
+
+  // ───────────────────────── الملخّص
+
+  /// **الملخّص قبل التفصيل.** من يقرأ يسأل أولًا «كم بقي وأين»، ثم يفتّش عن
+  /// السند إن استغرب رقمًا — فالإجماليات في الصدر والتفاصيل بعدها.
+  Widget _summary(FuelDailyReport r) {
+    final c = context.imd;
+    final adj = r.hasAdjustments;
+    final many = r.days.length > 1;
+    return ImdPanel(
+      title: 'ملخّص الحركة اليومية',
+      icon: 'scale',
+      child: ImdTable(
+        empty: 'لا معسكرات',
+        minWidth: adj ? 1040 : 940,
+        columns: [
+          if (many) const ImdCol('اليوم'),
+          const ImdCol('المعسكر / المحطة'),
+          const ImdCol('الوقود'),
+          const ImdCol('الافتتاحي / المتبقي من السابق', numeric: true),
+          const ImdCol('الوارد', numeric: true),
+          const ImdCol('المنصرف', numeric: true),
+          const ImdCol('التحويل', numeric: true),
+          if (adj) const ImdCol('تسوية جرد', numeric: true),
+          const ImdCol('المتبقي', numeric: true),
+        ],
+        rows: [
+          for (final day in r.days)
+            for (final b in day.balances)
+              [
+                if (many) Text(arDigits(day.date)),
+                Text(b.warehouse,
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                ImdChip(FuelType.label(b.fuelType),
+                    tone: b.fuelType == FuelType.diesel
+                        ? ImdTone.code
+                        : ImdTone.info),
+                Text(nf(b.opening), style: TextStyle(color: c.muted)),
+                Text(b.incoming == 0 ? '—' : nf(b.incoming),
+                    style: TextStyle(
+                        color: b.incoming == 0 ? c.muted : c.success)),
+                Text(b.issued == 0 ? '—' : nf(b.issued),
+                    style:
+                        TextStyle(color: b.issued == 0 ? c.muted : c.danger)),
+                Text(_signed(b.transferNet),
+                    style: TextStyle(
+                        color: b.transferNet == 0 ? c.muted : c.info)),
+                if (adj)
+                  Text(_signed(b.adjustment),
+                      style: TextStyle(
+                          color: b.adjustment == 0 ? c.muted : c.warn)),
+                Text('${nf(b.closing)} ${Fuel.unit}',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: b.closing < 0 ? c.danger : c.text)),
+              ],
+        ],
+        footer: [
+          if (many) const Text(''),
+          const Text('الإجمالي',
+              style: TextStyle(fontWeight: FontWeight.w700)),
+          const Text(''),
+          Text(nf(r.totalOf((b) => b.opening)),
+              style: const TextStyle(fontWeight: FontWeight.w700)),
+          Text(nf(r.totalOf((b) => b.incoming)),
+              style: const TextStyle(fontWeight: FontWeight.w700)),
+          Text(nf(r.totalOf((b) => b.issued)),
+              style: const TextStyle(fontWeight: FontWeight.w700)),
+          Text(_signed(r.totalOf((b) => b.transferNet)),
+              style: const TextStyle(fontWeight: FontWeight.w700)),
+          if (adj)
+            Text(_signed(r.totalOf((b) => b.adjustment)),
+                style: const TextStyle(fontWeight: FontWeight.w700)),
+          Text(nf(r.totalOf((b) => b.closing)),
+              style: const TextStyle(fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
   }
 
   // ───────────────────────── تفصيل اليوم
@@ -353,203 +372,221 @@ class _FuelDailyReportScreenState extends State<FuelDailyReportScreen> {
   List<Widget> _day(FuelDailyReport r, FuelDailyDay day) {
     final many = r.days.length > 1;
     final camps = day.camps.where((c) => c.hasAny).toList();
+    if (camps.isEmpty) return const [];
     return [
-      const SizedBox(height: 26),
       if (many)
-        Center(
-          child: Text(
-            'حركة يوم ${FuelDateRange.slash(day.date)} م',
-            style: const TextStyle(
-                color: FuelPaper.title,
-                fontSize: 13.5,
-                fontWeight: FontWeight.w800),
-          ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Row(children: [
+            ImdChip('حركة يوم ${arDigits(day.date)}', tone: ImdTone.info),
+            const SizedBox(width: 10),
+            Expanded(child: Divider(color: context.imd.line, height: 1)),
+          ]),
         ),
-      if (camps.isEmpty)
-        const Padding(
-          padding: EdgeInsets.only(top: 10),
-          child: FuelPaperHeading('لا توجد حركة في هذا اليوم'),
-        ),
-      for (var i = 0; i < camps.length; i++) ..._camp(day, camps[i], i),
+      for (var i = 0; i < camps.length; i++) _camp(camps[i], i),
     ];
   }
 
-  List<Widget> _camp(FuelDailyDay day, FuelDailyCamp c, int index) => [
-        const SizedBox(height: 20),
-        Text(
-          '${_ordinal(index)}: تقرير الحركة اليومية للمحروقات بـ${c.warehouse}',
-          style: const TextStyle(
-              color: FuelPaper.title,
-              fontSize: 13,
-              fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'الرصيد أول اليوم: '
-          '${_openingLine(c)} — والمتبقي آخره: ${_closingLine(c)}',
-          style: const TextStyle(fontSize: 11, color: FuelPaper.muted),
-        ),
+  Widget _camp(FuelDailyCamp c, int index) {
+    final t = context.imd;
+    return ImdPanel(
+      title: '${_ordinal(index)}: الحركة اليومية بـ${c.warehouse}',
+      icon: 'package',
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ImdChipsRow(children: [
+          for (final f in FuelType.all)
+            ImdChip(
+              '${FuelType.label(f)}: أول اليوم ${nf(c.openingOf(f))} ← '
+              'آخره ${nf(c.closingOf(f))}',
+              tone: f == FuelType.diesel ? ImdTone.code : ImdTone.info,
+            ),
+        ]),
         if (_kinds.contains(FuelMoveKind.incoming)) ...[
-          const SizedBox(height: 12),
+          _sub('الوارد', t),
           _incomingTable(c),
         ],
         if (_kinds.contains(FuelMoveKind.issued)) ...[
-          const SizedBox(height: 14),
+          _sub('المنصرف', t),
           _issuedTable(c),
         ],
         // التحويل يُضاف إن وُجد فقط.
         if (_kinds.contains(FuelMoveKind.transfer) && c.hasTransfers) ...[
-          const SizedBox(height: 14),
+          _sub('التحويل', t),
           _transferTable(c),
         ],
-      ];
+      ]),
+    );
+  }
 
-  String _openingLine(FuelDailyCamp c) => [
-        for (final t in FuelType.all)
-          '${FuelType.label(t)} ${nf(c.openingOf(t))}',
-      ].join(' · ');
-
-  String _closingLine(FuelDailyCamp c) => [
-        for (final t in FuelType.all)
-          '${FuelType.label(t)} ${nf(c.closingOf(t))}',
-      ].join(' · ');
-
-  Widget _incomingTable(FuelDailyCamp c) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const FuelPaperHeading('الوارد'),
-          const SizedBox(height: 6),
-          FuelPaperTable(
-            headers: const [
-              'م',
-              'السند',
-              'جهة التوريد',
-              'الوسيلة',
-              'السائق',
-              'الصنف',
-              'الكمية',
-              'ملاحظة',
-            ],
-            flex: const [1, 3, 6, 3, 3, 2, 3, 3],
-            emptyText: 'لا يوجد وارد',
-            rows: [
-              for (var i = 0; i < c.incoming.length; i++)
-                [
-                  '${i + 1}',
-                  c.incoming[i].refNo,
-                  c.incoming[i].party,
-                  c.incoming[i].vehicleType,
-                  c.incoming[i].driver,
-                  FuelType.label(c.incoming[i].fuelType),
-                  nf(c.incoming[i].qty),
-                  c.incoming[i].notes,
-                ],
-            ],
-            totalRow: [
-              '',
-              'إجمالي الوارد',
-              '',
-              '',
-              '',
-              '',
-              '${nf(c.incomingTotal)} ${Fuel.unit}',
-              '',
-            ],
-          ),
-        ],
+  Widget _sub(String text, ImdColors c) => Padding(
+        padding: const EdgeInsets.only(top: 14, bottom: 8),
+        child: Text(text,
+            style: TextStyle(
+                color: c.accent, fontSize: 12.5, fontWeight: FontWeight.w700)),
       );
 
-  Widget _issuedTable(FuelDailyCamp c) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const FuelPaperHeading('المنصرف'),
-          const SizedBox(height: 6),
-          FuelPaperTable(
-            headers: const [
-              'م',
-              'السند',
-              'الجهة المستفيدة',
-              'نوع الوسيلة',
-              'جهة الأمر',
-              'الغرض',
-              'الصنف',
-              'الكمية',
-              'ملاحظة',
+  Widget _incomingTable(FuelDailyCamp c) {
+    final t = context.imd;
+    return ImdTable(
+      empty: 'لا يوجد وارد',
+      minWidth: 900,
+      columns: const [
+        ImdCol('م', center: true),
+        ImdCol('السند'),
+        ImdCol('جهة التوريد'),
+        ImdCol('الوسيلة'),
+        ImdCol('السائق'),
+        ImdCol('الصنف'),
+        ImdCol('ملاحظة'),
+        ImdCol('الكمية', numeric: true),
+      ],
+      rows: [
+        for (var i = 0; i < c.incoming.length; i++)
+          [
+            Text('${i + 1}',
+                textAlign: TextAlign.center, style: TextStyle(color: t.muted)),
+            Text(c.incoming[i].refNo,
+                style: TextStyle(color: t.muted, fontSize: 12.5)),
+            Text(c.incoming[i].party,
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            Text(c.incoming[i].vehicleType),
+            Text(c.incoming[i].driver),
+            ImdChip(FuelType.label(c.incoming[i].fuelType),
+                tone: c.incoming[i].fuelType == FuelType.diesel
+                    ? ImdTone.code
+                    : ImdTone.info),
+            Text(c.incoming[i].notes.isEmpty ? '—' : c.incoming[i].notes,
+                style: TextStyle(color: t.muted)),
+            Text(nf(c.incoming[i].qty),
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+      ],
+      footer: c.incoming.isEmpty
+          ? null
+          : [
+              const Text(''),
+              const Text('إجمالي الوارد',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const Text(''),
+              const Text(''),
+              const Text(''),
+              const Text(''),
+              const Text(''),
+              Text('${nf(c.incomingTotal)} ${Fuel.unit}',
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
             ],
-            flex: const [1, 3, 6, 3, 4, 4, 2, 3, 4],
-            emptyText: 'لا يوجد منصرف',
-            rows: [
-              for (var i = 0; i < c.issued.length; i++)
-                [
-                  '${i + 1}',
-                  c.issued[i].refNo,
-                  c.issued[i].party,
-                  c.issued[i].vehicleType,
-                  c.issued[i].authority,
-                  c.issued[i].purpose,
-                  FuelType.label(c.issued[i].fuelType),
-                  nf(c.issued[i].qty),
-                  c.issued[i].notes,
-                ],
-            ],
-            totalRow: [
-              '',
-              'إجمالي المنصرف',
-              '',
-              '',
-              '',
-              '',
-              '',
-              '${nf(c.issuedTotal)} ${Fuel.unit}',
-              '',
-            ],
-          ),
-        ],
-      );
+    );
+  }
 
-  Widget _transferTable(FuelDailyCamp c) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const FuelPaperHeading('التحويل'),
-          const SizedBox(height: 6),
-          FuelPaperTable(
-            headers: const [
-              'م',
-              'السند',
-              'الاتجاه',
-              'الطرف الآخر',
-              'الوسيلة',
-              'السائق',
-              'الصنف',
-              'الكمية',
+  Widget _issuedTable(FuelDailyCamp c) {
+    final t = context.imd;
+    return ImdTable(
+      empty: 'لا يوجد منصرف',
+      minWidth: 1020,
+      columns: const [
+        ImdCol('م', center: true),
+        ImdCol('السند'),
+        ImdCol('الجهة المستفيدة'),
+        ImdCol('نوع الوسيلة'),
+        ImdCol('جهة الأمر'),
+        ImdCol('الغرض'),
+        ImdCol('الصنف'),
+        ImdCol('ملاحظة'),
+        ImdCol('الكمية', numeric: true),
+      ],
+      rows: [
+        for (var i = 0; i < c.issued.length; i++)
+          [
+            Text('${i + 1}',
+                textAlign: TextAlign.center, style: TextStyle(color: t.muted)),
+            Text(c.issued[i].refNo,
+                style: TextStyle(color: t.muted, fontSize: 12.5)),
+            Text(c.issued[i].party,
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            Text(c.issued[i].vehicleType),
+            Text(c.issued[i].authority),
+            Text(c.issued[i].purpose.isEmpty ? '—' : c.issued[i].purpose,
+                style: TextStyle(color: t.muted)),
+            ImdChip(FuelType.label(c.issued[i].fuelType),
+                tone: c.issued[i].fuelType == FuelType.diesel
+                    ? ImdTone.code
+                    : ImdTone.info),
+            Text(c.issued[i].notes.isEmpty ? '—' : c.issued[i].notes,
+                style: TextStyle(color: t.muted)),
+            Text(nf(c.issued[i].qty),
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+      ],
+      footer: c.issued.isEmpty
+          ? null
+          : [
+              const Text(''),
+              const Text('إجمالي المنصرف',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const Text(''),
+              const Text(''),
+              const Text(''),
+              const Text(''),
+              const Text(''),
+              const Text(''),
+              Text('${nf(c.issuedTotal)} ${Fuel.unit}',
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
             ],
-            flex: const [1, 3, 3, 6, 3, 3, 2, 3],
-            rows: [
-              for (var i = 0; i < c.transfers.length; i++)
-                [
-                  '${i + 1}',
-                  c.transfers[i].refNo,
-                  c.transfers[i].outbound ? 'محوَّل منه' : 'محوَّل إليه',
-                  c.transfers[i].outbound
-                      ? 'إلى ${c.transfers[i].party}'
-                      : 'من ${c.transfers[i].party}',
-                  c.transfers[i].vehicleType,
-                  c.transfers[i].driver,
-                  FuelType.label(c.transfers[i].fuelType),
-                  nf(c.transfers[i].qty),
-                ],
-            ],
-            totalRow: [
-              '',
-              'إجمالي التحويل',
-              '',
-              '',
-              '',
-              '',
-              '',
-              '${nf(c.transferTotal)} ${Fuel.unit}',
-            ],
-          ),
-        ],
-      );
+    );
+  }
+
+  Widget _transferTable(FuelDailyCamp c) {
+    final t = context.imd;
+    return ImdTable(
+      empty: 'لا تحويلات',
+      minWidth: 900,
+      columns: const [
+        ImdCol('م', center: true),
+        ImdCol('السند'),
+        ImdCol('الاتجاه'),
+        ImdCol('الطرف الآخر'),
+        ImdCol('الوسيلة'),
+        ImdCol('السائق'),
+        ImdCol('الصنف'),
+        ImdCol('الكمية', numeric: true),
+      ],
+      rows: [
+        for (var i = 0; i < c.transfers.length; i++)
+          [
+            Text('${i + 1}',
+                textAlign: TextAlign.center, style: TextStyle(color: t.muted)),
+            Text(c.transfers[i].refNo,
+                style: TextStyle(color: t.muted, fontSize: 12.5)),
+            c.transfers[i].outbound
+                ? const ImdChip('محوَّل منه', tone: ImdTone.pend)
+                : const ImdChip('محوَّل إليه', tone: ImdTone.ok),
+            Text(
+                c.transfers[i].outbound
+                    ? 'إلى ${c.transfers[i].party}'
+                    : 'من ${c.transfers[i].party}',
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            Text(c.transfers[i].vehicleType),
+            Text(c.transfers[i].driver),
+            ImdChip(FuelType.label(c.transfers[i].fuelType),
+                tone: c.transfers[i].fuelType == FuelType.diesel
+                    ? ImdTone.code
+                    : ImdTone.info),
+            Text(nf(c.transfers[i].qty),
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+      ],
+      footer: [
+        const Text(''),
+        const Text('إجمالي التحويل',
+            style: TextStyle(fontWeight: FontWeight.w700)),
+        const Text(''),
+        const Text(''),
+        const Text(''),
+        const Text(''),
+        const Text(''),
+        Text('${nf(c.transferTotal)} ${Fuel.unit}',
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+      ],
+    );
+  }
 }
