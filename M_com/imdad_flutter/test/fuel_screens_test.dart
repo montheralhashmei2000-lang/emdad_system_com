@@ -11,6 +11,7 @@ import 'package:imdad/features/fuel/fuel_allocations_screen.dart';
 import 'package:imdad/features/fuel/fuel_consumption_screen.dart';
 import 'package:imdad/features/fuel/fuel_dashboard_screen.dart';
 import 'package:imdad/features/fuel/fuel_directories_screen.dart';
+import 'package:imdad/features/fuel/fuel_daily_report_screen.dart';
 import 'package:imdad/features/fuel/fuel_groups.dart';
 import 'package:imdad/features/fuel/fuel_ledger_screen.dart';
 import 'package:imdad/features/fuel/fuel_official_report_screen.dart';
@@ -111,6 +112,7 @@ void main() {
     'التقارير الرسمية': () => const FuelOfficialReportScreen(),
     'تقرير الاستهلاك': () => const FuelConsumptionScreen(),
     'إعدادات المحروقات': () => const FuelSettingsScreen(),
+    'تقرير الحركة اليومية للمحروقات': () => const FuelDailyReportScreen(),
     'أرصدة المستودعات': () => const FuelStocksReportScreen(),
     'كشف حركة المستودع': () => const FuelLedgerScreen(),
     'الاستحقاق مقابل الصرف': () => const FuelPlanVsIssuedScreen(),
@@ -196,11 +198,24 @@ void main() {
     expect(find.text('سجل المركبات'), findsWidgets);
   });
 
-  testWidgets('باب التقارير يحمل تقاريره الخمسة', (tester) async {
+  testWidgets('الحركة اليومية تسرد المعسكر بجداوله الثلاثة', (tester) async {
+    await seed();
+    await show(tester, const FuelDailyReportScreen());
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('ملخّص الحركة اليومية'), findsWidgets);
+    expect(find.textContaining('تقرير الحركة اليومية للمحروقات بـ'),
+        findsWidgets);
+    expect(find.text('الوارد'), findsWidgets);
+    expect(find.text('المنصرف'), findsWidgets);
+    expect(find.textContaining('إجمالي المنصرف'), findsWidgets);
+  });
+
+  testWidgets('باب التقارير يحمل تقاريره الستة', (tester) async {
     await seed();
     await show(tester, const FuelReportsHubScreen());
     expect(tester.takeException(), isNull);
     for (final t in const [
+      'الحركة اليومية',
       'التقرير الرسمي',
       'الاستهلاك',
       'أرصدة المستودعات',

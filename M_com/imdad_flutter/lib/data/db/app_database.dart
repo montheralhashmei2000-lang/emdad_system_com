@@ -550,6 +550,15 @@ class FuelSettingsRows extends Table {
   TextColumn get sealLines =>
       text().withDefault(const Constant('الفرقة،الأولى،طوارئ'))();
 
+  /// v20: عملُ كلِّ موقّعٍ ورتبتُه — كانت مكتوبةً في الطباعة، ولا تصلح
+  /// لفرقةٍ غير الأولى ولا لشعبةٍ غير الإمداد.
+  TextColumn get roleOfficer =>
+      text().withDefault(const Constant('مسؤول محروقات المعسكر'))();
+  TextColumn get roleSupply =>
+      text().withDefault(const Constant('ركن إمداد الفرقة الأولى'))();
+  TextColumn get roleChief =>
+      text().withDefault(const Constant('رئيس شعبة الإمداد والتموين'))();
+
   /// تواقيع أوراق المحروقات.
   TextColumn get signOfficer => text().withDefault(const Constant(''))();
   TextColumn get signSupply => text().withDefault(const Constant(''))();
@@ -1058,7 +1067,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 19;
+  int get schemaVersion => 20;
 
   /// الفهارس المخدومة فعليًا بالاستعلامات: البحث بالمرجع (فتح سند من سجل
   /// المستندات)، وبالحالة (الأوامر المعلقة والمسودات)، وبالمستودع والصنف
@@ -1438,6 +1447,16 @@ class AppDatabase extends _$AppDatabase {
               fuelSettingsRows.branchTitle,
               fuelSettingsRows.orgName,
               fuelSettingsRows.sealLines,
+            ]) {
+              await _addCol(m, fuelSettingsRows, c);
+            }
+          }
+          // v20: عمل كل موقّعٍ في الإعدادات لا في الكود.
+          if (from < 20) {
+            for (final c in <GeneratedColumn>[
+              fuelSettingsRows.roleOfficer,
+              fuelSettingsRows.roleSupply,
+              fuelSettingsRows.roleChief,
             ]) {
               await _addCol(m, fuelSettingsRows, c);
             }

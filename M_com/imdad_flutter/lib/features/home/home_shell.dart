@@ -258,6 +258,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     'fuelTransfer': 'fuelMoves',
     'fuelOpening': 'fuelMoves',
     // والتقارير الخمسة تحت صلاحية التقارير، عدا الاستهلاك فله صلاحيته.
+    'fuelDaily': 'fuelReports',
     'fuelStocks': 'fuelReports',
     'fuelLedger': 'fuelReports',
     'fuelPlanVsIssued': 'fuelReports',
@@ -346,6 +347,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return const FuelDataScreen(initialTab: 'vehicles');
       case 'fuelConsumption':
         return const FuelReportsHubScreen(initialTab: 'consumption');
+      case 'fuelDaily':
+        return const FuelReportsHubScreen(initialTab: 'daily');
       case 'fuelStocks':
         return const FuelReportsHubScreen(initialTab: 'stocks');
       case 'fuelLedger':

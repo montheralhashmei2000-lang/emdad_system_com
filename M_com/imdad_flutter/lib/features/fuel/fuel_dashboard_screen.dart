@@ -320,6 +320,12 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
               'تسجيل الكميات الواردة للمستودعات'
             ),
             (
+              'fuelDaily',
+              'calendar',
+              'الحركة اليومية',
+              'دفتر اليوم بجميع المعسكرات والمحطات'
+            ),
+            (
               'fuelLedger',
               'list',
               'كشف حركة المستودع',

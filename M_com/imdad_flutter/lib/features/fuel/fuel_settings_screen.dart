@@ -38,6 +38,9 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
   final _daily = TextEditingController();
   final _weekly = TextEditingController();
   final _monthly = TextEditingController();
+  final _roleOfficer = TextEditingController();
+  final _roleSupply = TextEditingController();
+  final _roleChief = TextEditingController();
   final _officer = TextEditingController();
   final _supply = TextEditingController();
   final _chief = TextEditingController();
@@ -67,6 +70,9 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
       _daily,
       _weekly,
       _monthly,
+      _roleOfficer,
+      _roleSupply,
+      _roleChief,
       _officer,
       _supply,
       _chief,
@@ -93,6 +99,9 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
     imdSetText(_daily, _num(s.defaultDailyLiters));
     imdSetText(_weekly, _num(s.defaultWeeklyLiters));
     imdSetText(_monthly, _num(s.defaultMonthlyLiters));
+    imdSetText(_roleOfficer, s.roleOfficer);
+    imdSetText(_roleSupply, s.roleSupply);
+    imdSetText(_roleChief, s.roleChief);
     imdSetText(_officer, s.signOfficer);
     imdSetText(_supply, s.signSupply);
     imdSetText(_chief, s.signChief);
@@ -120,6 +129,9 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
       defaultDailyLiters: double.tryParse(_daily.text.trim()) ?? 0,
       defaultWeeklyLiters: double.tryParse(_weekly.text.trim()) ?? 0,
       defaultMonthlyLiters: double.tryParse(_monthly.text.trim()) ?? 0,
+      roleOfficer: _roleOfficer.text,
+      roleSupply: _roleSupply.text,
+      roleChief: _roleChief.text,
       signOfficer: _officer.text,
       signSupply: _supply.text,
       signChief: _chief.text,
@@ -259,14 +271,22 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
         icon: 'edit',
         child:
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // عملُ الموقّع فوق اسمه كما يُكتبان على الورقة — ولفرقةٍ غير
+          // الأولى أعمالٌ بأسماء أخرى، فلا تُكتب في الكود.
           ImdF2(children: [
-            ImdLabeled(
-                'مسؤول المحروقات', ImdFld(controller: _officer, enabled: can),
+            ImdLabeled('عمل الموقّع الأول',
+                ImdFld(controller: _roleOfficer, enabled: can),
                 size: 11),
-            ImdLabeled('ركن الإمداد', ImdFld(controller: _supply, enabled: can),
-                size: 11),
-            ImdLabeled('رئيس الشعبة', ImdFld(controller: _chief, enabled: can),
-                size: 11),
+            ImdLabeled('اسم الموقّع الأول',
+                ImdFld(controller: _officer, enabled: can), size: 11),
+            ImdLabeled('عمل الموقّع الثاني',
+                ImdFld(controller: _roleSupply, enabled: can), size: 11),
+            ImdLabeled('اسم الموقّع الثاني',
+                ImdFld(controller: _supply, enabled: can), size: 11),
+            ImdLabeled('عمل الموقّع الثالث',
+                ImdFld(controller: _roleChief, enabled: can), size: 11),
+            ImdLabeled('اسم الموقّع الثالث',
+                ImdFld(controller: _chief, enabled: can), size: 11),
           ]),
           const SizedBox(height: 10),
           ImdLabeled(

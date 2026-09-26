@@ -279,6 +279,9 @@ class FuelRepo {
     String branchTitle = '',
     String orgName = '',
     String sealLines = '',
+    String roleOfficer = '',
+    String roleSupply = '',
+    String roleChief = '',
     String signOfficer = '',
     String signSupply = '',
     String signChief = '',
@@ -305,6 +308,9 @@ class FuelRepo {
       branchTitle: Value(branchTitle.trim()),
       orgName: Value(orgName.trim()),
       sealLines: Value(sealLines.trim()),
+      roleOfficer: Value(roleOfficer.trim()),
+      roleSupply: Value(roleSupply.trim()),
+      roleChief: Value(roleChief.trim()),
       signOfficer: Value(signOfficer.trim()),
       signSupply: Value(signSupply.trim()),
       signChief: Value(signChief.trim()),
@@ -405,6 +411,31 @@ class FuelRepo {
       }
     }
     return out;
+  }
+
+  /// فروق الجرد المرحَّلة بتواريخها — يحتاجها الدفتر اليومي ليطابق الرصيد.
+  ///
+  /// [stocks] تجمعها في رقمٍ واحد، وهنا تُفرَد بتاريخها: فرقٌ وقع في يومٍ
+  /// لا يُحمَّل على يومٍ آخر وإلا انكسرت سلسلة الأرصدة.
+  Future<List<FuelAdjustment>> adjustments() async {
+    final posted = await (db.select(db.fuelStocktakes)
+          ..where((t) => t.status.equals(FuelStocktakeStatus.posted)))
+        .get();
+    if (posted.isEmpty) return const [];
+    final heads = {for (final s in posted) s.id: s};
+    final lines = await (db.select(db.fuelStocktakeLines)
+          ..where((t) => t.stocktakeId.isIn(heads.keys.toList())))
+        .get();
+    return [
+      for (final l in lines)
+        if (l.counted && heads[l.stocktakeId] != null)
+          FuelAdjustment(
+            date: heads[l.stocktakeId]!.date,
+            warehouse: heads[l.stocktakeId]!.warehouse,
+            fuelType: l.fuelType,
+            delta: Fuel.round(l.countedLiters - l.bookLiters),
+          ),
+    ];
   }
 
   Future<double> available(String warehouse, String fuelType) async {
@@ -1066,4 +1097,21 @@ class FuelRepo {
     }
     return out;
   }
+}
+
+/// فرقُ جردٍ مرحَّل في يومٍ ومستودعٍ وصنف.
+class FuelAdjustment {
+  const FuelAdjustment({
+    required this.date,
+    required this.warehouse,
+    required this.fuelType,
+    required this.delta,
+  });
+
+  final String date;
+  final String warehouse;
+  final String fuelType;
+
+  /// موجبٌ إن زاد العدّ على الدفتر، وسالبٌ إن نقص.
+  final double delta;
 }

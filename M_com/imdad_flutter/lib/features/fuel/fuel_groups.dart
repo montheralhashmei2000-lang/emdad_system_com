@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'fuel_consumption_screen.dart';
+import 'fuel_daily_report_screen.dart';
 import 'fuel_directories_screen.dart';
 import 'fuel_ledger_screen.dart';
 import 'fuel_official_report_screen.dart';
@@ -52,7 +53,7 @@ class FuelDataScreen extends StatelessWidget {
 /// والكشف يقول متى وبأي سند، والاستحقاق يقول من أخذ حقّه. وجمعُها في بندٍ
 /// واحد يجعل السؤال «أي تقرير؟» لا «أين التقارير؟».
 class FuelReportsHubScreen extends StatelessWidget {
-  const FuelReportsHubScreen({super.key, this.initialTab = 'official'});
+  const FuelReportsHubScreen({super.key, this.initialTab = 'daily'});
 
   final String initialTab;
 
@@ -61,6 +62,13 @@ class FuelReportsHubScreen extends StatelessWidget {
         initial: initialTab,
         emptyMessage: 'لا صلاحية لأي من تقارير المحروقات',
         tabs: [
+          FuelTab(
+            id: 'daily',
+            label: 'الحركة اليومية',
+            icon: 'calendar',
+            perm: 'fuelReports',
+            builder: (_) => const FuelDailyReportScreen(),
+          ),
           FuelTab(
             id: 'official',
             label: 'التقرير الرسمي',

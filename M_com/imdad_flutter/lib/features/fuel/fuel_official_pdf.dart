@@ -226,6 +226,10 @@ class FuelOfficialPdf {
     return DocumentPdf.logoBytes;
   }
 
+  /// ترويسة الورقة — يشترك فيها كل تقريرٍ رسميّ في القسم.
+  static pw.Widget letterhead(FuelSettingsRow s, Uint8List? logo) =>
+      _letterhead(s, logo);
+
   static pw.Widget _letterhead(FuelSettingsRow s, Uint8List? logo) {
     final seal = s.sealLines.trim().isEmpty
         ? const <String>[]
