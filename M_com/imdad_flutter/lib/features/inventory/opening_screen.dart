@@ -16,6 +16,7 @@ import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../domain/access_control.dart';
+import '../../domain/line_consolidation.dart';
 
 /// الأرصدة الافتتاحية — نقل `renderOpening()` / `opbPaint()`:
 /// بحث + طباعة كشف + جدول (الكود، الصنف، الحالة، الرصيد الافتتاحي، إجراء).
@@ -104,6 +105,36 @@ class _OpeningScreenState extends State<OpeningScreen> {
   }
 
   /// زر «💾 حفظ» في الجدول.
+  /// الوحدة التي يُدخَل بها رصيد كل صنف — أساسيّته ما لم تُبدَّل.
+  ///
+  /// **الرصيد يُخزَّن بالوحدة الأساسية دائمًا**، والاختيار هنا لغةُ الإدخال
+  /// لا لغةُ التخزين: من يعدّ أكياسًا يكتب «٢٧» ويحفظ النظام «١١٠٠ كجم».
+  final Map<String, String> _unitOf = {};
+
+  String _unit(Item item) =>
+      _unitOf[item.id] ?? (item.baseUnit.isEmpty ? 'وحدة' : item.baseUnit);
+
+  /// تبديل الوحدة يعيد كتابة الكمية بثبات مقدارها الفعلي.
+  void _switchUnit(Item item, String next) {
+    final now = _unit(item);
+    if (next.isEmpty || next == now) return;
+    final ctrl = _inputs[item.id];
+    final qty = double.tryParse(ctrl?.text.trim() ?? '') ?? 0;
+    setState(() {
+      _unitOf[item.id] = next;
+      if (ctrl != null && qty > 0) {
+        imdSetText(
+          ctrl,
+          _plainQty(convertQty(
+            qty,
+            _catalog.factorOf(item, now),
+            _catalog.factorOf(item, next),
+          )),
+        );
+      }
+    });
+  }
+
   Future<void> _save(Item item) async {
     if (!_perm.guard(context, 'opening', PermAction.create)) return;
     if (_warehouse.isEmpty) {
@@ -114,14 +145,19 @@ class _OpeningScreenState extends State<OpeningScreen> {
       showImdToast(context, Perm.scopeBlock(_warehouse), error: true);
       return;
     }
-    final qty = double.tryParse(_inputs[item.id]?.text.trim() ?? '');
-    if (qty == null || qty < 0) {
+    final typed = double.tryParse(_inputs[item.id]?.text.trim() ?? '');
+    if (typed == null || typed < 0) {
       showImdToast(context, '✖ أدخل رقمًا صحيحًا', error: true);
       return;
     }
+    final unit = _unit(item);
+    // ما يُخزَّن أساسيٌّ دائمًا؛ وما كُتب بوحدةٍ أخرى يُحوَّل قبل أن يُحفظ.
+    final qty = convertQty(typed, _catalog.factorOf(item, unit), 1);
+    final base = item.baseUnit.isEmpty ? 'وحدة' : item.baseUnit;
     final ok = await imdConfirm(
       context,
-      'تثبيت الرصيد الافتتاحي لـ «${item.name}» بقيمة ${nf(qty)} في مستودع «$_warehouse»؟\n'
+      'تثبيت الرصيد الافتتاحي لـ «${item.name}» بقيمة ${nf(typed)} $unit'
+      '${unit == base ? '' : ' (= ${nf(qty)} $base)'} في مستودع «$_warehouse»؟\n'
       'سيُستبدل الرصيد الافتتاحي السابق بهذه القيمة.',
       ok: 'تثبيت',
     );
@@ -151,6 +187,8 @@ class _OpeningScreenState extends State<OpeningScreen> {
       details: {
         'refNo': item.code,
         'qty': qty,
+        'typed': typed,
+        'unit': unit,
         'target': item.name,
         'warehouse': _warehouse,
         'status': 'OPENING_SET',
@@ -253,7 +291,8 @@ class _OpeningScreenState extends State<OpeningScreen> {
           const ImdCol('الكود'),
           const ImdCol('الصنف'),
           const ImdCol('الحالة'),
-          const ImdCol('الرصيد الافتتاحي', auto: false, width: 150),
+          const ImdCol('وحدة الصنف', auto: false, width: 132),
+          const ImdCol('الرصيد الافتتاحي', auto: false, width: 132),
           if (w) const ImdCol('إجراء'),
         ],
         empty: 'لا أصناف مطابقة',
@@ -265,6 +304,14 @@ class _OpeningScreenState extends State<OpeningScreen> {
               _openingDate.containsKey(x.id)
                   ? ImdChip('مضبوط (${_openingDate[x.id]})', tone: ImdTone.ok)
                   : const ImdChip('لم يُضبط بعد', tone: ImdTone.pend),
+              ImdSelect<String>(
+                value: _unit(x),
+                dense: true,
+                items: [
+                  for (final u in _catalog.unitsDescending(x)) (u.name, u.name),
+                ],
+                onChanged: w ? (v) => _switchUnit(x, v ?? '') : null,
+              ),
               ImdFld(
                 controller: _inputs.putIfAbsent(
                   x.id,

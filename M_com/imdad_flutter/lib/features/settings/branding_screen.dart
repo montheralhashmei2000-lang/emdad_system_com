@@ -43,6 +43,7 @@ class _BrandingScreenState extends State<BrandingScreen> {
 
   String _logo = '';
   String _theme = 'auto';
+  bool _showExpiry = true;
   String _font = ImdFonts.defaultFamily;
   bool _loading = true;
   bool _busy = false;
@@ -74,6 +75,7 @@ class _BrandingScreenState extends State<BrandingScreen> {
       _logo = id.logoBase64;
       _theme = id.themePref;
       _font = ImdFonts.normalize(id.fontFamily);
+      _showExpiry = id.showExpiry;
       _loading = false;
     });
   }
@@ -107,6 +109,7 @@ class _BrandingScreenState extends State<BrandingScreen> {
       orgLine2: _l2.text.trim(),
       orgLine3: _l3.text.trim(),
       orgLine4: _l4.text.trim(),
+      showExpiry: _showExpiry,
     );
     await _settings.saveIdentity(id);
     // السمة والخط يُطبَّقان فورًا كما في `applyBranding()` بالويب، بلا إعادة تشغيل.
@@ -239,6 +242,23 @@ class _BrandingScreenState extends State<BrandingScreen> {
               ImdLabeled('السطر الثالث', ImdFld(controller: _l3, enabled: w)),
               const SizedBox(height: 10),
               ImdLabeled('السطر الرابع', ImdFld(controller: _l4, enabled: w)),
+            ]),
+          ),
+          ImdPanel(
+            title: 'جداول إدخال الأصناف',
+            icon: 'package',
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              ImdCheckbox(
+                value: _showExpiry,
+                label: 'إظهار حقل «تاريخ الانتهاء» في أسطر الأصناف',
+                onChanged: w ? (v) => setState(() => _showExpiry = v) : null,
+              ),
+              const SizedBox(height: 6),
+              const ImdLdText(
+                  'يظهر في الاستلام والصرف والتحويل والمرتجعات. وإخفاؤه عرضٌ لا '
+                  'حفظ: لا يمسّ تواريخ سُجّلت، ويُفسح لبقية الحقول في المخازن '
+                  'التي لا موادَّ فيها تنتهي.'),
             ]),
           ),
         ]),

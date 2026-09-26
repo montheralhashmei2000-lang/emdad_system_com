@@ -203,6 +203,24 @@ class ImdSizes {
   static const EdgeInsets mainPaddingTablet = EdgeInsets.symmetric(horizontal: 14, vertical: 16); // ≤920
   static const EdgeInsets mainPaddingMobile = EdgeInsets.symmetric(horizontal: 10, vertical: 12); // ≤680
   static double get touchMin => ImdBp.touch ? 46 : 44; // --touch-min
+
+  // ─────────── النمط المدمج (High-Density)
+  //
+  // **جدول الأصناف ليس نموذج تسجيل.** النموذج يُملأ مرةً فتُفسحه، والجدول
+  // يُملأ عشرين سطرًا فتضيق به الشاشة ويُدفع التمرير بين كل صنفين. فحقوله
+  // أقصر وفواصله أضيق — بلا مساسٍ ببقية الشاشات.
+
+  /// ارتفاع الحقل المدمج (بدل [touchMin]).
+  static double get compactField => ImdBp.touch ? 40 : 34;
+
+  /// الفاصل الأفقي بين حقلين مترابطين في السطر.
+  static const double compactGap = 6;
+
+  /// الفاصل الرأسي بين سطرَي صنف.
+  static const double compactRowGap = 5;
+
+  /// حشو الحقل المدمج رأسيًّا.
+  static const double compactPadV = 7;
   static const String font = 'IBMPlexSansArabic';
 }
 

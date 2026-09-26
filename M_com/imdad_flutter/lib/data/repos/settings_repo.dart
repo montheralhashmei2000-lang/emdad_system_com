@@ -18,6 +18,7 @@ class AppIdentity {
     this.orgLine2 = '',
     this.orgLine3 = '',
     this.orgLine4 = '',
+    this.showExpiry = true,
   });
 
   final String name;
@@ -36,6 +37,12 @@ class AppIdentity {
   final String orgLine3;
   final String orgLine4;
 
+  /// هل يظهر حقل «تاريخ الانتهاء» في جداول إدخال الأصناف؟
+  ///
+  /// **مخزنٌ بلا موادّ تنتهي لا يحتاجه**، وعمودٌ لا يُملأ يضيّق على ما
+  /// يُملأ. وهو عرضٌ لا حفظ: إخفاؤه لا يمسّ تواريخ سُجّلت.
+  final bool showExpiry;
+
   List<String> get orgLines =>
       [orgLine1, orgLine2, orgLine3, orgLine4].where((l) => l.trim().isNotEmpty).toList();
 
@@ -49,6 +56,7 @@ class AppIdentity {
     String? orgLine2,
     String? orgLine3,
     String? orgLine4,
+    bool? showExpiry,
   }) =>
       AppIdentity(
         name: name ?? this.name,
@@ -60,6 +68,7 @@ class AppIdentity {
         orgLine2: orgLine2 ?? this.orgLine2,
         orgLine3: orgLine3 ?? this.orgLine3,
         orgLine4: orgLine4 ?? this.orgLine4,
+        showExpiry: showExpiry ?? this.showExpiry,
       );
 
   factory AppIdentity.fromMap(Map<String, dynamic> m) => AppIdentity(
@@ -72,6 +81,7 @@ class AppIdentity {
         orgLine2: '${m['orgLine2'] ?? ''}',
         orgLine3: '${m['orgLine3'] ?? ''}',
         orgLine4: '${m['orgLine4'] ?? ''}',
+        showExpiry: m['showExpiry'] != false,
       );
 
   Map<String, dynamic> toMap() => {
@@ -84,6 +94,7 @@ class AppIdentity {
         'orgLine2': orgLine2,
         'orgLine3': orgLine3,
         'orgLine4': orgLine4,
+        'showExpiry': showExpiry,
       };
 }
 

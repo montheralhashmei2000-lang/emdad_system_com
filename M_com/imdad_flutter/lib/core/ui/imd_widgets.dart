@@ -519,6 +519,22 @@ class ImdAlert extends StatelessWidget {
 }
 
 /// زخرفة `.fld` لحقول الإدخال.
+/// وسمٌ يُعلن أن ما تحته نمطٌ مدمج.
+///
+/// **تُكتب مرةً حول الجدول فتتبعها حقوله كلها** — بديلًا عن تمرير `compact:`
+/// إلى كل حقلٍ في خمس شاشات، وهو ما يُنسى في أوّل حقلٍ يُضاف بعده.
+class ImdCompact extends InheritedWidget {
+  const ImdCompact({super.key, this.on = true, required super.child});
+
+  final bool on;
+
+  static bool of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ImdCompact>()?.on ?? false;
+
+  @override
+  bool updateShouldNotify(ImdCompact old) => old.on != on;
+}
+
 InputDecoration imdFieldDecoration(
   BuildContext context, {
   String? hint,
@@ -528,6 +544,7 @@ InputDecoration imdFieldDecoration(
   bool readOnly = false,
 }) {
   final c = context.imd;
+  final compact = ImdCompact.of(context);
   OutlineInputBorder b(Color col, [double w = 1]) => OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: BorderSide(color: col, width: w),
@@ -535,10 +552,13 @@ InputDecoration imdFieldDecoration(
   return InputDecoration(
     isDense: true,
     hintText: hint,
-    hintStyle: TextStyle(color: c.faint, fontSize: 14),
+    hintStyle: TextStyle(color: c.faint, fontSize: compact ? 12.5 : 14),
     filled: true,
     fillColor: readOnly ? c.bg : c.surface,
-    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: dense ? 8 : 12),
+    contentPadding: EdgeInsets.symmetric(
+      horizontal: compact ? 8 : 12,
+      vertical: compact ? ImdSizes.compactPadV : (dense ? 8 : 12),
+    ),
     prefixIcon: prefixIcon == null
         ? null
         : Padding(
@@ -665,8 +685,16 @@ class ImdSelect<T> extends StatelessWidget {
       dropdownColor: c.surface,
       borderRadius: BorderRadius.circular(10),
       // الخط من القالب لا ثابتًا: المستخدم يختاره من الإعدادات.
-      style: TextStyle(fontSize: 14, color: c.text, fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily),
-      hint: hint == null ? null : Text(hint!, style: TextStyle(color: c.faint, fontSize: 14)),
+      style: TextStyle(
+          fontSize: ImdCompact.of(context) ? 13 : 14,
+          color: c.text,
+          fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily),
+      hint: hint == null
+          ? null
+          : Text(hint!,
+              style: TextStyle(
+                  color: c.faint,
+                  fontSize: ImdCompact.of(context) ? 12.5 : 14)),
       decoration: imdFieldDecoration(context, dense: dense),
       items: [
         for (final e in items)

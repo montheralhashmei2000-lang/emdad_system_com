@@ -12,6 +12,7 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/audit_repo.dart';
 import '../../data/repos/catalog_repo.dart';
+import '../../data/repos/settings_repo.dart';
 import '../../data/repos/documents_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../domain/line_consolidation.dart';
@@ -57,6 +58,9 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
   List<Warehouse> _whs = const [];
   bool _ready = false;
   bool _busy = false;
+
+  /// يُقرأ من الإعدادات: مخزنٌ بلا موادّ تنتهي لا يحتاج العمود.
+  bool _showExpiry = true;
   String _loadedDraftRef = '';
   Map<String, double> _whBal = const {};
 
@@ -79,6 +83,12 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
   void initState() {
     super.initState();
     _form();
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    final id = await SettingsRepo(_db).identity();
+    if (mounted) setState(() => _showExpiry = id.showExpiry);
   }
 
   @override
@@ -609,8 +619,16 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                     '${it.barcode.isNotEmpty ? ' • باركود: ${it.barcode}' : ''}';
               }());
     final picker = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const ImdRowLabel('الصنف (الكود — الاسم)'),
-      ImdItemPicker(items: _items, value: r.itemId, onChanged: (v) => _onItem(r, v)),
+      const ImdRowLabel('الصنف'),
+      ImdItemPicker(
+        items: _items,
+        value: r.itemId,
+        onChanged: (v) => _onItem(r, v),
+        detailOf: (i) {
+          final b = displayBalance(i, _whBal[i.id] ?? 0);
+          return 'رصيد ${nf(b.qty)} ${b.unit}';
+        },
+      ),
       ImdRowMeta(meta),
     ]);
     final unit = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -648,10 +666,22 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
         child: ImdFld(controller: r.qty, number: true, onChanged: (_) => setState(() {})),
       ),
     ]);
-    // الأسطوانات أصول تُعبّأ لا مواد تنتهي، فلا صلاحية لها.
-    final hasExpiry = it != null && !it.isRefillable;
+    // الأسطوانات أصول تُعبّأ لا مواد تنتهي، فلا صلاحية لها. ويُخفى العمود
+    // كذلك إن أُطفئ من الإعدادات.
+    final hasExpiry = _showExpiry && it != null && !it.isRefillable;
+    // **نوع العملية في صفّ الصنف لا تحته.** صندوقٌ مستقل يستقطع سطرًا
+    // لكل أسطوانة، ويقطع تسلسل `Tab` من الكمية إلى التاريخ.
+    final refill = it != null && it.isRefillable;
+    final cy = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const ImdRowLabel('نوع العملية'),
+      ImdSelect<String>(
+        value: r.cy,
+        items: CylAction.receiveOptions,
+        onChanged: (v) => setState(() => r.cy = v ?? r.cy),
+      ),
+    ]);
     final expiry = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const ImdRowLabel('تاريخ الانتهاء (اختياري)'),
+      const ImdRowLabel('تاريخ الانتهاء'),
       Row(children: [
         Expanded(child: ImdDateField(value: r.expiry, onChanged: (v) => setState(() => r.expiry = v))),
         if (r.expiry.isNotEmpty)
@@ -659,7 +689,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
       ]),
     ]);
     final del = Padding(
-      padding: const EdgeInsets.only(top: 19),
+      padding: const EdgeInsets.only(top: 15),
       child: ImdIconButton(
         icon: 'x',
         kind: ImdBtnKind.danger,
@@ -674,32 +704,45 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
       trailing: _baseHint(r),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (mobile) ...[
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: picker), const SizedBox(width: 10), Expanded(child: unit)]),
-          const SizedBox(height: 10),
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: qty),
-            if (hasExpiry) ...[const SizedBox(width: 10), Expanded(child: expiry)],
-            const SizedBox(width: 10),
+            Expanded(child: picker),
+            const SizedBox(width: ImdSizes.compactGap),
+            SizedBox(width: 104, child: unit),
+          ]),
+          const SizedBox(height: ImdSizes.compactGap),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(width: 92, child: qty),
+            if (refill) ...[
+              const SizedBox(width: ImdSizes.compactGap),
+              Expanded(child: cy),
+            ],
+            if (hasExpiry) ...[
+              const SizedBox(width: ImdSizes.compactGap),
+              Expanded(child: expiry),
+            ],
+            const SizedBox(width: ImdSizes.compactGap),
             del,
           ]),
         ] else
+          // العرض يتبع نوع البيانات: الاسم يتمدّد، والوحدة والكمية بقدر
+          // نصّهما — فلا تُهدر مساحةٌ على حقلٍ لا يملؤها.
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(child: picker),
-            const SizedBox(width: 10),
-            SizedBox(width: 150, child: unit),
-            const SizedBox(width: 10),
-            SizedBox(width: 120, child: qty),
-            if (hasExpiry) ...[const SizedBox(width: 10), SizedBox(width: 190, child: expiry)],
-            const SizedBox(width: 10),
+            const SizedBox(width: ImdSizes.compactGap),
+            SizedBox(width: 112, child: unit),
+            const SizedBox(width: ImdSizes.compactGap),
+            SizedBox(width: 88, child: qty),
+            if (refill) ...[
+              const SizedBox(width: ImdSizes.compactGap),
+              SizedBox(width: 150, child: cy),
+            ],
+            if (hasExpiry) ...[
+              const SizedBox(width: ImdSizes.compactGap),
+              SizedBox(width: 150, child: expiry),
+            ],
+            const SizedBox(width: ImdSizes.compactGap),
             del,
           ]),
-        if (it != null && it.isRefillable)
-          ImdCyBox(
-            label: '🛢️ صنف قابل للتعبئة — نوع العملية:',
-            value: r.cy,
-            options: CylAction.receiveOptions,
-            onChanged: (v) => setState(() => r.cy = v),
-          ),
       ]),
     );
   }

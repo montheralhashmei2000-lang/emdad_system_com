@@ -495,7 +495,12 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
           }();
     final picker = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const ImdRowLabel('الصنف'),
-      ImdItemPicker(items: _items, value: r.itemId, onChanged: (v) => _onItem(rows, r, v)),
+      ImdItemPicker(
+        items: _items,
+        value: r.itemId,
+        onChanged: (v) => _onItem(rows, r, v),
+        detailOf: (i) => i.baseUnit.isEmpty ? '' : 'وحدة ${i.baseUnit}',
+      ),
       ImdRowMeta(meta),
     ]);
     final unit = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -545,34 +550,51 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
         }),
       ),
     );
-    final cyBox = it != null && it.isRefillable
-        ? ImdCyBox(
-            label: '🛢️ أسطوانات — حالتها عند الإرجاع:',
-            value: r.cy,
-            options: CylAction.returnOptions,
-            onChanged: (v) => setState(() => r.cy = v),
-          )
-        : null;
+    // **حالة الأسطوانة في صفّها لا تحته.**
+    final refill = it != null && it.isRefillable;
+    final cy = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const ImdRowLabel('حالة الأسطوانة'),
+      ImdSelect<String>(
+        value: r.cy,
+        items: CylAction.returnOptions,
+        onChanged: (v) => setState(() => r.cy = v ?? r.cy),
+      ),
+    ]);
     return ImdRvRow(
       index: index,
       trailing: _baseHint(r),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         narrow
-          ? Column(children: [
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: picker), const SizedBox(width: 10), Expanded(child: unit)]),
-              const SizedBox(height: 10),
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: qty), const SizedBox(width: 10), del]),
-            ])
-          : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(child: picker),
-              const SizedBox(width: 10),
-              SizedBox(width: 150, child: unit),
-              const SizedBox(width: 10),
-              SizedBox(width: 120, child: qty),
-              const SizedBox(width: 10),
-              del,
-            ]),
-        if (cyBox != null) cyBox,
+            ? Column(children: [
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(child: picker),
+                  const SizedBox(width: ImdSizes.compactGap),
+                  SizedBox(width: 104, child: unit),
+                ]),
+                const SizedBox(height: ImdSizes.compactGap),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  SizedBox(width: 92, child: qty),
+                  if (refill) ...[
+                    const SizedBox(width: ImdSizes.compactGap),
+                    Expanded(child: cy),
+                  ],
+                  const SizedBox(width: ImdSizes.compactGap),
+                  del,
+                ]),
+              ])
+            : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(child: picker),
+                const SizedBox(width: ImdSizes.compactGap),
+                SizedBox(width: 112, child: unit),
+                const SizedBox(width: ImdSizes.compactGap),
+                SizedBox(width: 88, child: qty),
+                if (refill) ...[
+                  const SizedBox(width: ImdSizes.compactGap),
+                  SizedBox(width: 165, child: cy),
+                ],
+                const SizedBox(width: ImdSizes.compactGap),
+                del,
+              ]),
       ]),
     );
   }

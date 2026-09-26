@@ -187,12 +187,17 @@ class ImdFld extends StatelessWidget {
       maxLines: maxLines,
       keyboardType:
           number ? const TextInputType.numberWithOptions(decimal: true) : null,
-      style: TextStyle(fontSize: 14, color: enabled ? c.text : c.muted),
+      style: TextStyle(
+          fontSize: ImdCompact.of(context) ? 13 : 14,
+          color: enabled ? c.text : c.muted),
       decoration: imdFieldDecoration(context,
           hint: hint, readOnly: readOnly || !enabled, dense: dense),
     );
     return ConstrainedBox(
-      constraints: BoxConstraints(minHeight: ImdSizes.touchMin),
+      constraints: BoxConstraints(
+          minHeight: ImdCompact.of(context)
+              ? ImdSizes.compactField
+              : ImdSizes.touchMin),
       child: suggestions.isEmpty || readOnly || !enabled
           ? field
           : _ImdSuggestions(
@@ -440,8 +445,11 @@ class ImdDateField extends StatelessWidget {
           // عرض حقل date في كروم بالعربية: يوم/شهر/سنة بأرقام هندية.
           child: Text(_display(value),
               textAlign: TextAlign.start,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                  fontSize: 14, color: value.isEmpty ? c.faint : c.text)),
+                  fontSize: ImdCompact.of(context) ? 12.5 : 14,
+                  color: value.isEmpty ? c.faint : c.text)),
         ),
       ),
     );

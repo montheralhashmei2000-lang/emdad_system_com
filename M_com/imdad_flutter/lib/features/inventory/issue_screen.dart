@@ -913,7 +913,7 @@ class _IssueScreenState extends State<IssueScreen> {
       ImdItemPicker(
         items: _items,
         value: r.itemId,
-        labelOf: (i) => '${i.code} — ${i.name} (رصيد: ${nf(_whBal[i.id] ?? 0)})',
+        detailOf: (i) => 'رصيد ${nf(_whBal[i.id] ?? 0)}',
         onChanged: (v) => _onItem(r, v),
       ),
       ImdRowMeta(meta),
@@ -975,39 +975,58 @@ class _IssueScreenState extends State<IssueScreen> {
         }),
       ),
     );
+    // **نوع العملية في صفّ الصنف لا تحته**: صندوقٌ مستقل يستقطع سطرًا لكل
+    // أسطوانة، ويقطع تسلسل `Tab` من الكمية إلى السطر التالي.
+    final refill = it != null && it.isRefillable;
+    final cy = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const ImdRowLabel('نوع العملية'),
+      ImdSelect<String>(
+        value: r.cy,
+        items: CylAction.issueOptions,
+        onChanged: (v) => setState(() => r.cy = v ?? r.cy),
+      ),
+    ]);
+    const gap = SizedBox(width: ImdSizes.compactGap);
     Widget grid;
     if (narrow) {
       grid = Column(children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: picker), const SizedBox(width: 10), Expanded(child: multi ? ben : unit)]),
-        const SizedBox(height: 10),
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (multi) ...[Expanded(child: unit), const SizedBox(width: 10)],
-          Expanded(child: qty),
-          const SizedBox(width: 10),
+          Expanded(child: picker),
+          gap,
+          Expanded(child: multi ? ben : unit),
+        ]),
+        const SizedBox(height: ImdSizes.compactGap),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (multi) ...[SizedBox(width: 104, child: unit), gap],
+          SizedBox(width: 92, child: qty),
+          if (refill) ...[gap, Expanded(child: cy)],
+          gap,
           del,
         ]),
       ]);
     } else if (multi) {
-      // .rgrid-multi: 1fr 1fr 120px 90px auto
       grid = Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(child: picker),
-        const SizedBox(width: 10),
+        gap,
         Expanded(child: ben),
-        const SizedBox(width: 10),
-        SizedBox(width: 120, child: unit),
-        const SizedBox(width: 10),
-        SizedBox(width: 90, child: qty),
-        const SizedBox(width: 10),
+        gap,
+        SizedBox(width: 104, child: unit),
+        gap,
+        SizedBox(width: 84, child: qty),
+        if (refill) ...[gap, SizedBox(width: 155, child: cy)],
+        gap,
         del,
       ]);
     } else {
+      // العرض يتبع نوع البيانات: الاسم يتمدّد، والوحدة والكمية بقدر نصّهما.
       grid = Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(child: picker),
-        const SizedBox(width: 10),
-        SizedBox(width: 150, child: unit),
-        const SizedBox(width: 10),
-        SizedBox(width: 120, child: qty),
-        const SizedBox(width: 10),
+        gap,
+        SizedBox(width: 112, child: unit),
+        gap,
+        SizedBox(width: 88, child: qty),
+        if (refill) ...[gap, SizedBox(width: 165, child: cy)],
+        gap,
         del,
       ]);
     }
@@ -1016,15 +1035,8 @@ class _IssueScreenState extends State<IssueScreen> {
       trailing: _baseHint(r),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         grid,
-        if (it != null && it.isRefillable)
-          ImdCyBox(
-            label: '🛢️ صنف قابل للتعبئة/الاستبدال — العملية:',
-            value: r.cy,
-            options: CylAction.issueOptions,
-            onChanged: (v) => setState(() => r.cy = v),
-          ),
         Padding(
-          padding: const EdgeInsets.only(top: 6),
+          padding: const EdgeInsets.only(top: 4),
           child: TextField(
             controller: r.notes,
             style: TextStyle(fontSize: 12, color: c.text),
