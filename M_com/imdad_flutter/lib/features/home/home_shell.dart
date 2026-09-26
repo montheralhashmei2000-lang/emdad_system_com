@@ -16,6 +16,7 @@ import '../../core/ui/imd_window.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../domain/access_control.dart';
 import '../../domain/app_space.dart';
+import '../../domain/menu_doors.dart';
 import 'space_chooser_screen.dart';
 import '../fuel/fuel_allocations_screen.dart';
 import '../fuel/fuel_groups.dart';
@@ -111,7 +112,7 @@ const _menu = <_MenuSection>[
     _MenuItem('supplyDaily', 'calendar', 'التشغيل اليومي'),
   ]),
   _MenuSection('reports', 'trending', 'التقارير والرقابة', [
-    _MenuItem('reports', 'chart', 'التقارير'),
+    _MenuItem('supplyReports', 'chart', 'التقارير'),
     _MenuItem('supplyAudit', 'scan', 'الرقابة والتدقيق'),
   ]),
   _MenuSection('settings', 'wrench', 'الإعدادات', [
@@ -213,29 +214,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   bool _isAdmin(AuthService auth) => auth.currentUser?.role == 'admin';
 
   /// صفحات بلا صلاحية خاصة بها تتبع صلاحية صفحة أخرى، فلا يلزم تعديل الأدوار.
-  /// أبوابٌ تُفتح لمن ملك إحدى تبويباتها.
-  static const _anyOf = {
-    'supplyMoves': ['receive', 'issue', 'transfer', 'returns', 'opening'],
-    'supplyOrders': ['rationOrders', 'pendingOrders'],
-    'supplyData': [
-      'items',
-      'stores',
-      'units',
-      'suppliers',
-      'kitchens',
-      'assets',
-    ],
-    'supplyDaily': ['feeding', 'dailyOperations', 'ratios'],
-    'supplyAudit': [
-      'auditTrail',
-      'activityIntel',
-      'sensitiveOps',
-      'executiveCmd',
-      'healthOps',
-    ],
-    'reports': ['reports', 'balances'],
-  };
-
   static const _permPage = {
     'lanSync': 'settings',
     'stockAlerts': 'balances',
@@ -256,18 +234,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     page = _permPage[page] ?? page;
     // بابٌ بتبويبات يُفتح لمن ملك إحداها، والتبويبات تُخفي ما لا يملك —
     // فالجمع تنظيمٌ للقائمة لا توسيعٌ للأذونات.
-    final any = _anyOf[page];
-    if (any != null) {
-      return any.any((p) => _hasPerm(auth, p, action));
-    }
-    if (page == 'fuelData') {
-      return _hasPerm(auth, 'fuelWarehouses', action) ||
-          _hasPerm(auth, 'fuelUnits', action) ||
-          _hasPerm(auth, 'fuelVehicles', action);
-    }
-    if (page == 'dailyOperations') {
-      return _hasPerm(auth, 'mealPlans', action) ||
-          _hasPerm(auth, 'kitchenLog', action);
+    if (kMenuDoors.containsKey(page)) {
+      return menuDoorAllows(page, (p) => _hasPerm(auth, p, action));
     }
     final user = auth.currentUser;
     if (user == null) return false;
@@ -360,6 +328,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return const SupplyDataScreen();
       case 'supplyDaily':
         return const SupplyDailyScreen();
+      case 'supplyReports':
+        return const SupplyReportsScreen();
       case 'supplyAudit':
         return const SupplyAuditScreen();
       case 'rationOrders':
