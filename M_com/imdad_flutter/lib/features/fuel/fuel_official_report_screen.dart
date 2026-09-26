@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -40,7 +42,9 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
   List<FuelWarehouse> _warehouses = const [];
   List<FuelIssue> _issues = const [];
   List<FuelSupply> _supplies = const [];
+  List<FuelTransfer> _transfers = const [];
   FuelSettingsRow? _settings;
+  Uint8List? _logo;
 
   String _period = FuelReportPeriod.daily;
   late String _date = _iso(DateTime.now());
@@ -61,13 +65,18 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
     final warehouses = await _repo.warehouses(onlyActive: true);
     final issues = await _repo.issues();
     final supplies = await _repo.supplies();
+    final transfers = await _repo.transfers();
     final settings = await _repo.settings();
+    // الشعار نفسه الذي سيُطبع، فلا تختلف المعاينة عن الورقة.
+    final logo = await FuelOfficialPdf.fuelLogo(_db);
     if (!mounted) return;
     setState(() {
       _warehouses = warehouses;
       _issues = issues;
       _supplies = supplies;
+      _transfers = transfers;
       _settings = settings;
+      _logo = logo;
       _loading = false;
     });
   }
@@ -110,6 +119,19 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
             supplier: s.supplierName,
             vehicleType: s.transportVehicleType,
             notes: s.notes,
+          ),
+      ],
+      transfers: [
+        for (final t in _transfers)
+          FuelReportTransfer(
+            date: t.date,
+            fuelType: t.fuelType,
+            fromWarehouse: t.fromWarehouse,
+            toWarehouse: t.toWarehouse,
+            qty: t.quantityLiters,
+            driver: t.driverName,
+            vehicleType: t.transportVehicleType,
+            notes: t.notes,
           ),
       ],
     );
@@ -208,16 +230,21 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
       // أفقيًّا كما يُزحلق الورق على الطاولة، ولا تُكسر الأعمدة.
       child: LayoutBuilder(builder: (context, box) {
         final width =
-            box.maxWidth.isFinite && box.maxWidth > 760 ? box.maxWidth : 760.0;
+            box.maxWidth.isFinite && box.maxWidth > 900 ? box.maxWidth : 900.0;
         return SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: SizedBox(
             width: width,
             child: Padding(
               padding: const EdgeInsets.all(18),
+            // **خطّ الورقة خطُّ النظام.** `DefaultTextStyle` يستبدل النمط
+            // كله، فنمطٌ مكتوبٌ من الصفر يسقط عائلة الخط ويطبع البرقية
+            // بخطٍّ لاتينيّ لا يصل الحروف.
               child: DefaultTextStyle(
-                style: const TextStyle(
-                    color: _paperText, fontSize: 12, height: 1.5),
+                style: (Theme.of(context).textTheme.bodyMedium ??
+                        const TextStyle())
+                    .copyWith(
+                        color: _paperText, fontSize: 12, height: 1.5),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -254,6 +281,7 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
     final lines = [s.parentOrg, s.agencyTitle, s.commandTitle, s.branchTitle]
         .where((l) => l.trim().isNotEmpty)
         .toList();
+    final logo = _logo;
     final seal = s.sealLines
         .split(RegExp(r'[\n·،]'))
         .map((e) => e.trim())
@@ -276,7 +304,12 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
             ],
           ),
         ),
-        if (seal.isNotEmpty)
+        if (logo != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Image.memory(logo, width: 96, height: 96),
+          )
+        else if (seal.isNotEmpty)
           Container(
             width: 92,
             height: 92,
@@ -334,17 +367,33 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
             const _Heading('الوارد'),
             const SizedBox(height: 6),
             _table(
-              headers: const ['م', 'جهة التوريد', 'الوسيلة', 'الصنف', 'الكمية'],
-              flex: const [1, 5, 3, 2, 2],
+              headers: const [
+                'م',
+                'جهة التوريد / المصدر',
+                'الباب',
+                'الوسيلة',
+                'الصنف',
+                'الكمية',
+              ],
+              flex: const [1, 6, 3, 3, 2, 2],
               rows: [
                 for (final r in c.incoming)
                   [
                     '${r.n}',
                     r.supplier,
+                    r.isTransfer ? 'تحويل داخلي' : 'توريد',
                     r.vehicleType,
                     FuelType.label(r.fuelType),
                     nf(r.qty),
                   ],
+              ],
+              totalRow: [
+                '',
+                'الإجمالي',
+                'توريد ${nf(c.suppliedTotal)}',
+                'تحويل ${nf(c.transferredInTotal)}',
+                '',
+                '${nf(c.incomingTotal)} ${Fuel.unit}',
               ],
             ),
           ],
@@ -354,6 +403,52 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
           const SizedBox(height: 14),
           _issueTable('الصادر من مادة الديزل — المنصرف $span م', c.diesel,
               c.dieselTotal),
+          if (c.outgoing.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            _outgoingTable(c),
+          ],
+        ],
+      );
+
+  /// المحوَّل إلى المعسكرات الشقيقة — خرج من الخزّان ولم يُصرف لجهة.
+  Widget _outgoingTable(FuelCampSection c) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _Heading('المحوَّل إلى المعسكرات'),
+          const SizedBox(height: 6),
+          _table(
+            headers: const [
+              'م',
+              'إلى معسكر',
+              'الصنف',
+              'الوسيلة',
+              'السائق',
+              'الكمية',
+              'ملاحظة',
+            ],
+            flex: const [1, 6, 2, 3, 3, 2, 3],
+            rows: [
+              for (final r in c.outgoing)
+                [
+                  '${r.n}',
+                  r.toCamp,
+                  FuelType.label(r.fuelType),
+                  r.vehicleType,
+                  r.driver,
+                  nf(r.qty),
+                  r.notes,
+                ],
+            ],
+            totalRow: [
+              '',
+              'الإجمالي',
+              '',
+              '',
+              '',
+              '${nf(c.transferredOutTotal)} ${Fuel.unit}',
+              '',
+            ],
+          ),
         ],
       );
 
@@ -407,23 +502,45 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
           const _Heading('خلاصة جميع المعسكرات'),
           const SizedBox(height: 6),
           _table(
-            headers: const ['المعسكر', 'بترول', 'ديزل', 'الإجمالي'],
-            flex: const [4, 2, 2, 2],
+            headers: const [
+              'المعسكر',
+              'وارد توريدًا',
+              'وارد تحويلًا',
+              'صادر بترول',
+              'صادر ديزل',
+              'محوَّل إلى معسكر',
+              'إجمالي الصادر',
+            ],
+            flex: const [5, 3, 3, 3, 3, 3, 3],
             rows: [
               for (final s in r.sections)
                 [
                   s.warehouse,
+                  nf(s.suppliedTotal),
+                  nf(s.transferredInTotal),
                   nf(s.petrolTotal),
                   nf(s.dieselTotal),
-                  nf(s.total)
+                  nf(s.transferredOutTotal),
+                  nf(s.outTotal),
                 ],
             ],
             totalRow: [
               'الإجمالي',
+              nf(r.grandSupplied),
+              nf(r.grandTransferredIn),
               nf(r.grandPetrol),
               nf(r.grandDiesel),
-              nf(r.grandTotal),
+              nf(r.grandTransferredOut),
+              nf(r.grandTotal + r.grandTransferredOut),
             ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'المحوَّل بين المعسكرات يظهر واردًا في معسكرٍ وصادرًا في آخر، فلا '
+            'يزيد وقود الفرقة ولا ينقصه — والداخل توريدًا '
+            '${nf(r.grandSupplied)} ${Fuel.unit}، والخارج صرفًا '
+            '${nf(r.grandTotal)} ${Fuel.unit}.',
+            style: const TextStyle(fontSize: 10.5, color: _paperMuted),
           ),
         ],
       );

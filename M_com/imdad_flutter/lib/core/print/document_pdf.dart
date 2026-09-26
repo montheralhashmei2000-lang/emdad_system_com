@@ -61,6 +61,30 @@ class DocumentPdf {
     }
   }
 
+  /// سمةُ المستند بخطّ الطباعة المختار.
+  ///
+  /// **كل ورقةٍ في النظام تمرّ من هنا** — السندات والبرقيات وخطط التفريدة —
+  /// فلا تخرج ورقةٌ بخطٍّ غير الذي اختاره المستخدم في الإعدادات.
+  ///
+  /// ومكتبة pdf تحسب فراغ الكلمات من wordSpacing وحده، وبالقيمة الافتراضية
+  /// (١) تلتصق بعض الكلمات العربية («أرز أبيض» ⇒ «أرزأبيض»)؛ والمضاعفة تعيد
+  /// الفراغ الطبيعي.
+  static Future<pw.ThemeData> pdfTheme(
+      {String family = ImdPrintFonts.defaultFamily}) async {
+    await ensureFonts(family: family);
+    final base = pw.ThemeData.withFont(base: _regular!, bold: _bold!);
+    return base.copyWith(
+      defaultTextStyle: base.defaultTextStyle.copyWith(wordSpacing: 2),
+      paragraphStyle: base.paragraphStyle.copyWith(wordSpacing: 2),
+      tableCell: base.tableCell.copyWith(wordSpacing: 2),
+      tableHeader: base.tableHeader.copyWith(wordSpacing: 2),
+    );
+  }
+
+  /// شعار النظام المرفق (`assets/logo.png`) بعد [ensureFonts] — تقرأه
+  /// الأوراق التي تُبنى خارج قالب السند، كبرقية المحروقات.
+  static Uint8List? get logoBytes => _logo;
+
   static pw.TextAlign _align(PrintAlign a) => switch (a) {
         PrintAlign.right => pw.TextAlign.right,
         PrintAlign.center => pw.TextAlign.center,
@@ -72,16 +96,7 @@ class DocumentPdf {
     PrintLayout layout = PrintLayout.defaults,
     PdfPageFormat format = PdfPageFormat.a4,
   }) async {
-    await ensureFonts(family: layout.fontFamily);
-    // مكتبة pdf تحسب فراغ الكلمات من wordSpacing وحده، وبالقيمة الافتراضية (١)
-    // تلتصق بعض الكلمات العربية («أرز أبيض» ⇒ «أرزأبيض»). المضاعفة تعيد الفراغ الطبيعي.
-    final base = pw.ThemeData.withFont(base: _regular!, bold: _bold!);
-    final theme = base.copyWith(
-      defaultTextStyle: base.defaultTextStyle.copyWith(wordSpacing: 2),
-      paragraphStyle: base.paragraphStyle.copyWith(wordSpacing: 2),
-      tableCell: base.tableCell.copyWith(wordSpacing: 2),
-      tableHeader: base.tableHeader.copyWith(wordSpacing: 2),
-    );
+    final theme = await pdfTheme(family: layout.fontFamily);
     final pdf = pw.Document(theme: theme);
 
     pdf.addPage(

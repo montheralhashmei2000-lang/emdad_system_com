@@ -124,6 +124,7 @@ class FuelOfficialSupplyRow {
     required this.fuelType,
     required this.qty,
     required this.notes,
+    this.fromCamp = '',
   });
 
   final int n;
@@ -131,6 +132,58 @@ class FuelOfficialSupplyRow {
   final String vehicleType;
   final String fuelType;
   final double qty;
+  final String notes;
+
+  /// المعسكر الذي حُوّل منه — فارغٌ إن كان توريدًا من خارج الفرقة.
+  final String fromCamp;
+
+  /// **الوارد بابان**: توريدٌ يزيد وقود الفرقة كلها، وتحويلٌ ينقله من معسكرٍ
+  /// إلى آخر فلا يزيد مجموعها. وخلطُهما في رقمٍ واحد يُري القيادة توريدًا
+  /// لم يقع.
+  bool get isTransfer => fromCamp.isNotEmpty;
+}
+
+/// سطر محوَّلٍ إلى معسكرٍ آخر.
+class FuelOfficialTransferRow {
+  const FuelOfficialTransferRow({
+    required this.n,
+    required this.toCamp,
+    required this.fuelType,
+    required this.vehicleType,
+    required this.driver,
+    required this.qty,
+    required this.notes,
+  });
+
+  final int n;
+  final String toCamp;
+  final String fuelType;
+  final String vehicleType;
+  final String driver;
+  final double qty;
+  final String notes;
+}
+
+/// حركةُ تحويلٍ بين معسكرين كما تدخل البرقية.
+class FuelReportTransfer {
+  const FuelReportTransfer({
+    required this.date,
+    required this.fuelType,
+    required this.fromWarehouse,
+    required this.toWarehouse,
+    required this.qty,
+    this.driver = '',
+    this.vehicleType = '',
+    this.notes = '',
+  });
+
+  final String date;
+  final String fuelType;
+  final String fromWarehouse;
+  final String toWarehouse;
+  final double qty;
+  final String driver;
+  final String vehicleType;
   final String notes;
 }
 
@@ -141,6 +194,7 @@ class FuelCampSection {
     required this.incoming,
     required this.petrol,
     required this.diesel,
+    this.outgoing = const [],
   });
 
   final String warehouse;
@@ -148,10 +202,32 @@ class FuelCampSection {
   final List<FuelOfficialIssueRow> petrol;
   final List<FuelOfficialIssueRow> diesel;
 
+  /// ما حُوّل من هذا المعسكر إلى معسكرٍ آخر في المدى.
+  final List<FuelOfficialTransferRow> outgoing;
+
   double get petrolTotal => petrol.fold<double>(0, (s, r) => s + r.qty);
   double get dieselTotal => diesel.fold<double>(0, (s, r) => s + r.qty);
-  double get total => petrolTotal + dieselTotal;
+
+  /// المنصرف على السندات — الرقم الذي يُوقَّع عليه في اليومية.
+  double get issuedTotal => petrolTotal + dieselTotal;
+  double get total => issuedTotal;
+
   double get incomingTotal => incoming.fold<double>(0, (s, r) => s + r.qty);
+
+  /// الوارد توريدًا من خارج الفرقة.
+  double get suppliedTotal => incoming
+      .where((r) => !r.isTransfer)
+      .fold<double>(0, (s, r) => s + r.qty);
+
+  /// الوارد تحويلًا من معسكرٍ شقيق.
+  double get transferredInTotal =>
+      incoming.where((r) => r.isTransfer).fold<double>(0, (s, r) => s + r.qty);
+
+  double get transferredOutTotal =>
+      outgoing.fold<double>(0, (s, r) => s + r.qty);
+
+  /// كل ما خرج من الخزّان: صرفًا على السندات وتحويلًا إلى الشقيق.
+  double get outTotal => issuedTotal + transferredOutTotal;
 }
 
 /// البرقية كاملةً.
@@ -176,10 +252,23 @@ class FuelOfficialReport {
   double get incomingTotal =>
       sections.fold<double>(0, (s, c) => s + c.incomingTotal);
 
+  /// التوريد وحده — هو ما دخل وقود الفرقة فعلًا.
+  double get grandSupplied =>
+      sections.fold<double>(0, (s, c) => s + c.suppliedTotal);
+
+  double get grandTransferredOut =>
+      sections.fold<double>(0, (s, c) => s + c.transferredOutTotal);
+
+  /// المحوَّل داخليًّا يظهر واردًا في معسكرٍ وصادرًا في آخر، فمجموعه على
+  /// مستوى الفرقة صفر — ولذلك يُفرد عمودًا ولا يُجمع مع الصرف.
+  double get grandTransferredIn =>
+      sections.fold<double>(0, (s, c) => s + c.transferredInTotal);
+
   /// الخلاصة لا تُطبع لمعسكرٍ واحد: جدولٌ بسطرٍ وحيد يكرّر ما فوقه.
   bool get showSummary => sections.length > 1;
 
-  bool get isEmpty => grandTotal == 0 && incomingTotal == 0;
+  bool get isEmpty =>
+      grandTotal == 0 && incomingTotal == 0 && grandTransferredOut == 0;
 }
 
 /// حركةُ صرفٍ كما تدخل البرقية — مجرّدةٌ عن صفوف القاعدة ليُختبر البناء.
@@ -244,20 +333,28 @@ class FuelReportBuilder {
     required List<String> warehouses,
     required List<FuelReportIssue> issues,
     required List<FuelReportSupply> supplies,
+    List<FuelReportTransfer> transfers = const [],
   }) {
     final inRange = issues.where((i) => range.covers(i.date)).toList();
     final suppliesIn = supplies.where((s) => range.covers(s.date)).toList();
+    final movesIn = transfers.where((t) => range.covers(t.date)).toList();
 
     final sections = [
       for (final w in warehouses)
         FuelCampSection(
           warehouse: w,
-          incoming:
-              _supplyRows(suppliesIn.where((s) => s.warehouse == w).toList()),
+          // الوارد بابان في جدولٍ واحد: توريدٌ من خارج الفرقة، وتحويلٌ من
+          // معسكرٍ شقيق — ويُميَّز الثاني بمصدره فلا يُحسب توريدًا.
+          incoming: _incomingRows(
+            suppliesIn.where((s) => s.warehouse == w).toList(),
+            movesIn.where((t) => t.toWarehouse == w).toList(),
+          ),
           petrol: _issueRows(
               inRange.where((i) => i.warehouse == w).toList(), 'petrol'),
           diesel: _issueRows(
               inRange.where((i) => i.warehouse == w).toList(), 'diesel'),
+          outgoing: _outgoingRows(
+              movesIn.where((t) => t.fromWarehouse == w).toList()),
         ),
     ];
 
@@ -298,18 +395,66 @@ class FuelReportBuilder {
     ];
   }
 
-  static List<FuelOfficialSupplyRow> _supplyRows(List<FuelReportSupply> list) {
+  static List<FuelOfficialSupplyRow> _incomingRows(
+    List<FuelReportSupply> supplies,
+    List<FuelReportTransfer> transfersIn,
+  ) {
+    final rows = <({String date, FuelOfficialSupplyRow row})>[
+      for (final s in supplies)
+        (
+          date: s.date,
+          row: FuelOfficialSupplyRow(
+            n: 0,
+            supplier: _first([s.supplier]) ?? _dash,
+            vehicleType: _first([s.vehicleType]) ?? _dash,
+            fuelType: s.fuelType,
+            qty: s.qty,
+            notes: s.notes.trim(),
+          )
+        ),
+      for (final t in transfersIn)
+        (
+          date: t.date,
+          row: FuelOfficialSupplyRow(
+            n: 0,
+            supplier: 'محوَّل من ${t.fromWarehouse}',
+            vehicleType: _first([t.vehicleType]) ?? _dash,
+            fuelType: t.fuelType,
+            qty: t.qty,
+            notes: _first([t.notes, t.driver]) ?? '',
+            fromCamp: t.fromWarehouse,
+          )
+        ),
+    ]..sort((a, b) => a.date.compareTo(b.date));
+    var n = 0;
+    return [
+      for (final r in rows)
+        FuelOfficialSupplyRow(
+          n: ++n,
+          supplier: r.row.supplier,
+          vehicleType: r.row.vehicleType,
+          fuelType: r.row.fuelType,
+          qty: r.row.qty,
+          notes: r.row.notes,
+          fromCamp: r.row.fromCamp,
+        ),
+    ];
+  }
+
+  static List<FuelOfficialTransferRow> _outgoingRows(
+      List<FuelReportTransfer> list) {
     final rows = [...list]..sort((a, b) => a.date.compareTo(b.date));
     var n = 0;
     return [
-      for (final s in rows)
-        FuelOfficialSupplyRow(
+      for (final t in rows)
+        FuelOfficialTransferRow(
           n: ++n,
-          supplier: _first([s.supplier]) ?? _dash,
-          vehicleType: _first([s.vehicleType]) ?? _dash,
-          fuelType: s.fuelType,
-          qty: s.qty,
-          notes: s.notes.trim(),
+          toCamp: t.toWarehouse,
+          fuelType: t.fuelType,
+          vehicleType: _first([t.vehicleType]) ?? _dash,
+          driver: _first([t.driver]) ?? _dash,
+          qty: t.qty,
+          notes: t.notes.trim(),
         ),
     ];
   }

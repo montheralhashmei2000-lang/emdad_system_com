@@ -839,7 +839,9 @@ class _Sidebar extends StatelessWidget {
                               : const SizedBox(width: double.infinity),
                         ),
                       ],
-                  if (isAdmin) ...[
+                  // مركز الصلاحيات شأنُ النظام كله، وبابه قسم الإمداد:
+                  // إظهاره في المحروقات يخلط قسمًا بقسم بعد أن فُصلا.
+                  if (isAdmin && space != AppSpace.fuel) ...[
                     const SizedBox(height: 12),
                     _SideTile(
                       icon: 'users',

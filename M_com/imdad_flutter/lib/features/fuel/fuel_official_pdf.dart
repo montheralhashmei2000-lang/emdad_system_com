@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:pdf/pdf.dart';
@@ -7,6 +8,7 @@ import '../../core/print/document_pdf.dart';
 import '../../core/print/print_preview.dart';
 import '../../core/ui/imd_format.dart';
 import '../../data/db/app_database.dart';
+import '../../data/repos/settings_repo.dart';
 import '../../domain/fuel.dart';
 import '../../domain/fuel_report.dart';
 
@@ -28,17 +30,28 @@ class FuelOfficialPdf {
     required FuelOfficialReport report,
     required FuelSettingsRow settings,
   }) async {
-    final bytes = await build(report: report, settings: settings);
+    final bytes = await build(
+      report: report,
+      settings: settings,
+      logo: await fuelLogo(db),
+      theme: await DocumentPdf.pdfTheme(
+          family: (await SettingsRepo(db).printLayout()).fontFamily),
+    );
     await showPrintPreview(bytes, name: report.title);
   }
 
   static Future<Uint8List> build({
     required FuelOfficialReport report,
     required FuelSettingsRow settings,
+    Uint8List? logo,
+    pw.ThemeData? theme,
     PdfPageFormat format = PdfPageFormat.a4,
   }) async {
-    await DocumentPdf.ensureFonts();
-    final pdf = pw.Document();
+    // **الورقة بخطّ النظام**: البرقية ورقةٌ رسمية كالسند، فلا تخرج بخطّ
+    // المكتبة الافتراضي الذي لا يصل الحروف العربية.
+    theme ??= await DocumentPdf.pdfTheme();
+    logo ??= DocumentPdf.logoBytes;
+    final pdf = pw.Document(theme: theme);
 
     pdf.addPage(
       pw.MultiPage(
@@ -46,7 +59,7 @@ class FuelOfficialPdf {
         textDirection: pw.TextDirection.rtl,
         margin: const pw.EdgeInsets.fromLTRB(24, 22, 24, 22),
         build: (context) => [
-          _letterhead(settings),
+          _letterhead(settings, logo),
           pw.SizedBox(height: 10),
           _addressee(settings, report),
           pw.SizedBox(height: 12),
@@ -77,7 +90,14 @@ class FuelOfficialPdf {
     List<String> rules = const [],
   }) async {
     final bytes = await buildPlan(
-        settings: settings, petrol: petrol, diesel: diesel, rules: rules);
+      settings: settings,
+      petrol: petrol,
+      diesel: diesel,
+      rules: rules,
+      logo: await fuelLogo(db),
+      theme: await DocumentPdf.pdfTheme(
+          family: (await SettingsRepo(db).printLayout()).fontFamily),
+    );
     await showPrintPreview(bytes, name: 'خطة توزيع الاستحقاق');
   }
 
@@ -86,17 +106,20 @@ class FuelOfficialPdf {
     required List<FuelPlanRow> petrol,
     required List<FuelPlanRow> diesel,
     List<String> rules = const [],
+    Uint8List? logo,
+    pw.ThemeData? theme,
     PdfPageFormat format = PdfPageFormat.a4,
   }) async {
-    await DocumentPdf.ensureFonts();
-    final pdf = pw.Document();
+    theme ??= await DocumentPdf.pdfTheme();
+    logo ??= DocumentPdf.logoBytes;
+    final pdf = pw.Document(theme: theme);
     pdf.addPage(
       pw.MultiPage(
         pageFormat: format,
         textDirection: pw.TextDirection.rtl,
         margin: const pw.EdgeInsets.fromLTRB(24, 22, 24, 22),
         build: (context) => [
-          _letterhead(settings),
+          _letterhead(settings, logo),
           pw.SizedBox(height: 12),
           pw.Center(
             child: pw.Text(
@@ -188,7 +211,22 @@ class FuelOfficialPdf {
     );
   }
 
-  static pw.Widget _letterhead(FuelSettingsRow s) {
+  /// شعار الورقة: ما رفعه المستخدم في «هوية الجهة» أولًا، فإن لم يرفع شيئًا
+  /// فشعار النظام المرفق. والدائرة النصية آخرُ ما يُلجأ إليه.
+  static Future<Uint8List?> fuelLogo(AppDatabase db) async {
+    final id = await SettingsRepo(db).identity();
+    if (id.logoBase64.trim().isNotEmpty) {
+      try {
+        return base64Decode(id.logoBase64.trim());
+      } catch (_) {
+        // شعارٌ محفوظ بصيغةٍ تالفة لا يمنع طباعة الورقة.
+      }
+    }
+    await DocumentPdf.ensureFonts();
+    return DocumentPdf.logoBytes;
+  }
+
+  static pw.Widget _letterhead(FuelSettingsRow s, Uint8List? logo) {
     final seal = s.sealLines.trim().isEmpty
         ? const <String>[]
         : s.sealLines.split(RegExp(r'[\n·،]')).map((e) => e.trim()).toList();
@@ -212,7 +250,14 @@ class FuelOfficialPdf {
             ],
           ),
         ),
-        if (seal.isNotEmpty)
+        if (logo != null)
+          pw.Container(
+            width: 76,
+            height: 76,
+            margin: const pw.EdgeInsets.symmetric(horizontal: 8),
+            child: pw.Image(pw.MemoryImage(logo)),
+          )
+        else if (seal.isNotEmpty)
           pw.Container(
             width: 62,
             height: 62,
@@ -274,17 +319,87 @@ class FuelOfficialPdf {
       pw.SizedBox(height: 8),
       _issueTable(
           'الصادر من مادة الديزل — المنصرف $span م', s.diesel, s.dieselTotal),
+      if (s.outgoing.isNotEmpty) ...[
+        pw.SizedBox(height: 8),
+        _outgoingTable(s),
+      ],
     ];
   }
+
+  /// المحوَّل إلى المعسكرات الشقيقة — يخرج من الخزّان ولا يُصرف لجهة.
+  static pw.Widget _outgoingTable(FuelCampSection s) => pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Text('المحوَّل إلى المعسكرات',
+              style: pw.TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: _title)),
+          pw.SizedBox(height: 4),
+          pw.Table(
+            border: pw.TableBorder.all(color: _line, width: 0.6),
+            columnWidths: const {
+              0: pw.FlexColumnWidth(1),
+              1: pw.FlexColumnWidth(6),
+              2: pw.FlexColumnWidth(2),
+              3: pw.FlexColumnWidth(3),
+              4: pw.FlexColumnWidth(3),
+              5: pw.FlexColumnWidth(2),
+              6: pw.FlexColumnWidth(3),
+            },
+            children: [
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(color: _head),
+                children: [
+                  for (final h in [
+                    'م',
+                    'إلى معسكر',
+                    'الصنف',
+                    'الوسيلة',
+                    'السائق',
+                    'الكمية',
+                    'ملاحظة',
+                  ])
+                    _cell(h, bold: true),
+                ],
+              ),
+              for (final r in s.outgoing)
+                pw.TableRow(children: [
+                  _cell('${r.n}'),
+                  _cell(r.toCamp),
+                  _cell(FuelType.label(r.fuelType)),
+                  _cell(r.vehicleType),
+                  _cell(r.driver),
+                  _cell(nf(r.qty)),
+                  _cell(r.notes),
+                ]),
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(color: _total),
+                children: [
+                  _cell('', bold: true),
+                  _cell('الإجمالي', bold: true),
+                  _cell('', bold: true),
+                  _cell('', bold: true),
+                  _cell('', bold: true),
+                  _cell('${nf(s.transferredOutTotal)} ${Fuel.unit}',
+                      bold: true),
+                  _cell('', bold: true),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
 
   static pw.Widget _incomingTable(FuelCampSection s) => pw.Table(
         border: pw.TableBorder.all(color: _line, width: 0.6),
         columnWidths: const {
           0: pw.FlexColumnWidth(1),
-          1: pw.FlexColumnWidth(5),
+          1: pw.FlexColumnWidth(6),
           2: pw.FlexColumnWidth(3),
-          3: pw.FlexColumnWidth(2),
+          3: pw.FlexColumnWidth(3),
           4: pw.FlexColumnWidth(2),
+          5: pw.FlexColumnWidth(2),
         },
         children: [
           pw.TableRow(
@@ -292,10 +407,11 @@ class FuelOfficialPdf {
             children: [
               for (final h in [
                 'م',
-                'جهة التوريد',
+                'جهة التوريد / المصدر',
+                'الباب',
                 'الوسيلة',
                 'الصنف',
-                'الكمية'
+                'الكمية',
               ])
                 _cell(h, bold: true),
             ],
@@ -304,10 +420,22 @@ class FuelOfficialPdf {
             pw.TableRow(children: [
               _cell('${r.n}'),
               _cell(r.supplier),
+              _cell(r.isTransfer ? 'تحويل داخلي' : 'توريد'),
               _cell(r.vehicleType),
               _cell(FuelType.label(r.fuelType)),
               _cell(nf(r.qty)),
             ]),
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(color: _total),
+            children: [
+              _cell('', bold: true),
+              _cell('الإجمالي', bold: true),
+              _cell('توريد ${nf(s.suppliedTotal)}', bold: true),
+              _cell('تحويل ${nf(s.transferredInTotal)}', bold: true),
+              _cell('', bold: true),
+              _cell('${nf(s.incomingTotal)} ${Fuel.unit}', bold: true),
+            ],
+          ),
         ],
       );
 
@@ -397,27 +525,49 @@ class FuelOfficialPdf {
             pw.TableRow(
               decoration: const pw.BoxDecoration(color: _head),
               children: [
-                for (final h in ['المعسكر', 'بترول', 'ديزل', 'الإجمالي'])
+                for (final h in [
+                  'المعسكر',
+                  'وارد توريدًا',
+                  'وارد تحويلًا',
+                  'صادر بترول',
+                  'صادر ديزل',
+                  'محوَّل إلى معسكر',
+                  'إجمالي الصادر',
+                ])
                   _cell(h, bold: true),
               ],
             ),
             for (final s in r.sections)
               pw.TableRow(children: [
                 _cell(s.warehouse),
+                _cell(nf(s.suppliedTotal)),
+                _cell(nf(s.transferredInTotal)),
                 _cell(nf(s.petrolTotal)),
                 _cell(nf(s.dieselTotal)),
-                _cell(nf(s.total)),
+                _cell(nf(s.transferredOutTotal)),
+                _cell(nf(s.outTotal)),
               ]),
             pw.TableRow(
               decoration: const pw.BoxDecoration(color: _total),
               children: [
                 _cell('الإجمالي', bold: true),
+                _cell(nf(r.grandSupplied), bold: true),
+                _cell(nf(r.grandTransferredIn), bold: true),
                 _cell(nf(r.grandPetrol), bold: true),
                 _cell(nf(r.grandDiesel), bold: true),
-                _cell(nf(r.grandTotal), bold: true),
+                _cell(nf(r.grandTransferredOut), bold: true),
+                _cell(nf(r.grandTotal + r.grandTransferredOut), bold: true),
               ],
             ),
           ],
+        ),
+        pw.SizedBox(height: 6),
+        pw.Text(
+          'المحوَّل بين المعسكرات يظهر واردًا في معسكرٍ وصادرًا في آخر، فلا '
+          'يزيد وقود الفرقة ولا ينقصه — والداخل توريدًا '
+          '${nf(r.grandSupplied)} ${Fuel.unit}، والخارج صرفًا '
+          '${nf(r.grandTotal)} ${Fuel.unit}.',
+          style: const pw.TextStyle(fontSize: 8),
         ),
       ];
 

@@ -233,6 +233,107 @@ void main() {
       expect(r.incomingTotal, 20000);
     });
 
+    test('التحويل يظهر واردًا هنا وصادرًا هناك', () {
+      final r = FuelReportBuilder.build(
+        period: FuelReportPeriod.daily,
+        range: const FuelDateRange('2026-06-21', '2026-06-21'),
+        warehouses: const ['معسكر الثنية', 'مقر قيادة الفرقة'],
+        issues: const [],
+        supplies: const [],
+        transfers: const [
+          FuelReportTransfer(
+            date: '2026-06-21',
+            fuelType: 'petrol',
+            fromWarehouse: 'معسكر الثنية',
+            toWarehouse: 'مقر قيادة الفرقة',
+            qty: 2000,
+            driver: 'يوسف الشمري',
+            vehicleType: 'صهريج',
+          ),
+        ],
+      );
+      final from = r.sections.first;
+      final to = r.sections.last;
+
+      expect(from.outgoing.single.toCamp, 'مقر قيادة الفرقة');
+      expect(from.transferredOutTotal, 2000);
+      expect(to.incoming.single.isTransfer, isTrue);
+      expect(to.incoming.single.supplier, contains('معسكر الثنية'));
+      expect(to.transferredInTotal, 2000);
+    });
+
+    test('التحويل لا يُحسب توريدًا ولا صرفًا', () {
+      final r = FuelReportBuilder.build(
+        period: FuelReportPeriod.daily,
+        range: const FuelDateRange('2026-06-21', '2026-06-21'),
+        warehouses: const ['أ', 'ب'],
+        issues: [issue(warehouse: 'أ', qty: 100)],
+        supplies: [supply(warehouse: 'أ', qty: 8000)],
+        transfers: const [
+          FuelReportTransfer(
+            date: '2026-06-21',
+            fuelType: 'diesel',
+            fromWarehouse: 'أ',
+            toWarehouse: 'ب',
+            qty: 500,
+          ),
+        ],
+      );
+      // ما دخل الفرقة توريدًا ثمانية آلاف، لا ثمانية آلاف وخمسمئة.
+      expect(r.grandSupplied, 8000);
+      expect(r.grandTransferredIn, 500);
+      expect(r.grandTransferredOut, 500);
+      // والمصروف على السندات مئة، والمحوَّل لا يدخله.
+      expect(r.grandTotal, 100);
+      expect(r.sections.first.outTotal, 600,
+          reason: 'ما خرج من خزّان «أ» صرفًا وتحويلًا');
+      expect(r.incomingTotal, 8500, reason: 'وارد الجدولين معًا');
+    });
+
+    test('تحويلٌ خارج المدى لا يدخل الورقة', () {
+      final r = FuelReportBuilder.build(
+        period: FuelReportPeriod.daily,
+        range: const FuelDateRange('2026-06-21', '2026-06-21'),
+        warehouses: const ['أ', 'ب'],
+        issues: const [],
+        supplies: const [],
+        transfers: const [
+          FuelReportTransfer(
+            date: '2026-06-20',
+            fuelType: 'diesel',
+            fromWarehouse: 'أ',
+            toWarehouse: 'ب',
+            qty: 500,
+          ),
+        ],
+      );
+      expect(r.sections.first.outgoing, isEmpty);
+      expect(r.isEmpty, isTrue);
+    });
+
+    test('الوارد يُرتَّب بالتاريخ ويُرقَّم بعد الدمج', () {
+      final r = FuelReportBuilder.build(
+        period: FuelReportPeriod.custom,
+        range: const FuelDateRange('2026-06-01', '2026-06-30'),
+        warehouses: const ['أ'],
+        issues: const [],
+        supplies: [supply(date: '2026-06-10', warehouse: 'أ')],
+        transfers: const [
+          FuelReportTransfer(
+            date: '2026-06-05',
+            fuelType: 'petrol',
+            fromWarehouse: 'ب',
+            toWarehouse: 'أ',
+            qty: 300,
+          ),
+        ],
+      );
+      final rows = r.sections.single.incoming;
+      expect(rows.map((x) => x.n), [1, 2]);
+      expect(rows.first.isTransfer, isTrue,
+          reason: 'الأسبق تاريخًا أولًا مهما كان بابه');
+    });
+
     test('يومٌ بلا حركة يُبنى فارغًا لا يسقط', () {
       final r = FuelReportBuilder.build(
         period: FuelReportPeriod.daily,
