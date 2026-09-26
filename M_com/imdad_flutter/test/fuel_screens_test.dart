@@ -11,6 +11,8 @@ import 'package:imdad/features/fuel/fuel_allocations_screen.dart';
 import 'package:imdad/features/fuel/fuel_consumption_screen.dart';
 import 'package:imdad/features/fuel/fuel_dashboard_screen.dart';
 import 'package:imdad/features/fuel/fuel_directories_screen.dart';
+import 'package:imdad/features/fuel/fuel_groups.dart';
+import 'package:imdad/features/fuel/fuel_ledger_screen.dart';
 import 'package:imdad/features/fuel/fuel_official_report_screen.dart';
 import 'package:imdad/features/fuel/fuel_vehicles_screen.dart';
 import 'package:imdad/features/fuel/fuel_settings_screen.dart';
@@ -109,6 +111,9 @@ void main() {
     'التقارير الرسمية': () => const FuelOfficialReportScreen(),
     'تقرير الاستهلاك': () => const FuelConsumptionScreen(),
     'إعدادات المحروقات': () => const FuelSettingsScreen(),
+    'أرصدة المستودعات': () => const FuelStocksReportScreen(),
+    'كشف حركة المستودع': () => const FuelLedgerScreen(),
+    'الاستحقاق مقابل الصرف': () => const FuelPlanVsIssuedScreen(),
   };
 
   group('كل شاشة تُبنى بقاعدة فارغة', () {
@@ -167,6 +172,51 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.textContaining('SH-77'), findsWidgets,
         reason: 'التبديل إلى محور المركبة لم يُغيّر التجميع');
+  });
+
+  testWidgets('باب البيانات الأساسية يفتح على تبويبته ويتنقّل', (tester) async {
+    await seed();
+    await show(tester, const FuelDataScreen());
+    expect(tester.takeException(), isNull);
+    expect(find.text('مستودعات المحروقات'), findsWidgets);
+
+    final units = find.text('الوحدات المستفيدة').first;
+    await tester.ensureVisible(units);
+    await tester.pumpAndSettle();
+    await tester.tap(units, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('وحدات المحروقات'), findsWidgets);
+  });
+
+  testWidgets('باب البيانات يُفتح على التبويبة المطلوبة', (tester) async {
+    await seed();
+    await show(tester, const FuelDataScreen(initialTab: 'vehicles'));
+    expect(tester.takeException(), isNull);
+    expect(find.text('سجل المركبات'), findsWidgets);
+  });
+
+  testWidgets('باب التقارير يحمل تقاريره الخمسة', (tester) async {
+    await seed();
+    await show(tester, const FuelReportsHubScreen());
+    expect(tester.takeException(), isNull);
+    for (final t in const [
+      'التقرير الرسمي',
+      'الاستهلاك',
+      'أرصدة المستودعات',
+      'كشف حركة المستودع',
+      'الاستحقاق مقابل الصرف',
+    ]) {
+      expect(find.text(t), findsWidgets, reason: 'تبويبة «$t» غائبة');
+    }
+  });
+
+  testWidgets('كشف الحركة يمشي بالرصيد مع السطور', (tester) async {
+    await seed();
+    await show(tester, const FuelReportsHubScreen(initialTab: 'ledger'));
+    expect(tester.takeException(), isNull);
+    expect(find.text('رصيد مُرحَّل'), findsWidgets,
+        reason: 'الكشف يبدأ بما استقرّ قبل المدى');
   });
 
   testWidgets('البرقية الرسمية تُبنى بترويستها وجداولها', (tester) async {

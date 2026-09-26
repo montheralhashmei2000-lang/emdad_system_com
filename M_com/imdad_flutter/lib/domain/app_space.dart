@@ -49,6 +49,7 @@ class AppSpace {
       'fuelAllocations',
       'fuelMoves',
       'fuelStocktake',
+      'fuelData',
       'fuelWarehouses',
       'fuelUnits',
       'fuelVehicles',

@@ -15,7 +15,7 @@ Base = declarative_base()
 # إنشاء محرك قاعدة البيانات (مع دعم WAL للكتابة المتزامنة)
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},  # PySide6 يعمل على خيط واحد
+        connect_args={"check_same_thread": False},  # PyQt6 يعمل على خيط واحد
     echo=False,                                 # تعطيل تسجيل الاستعلامات (شغّل True للتطوير)
     pool_pre_ping=True,                         # فحص الاتصال قبل الاستخدام
 )

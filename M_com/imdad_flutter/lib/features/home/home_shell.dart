@@ -19,10 +19,7 @@ import '../../domain/app_space.dart';
 import 'space_chooser_screen.dart';
 import '../catalog/assets_screen.dart';
 import '../fuel/fuel_allocations_screen.dart';
-import '../fuel/fuel_consumption_screen.dart';
-import '../fuel/fuel_directories_screen.dart';
-import '../fuel/fuel_official_report_screen.dart';
-import '../fuel/fuel_vehicles_screen.dart';
+import '../fuel/fuel_groups.dart';
 import '../fuel/fuel_settings_screen.dart';
 import '../fuel/fuel_dashboard_screen.dart';
 import '../fuel/fuel_moves_screen.dart';
@@ -121,24 +118,19 @@ const _menu = <_MenuSection>[
     _MenuItem('opening', 'clipboard', 'الأرصدة الافتتاحية'),
     _MenuItem('rationOrders', 'clipboard', 'طلبيات الإعاشة'),
   ]),
-  // قسم المحروقات: قائمةٌ مسطّحة بشاشاته وحدها، بترتيب العمل اليومي —
-  // يُصرف ويُورَّد قبل أن تُراجَع التفريدة أو تُقرأ التقارير.
+  // قسم المحروقات: ستّة أبوابٍ لا ثلاثة عشر بندًا.
+  //
+  // **الشريط فهرسٌ لا سجل.** الصرف والتوريد والتحويل والافتتاحي حركةٌ واحدة
+  // يديرها رجلٌ واحد، والمستودعات والوحدات والمركبات أدلّةٌ تُعرَّف مرةً،
+  // والتقارير نظراتٌ على البيانات نفسها — فكلُّ ثلاثةٍ بابٌ بتبويباته.
   _MenuSection('fuel', 'zap', 'المحروقات', [
     _MenuItem('fuelDashboard', 'home', 'الرئيسية', space: AppSpace.fuel),
-    _MenuItem('fuelIssue', 'upload', 'الصرف', space: AppSpace.fuel),
-    _MenuItem('fuelSupply', 'download', 'التوريد', space: AppSpace.fuel),
+    _MenuItem('fuelMoves', 'swap', 'حركة المحروقات', space: AppSpace.fuel),
     _MenuItem('fuelAllocations', 'clipboard', 'التفريدة', space: AppSpace.fuel),
-    _MenuItem('fuelUnits', 'building', 'الوحدات', space: AppSpace.fuel),
-    _MenuItem('fuelWarehouses', 'warehouse', 'المستودعات',
+    _MenuItem('fuelData', 'database', 'البيانات الأساسية',
         space: AppSpace.fuel),
-    _MenuItem('fuelTransfer', 'swap', 'التحويل', space: AppSpace.fuel),
-    _MenuItem('fuelVehicles', 'truck', 'سجل المركبات', space: AppSpace.fuel),
-    _MenuItem('fuelOpening', 'compass', 'الرصيد الافتتاحي',
-        space: AppSpace.fuel),
-    _MenuItem('fuelReports', 'chart', 'التقارير الرسمية', space: AppSpace.fuel),
+    _MenuItem('fuelReports', 'chart', 'التقارير', space: AppSpace.fuel),
     _MenuItem('fuelStocktake', 'clipboard', 'الجرد المخزني',
-        space: AppSpace.fuel),
-    _MenuItem('fuelConsumption', 'trending', 'تقرير الاستهلاك',
         space: AppSpace.fuel),
     _MenuItem('fuelSettings', 'settings', 'الإعدادات', space: AppSpace.fuel),
   ]),
@@ -265,11 +257,22 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     'fuelSupply': 'fuelMoves',
     'fuelTransfer': 'fuelMoves',
     'fuelOpening': 'fuelMoves',
+    // والتقارير الخمسة تحت صلاحية التقارير، عدا الاستهلاك فله صلاحيته.
+    'fuelStocks': 'fuelReports',
+    'fuelLedger': 'fuelReports',
+    'fuelPlanVsIssued': 'fuelReports',
   };
 
   bool _hasPerm(AuthService auth, String page,
       [String action = PermAction.view]) {
     page = _permPage[page] ?? page;
+    // بابُ الأدلّة يُفتح لمن ملك أحدها، والتبويبات تُخفي ما لا يملك —
+    // فالجمع تنظيمٌ للقائمة لا توسيعٌ للأذونات.
+    if (page == 'fuelData') {
+      return _hasPerm(auth, 'fuelWarehouses', action) ||
+          _hasPerm(auth, 'fuelUnits', action) ||
+          _hasPerm(auth, 'fuelVehicles', action);
+    }
     if (page == 'dailyOperations') {
       return _hasPerm(auth, 'mealPlans', action) ||
           _hasPerm(auth, 'kitchenLog', action);
@@ -331,16 +334,26 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return const FuelMovesScreen();
       case 'fuelStocktake':
         return const FuelStocktakeScreen();
+      // الأدلّة والتقارير أبوابٌ بتبويبات، والمعرّفات القديمة تفتحها على
+      // تبويبتها — فاختصارٌ أو رابطٌ قديم لا ينكسر.
+      case 'fuelData':
+        return const FuelDataScreen();
       case 'fuelWarehouses':
-        return const FuelWarehousesScreen();
+        return const FuelDataScreen(initialTab: 'warehouses');
       case 'fuelUnits':
-        return const FuelUnitsScreen();
+        return const FuelDataScreen(initialTab: 'units');
       case 'fuelVehicles':
-        return const FuelVehiclesScreen();
-      case 'fuelReports':
-        return const FuelOfficialReportScreen();
+        return const FuelDataScreen(initialTab: 'vehicles');
       case 'fuelConsumption':
-        return const FuelConsumptionScreen();
+        return const FuelReportsHubScreen(initialTab: 'consumption');
+      case 'fuelStocks':
+        return const FuelReportsHubScreen(initialTab: 'stocks');
+      case 'fuelLedger':
+        return const FuelReportsHubScreen(initialTab: 'ledger');
+      case 'fuelPlanVsIssued':
+        return const FuelReportsHubScreen(initialTab: 'plan');
+      case 'fuelReports':
+        return const FuelReportsHubScreen();
       case 'fuelSettings':
         return const FuelSettingsScreen();
       case 'rationOrders':
