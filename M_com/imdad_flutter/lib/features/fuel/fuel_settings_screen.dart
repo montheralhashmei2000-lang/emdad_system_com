@@ -28,6 +28,12 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
   late final AppDatabase _db = context.read<AppDatabase>();
   late final FuelRepo _repo = FuelRepo(_db);
 
+  final _parentOrg = TextEditingController();
+  final _agency = TextEditingController();
+  final _command = TextEditingController();
+  final _branch = TextEditingController();
+  final _orgName = TextEditingController();
+  final _seal = TextEditingController();
   final _low = TextEditingController();
   final _daily = TextEditingController();
   final _weekly = TextEditingController();
@@ -51,6 +57,12 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
   @override
   void dispose() {
     for (final c in [
+      _parentOrg,
+      _agency,
+      _command,
+      _branch,
+      _orgName,
+      _seal,
       _low,
       _daily,
       _weekly,
@@ -71,6 +83,12 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
   Future<void> _load() async {
     final s = await _repo.settings();
     if (!mounted) return;
+    imdSetText(_parentOrg, s.parentOrg);
+    imdSetText(_agency, s.agencyTitle);
+    imdSetText(_command, s.commandTitle);
+    imdSetText(_branch, s.branchTitle);
+    imdSetText(_orgName, s.orgName);
+    imdSetText(_seal, s.sealLines);
     imdSetText(_low, _num(s.lowStockPercent));
     imdSetText(_daily, _num(s.defaultDailyLiters));
     imdSetText(_weekly, _num(s.defaultWeeklyLiters));
@@ -92,6 +110,12 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
     }
     setState(() => _busy = true);
     final res = await _repo.saveSettings(
+      parentOrg: _parentOrg.text,
+      agencyTitle: _agency.text,
+      commandTitle: _command.text,
+      branchTitle: _branch.text,
+      orgName: _orgName.text,
+      sealLines: _seal.text,
       lowStockPercent: double.tryParse(_low.text.trim()) ?? 20,
       defaultDailyLiters: double.tryParse(_daily.text.trim()) ?? 0,
       defaultWeeklyLiters: double.tryParse(_weekly.text.trim()) ?? 0,
@@ -128,9 +152,45 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
         subtitle: 'حدود التنبيه والكميات الافتراضية وتواقيع أوراق القسم',
       ),
       ImdPanel(
+        title: 'ترويسة التقارير الرسمية',
+        icon: 'file',
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ImdF2(children: [
+            ImdLabeled(
+                'الجهة الأعلى', ImdFld(controller: _parentOrg, enabled: can),
+                size: 11),
+            ImdLabeled('الهيئة', ImdFld(controller: _agency, enabled: can),
+                size: 11),
+            ImdLabeled('القيادة', ImdFld(controller: _command, enabled: can),
+                size: 11),
+            ImdLabeled('الشعبة', ImdFld(controller: _branch, enabled: can),
+                size: 11),
+            ImdLabeled('اسم الجهة المختصر (السندات)',
+                ImdFld(controller: _orgName, enabled: can),
+                size: 11),
+            ImdLabeled(
+              'أسطر الشعار (تفصل بينها فاصلة)',
+              ImdFld(
+                  controller: _seal,
+                  enabled: can,
+                  hint: 'الفرقة، الأولى، طوارئ'),
+              size: 11,
+            ),
+          ]),
+          const SizedBox(height: 10),
+          const ImdNote(
+            'هذه الأسطر الأربعة هي **رأس البرقية** التي تُرفع، وتظهر في '
+            'التقرير اليومي والأسبوعي والشهري وفي خطة التفريدة. '
+            'وكانت مكتوبةً في الكود، فتغيير اسم القيادة كان يحتاج بناءً جديدًا.',
+          ),
+        ]),
+      ),
+      ImdPanel(
         title: 'التنبيهات',
         icon: 'alert',
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ImdF2(children: [
             ImdLabeled(
               'حد التنبيه على الانخفاض (٪ من السعة)',
@@ -149,7 +209,8 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
       ImdPanel(
         title: 'الكميات الافتراضية للتفريدة',
         icon: 'sliders',
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ImdF2(children: [
             ImdLabeled('يومي (${Fuel.unit})',
                 ImdFld(controller: _daily, number: true, enabled: can),
@@ -169,7 +230,8 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
       ImdPanel(
         title: 'قواعد الصرف',
         icon: 'shield',
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ImdCheckbox(
             value: _requireChassis,
             label: 'اشتراط رقم الشاصي في كل صرف',
@@ -183,11 +245,11 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
           ImdCheckbox(
             value: _allowExceptional,
             label: 'السماح بالصرف الاستثنائي خارج التفريدة',
-            onChanged: can ? (v) => setState(() => _allowExceptional = v) : null,
+            onChanged:
+                can ? (v) => setState(() => _allowExceptional = v) : null,
           ),
           const SizedBox(height: 6),
-          const ImdLdText(
-              'إن عُطّل، لم يُصرف وقود إلا من تفريدة معتمدة. '
+          const ImdLdText('إن عُطّل، لم يُصرف وقود إلا من تفريدة معتمدة. '
               'وإن بقي مفعَّلًا فالاستثنائي يلزمه مبرر وجهة أمر، ويُسجَّل في '
               'التدقيق عالي الخطورة.'),
         ]),
@@ -195,18 +257,20 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
       ImdPanel(
         title: 'تواقيع أوراق المحروقات',
         icon: 'edit',
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ImdF2(children: [
-            ImdLabeled('مسؤول المحروقات',
-                ImdFld(controller: _officer, enabled: can), size: 11),
-            ImdLabeled('ركن الإمداد',
-                ImdFld(controller: _supply, enabled: can), size: 11),
-            ImdLabeled('رئيس الشعبة',
-                ImdFld(controller: _chief, enabled: can), size: 11),
+            ImdLabeled(
+                'مسؤول المحروقات', ImdFld(controller: _officer, enabled: can),
+                size: 11),
+            ImdLabeled('ركن الإمداد', ImdFld(controller: _supply, enabled: can),
+                size: 11),
+            ImdLabeled('رئيس الشعبة', ImdFld(controller: _chief, enabled: can),
+                size: 11),
           ]),
           const SizedBox(height: 10),
-          ImdLabeled('ملاحظات',
-              ImdFld(controller: _notes, maxLines: 2, enabled: can)),
+          ImdLabeled(
+              'ملاحظات', ImdFld(controller: _notes, maxLines: 2, enabled: can)),
         ]),
       ),
       if (can)

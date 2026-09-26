@@ -18,10 +18,14 @@ class Users extends Table {
   TextColumn get username => text()();
   TextColumn get name => text().withDefault(const Constant(''))();
   TextColumn get email => text().withDefault(const Constant(''))();
-  TextColumn get role => text().withDefault(const Constant('user'))(); // admin | user
-  TextColumn get roles => text().withDefault(const Constant('[]'))(); // JSON: قوالب الأدوار
-  TextColumn get permissions => text().withDefault(const Constant('{}'))(); // JSON
-  TextColumn get warehouseScope => text().withDefault(const Constant('ALL'))(); // ALL أو JSON بأسماء المستودعات
+  TextColumn get role =>
+      text().withDefault(const Constant('user'))(); // admin | user
+  TextColumn get roles =>
+      text().withDefault(const Constant('[]'))(); // JSON: قوالب الأدوار
+  TextColumn get permissions =>
+      text().withDefault(const Constant('{}'))(); // JSON
+  TextColumn get warehouseScope => text()
+      .withDefault(const Constant('ALL'))(); // ALL أو JSON بأسماء المستودعات
   TextColumn get saltHex => text().withDefault(const Constant(''))();
   TextColumn get hashHex => text().withDefault(const Constant(''))();
   IntColumn get iterations => integer().withDefault(const Constant(45000))();
@@ -51,11 +55,14 @@ class Items extends Table {
   TextColumn get categoryId => text().withDefault(const Constant(''))();
   TextColumn get categoryName => text().withDefault(const Constant(''))();
   TextColumn get baseUnit => text().withDefault(const Constant(''))();
-  TextColumn get units => text().withDefault(const Constant('[]'))(); // JSON: [{name,factor,isBase}]
-  RealColumn get qty => real().withDefault(const Constant(0))(); // الإجمالي (للتوافق)
+  TextColumn get units => text()
+      .withDefault(const Constant('[]'))(); // JSON: [{name,factor,isBase}]
+  RealColumn get qty =>
+      real().withDefault(const Constant(0))(); // الإجمالي (للتوافق)
   RealColumn get minQty => real().withDefault(const Constant(0))();
   TextColumn get barcode => text().withDefault(const Constant(''))();
   BoolColumn get isRefillable => boolean().withDefault(const Constant(false))();
+
   /// v7: وحدة العرض الافتراضية — الرصيد يُخزَّن دائمًا بالوحدة الأساسية، لكن
   /// يُعرض بهذه الوحدة في التقارير وفي رصيد شاشات الإدخال. فارغة = الأساسية.
   TextColumn get reportUnit => text().withDefault(const Constant(''))();
@@ -94,8 +101,10 @@ class Suppliers extends Table {
   TextColumn get name => text()();
   TextColumn get phone => text().withDefault(const Constant(''))();
   TextColumn get notes => text().withDefault(const Constant(''))();
-  TextColumn get contact => text().withDefault(const Constant(''))(); // v2: اسم جهة الاتصال
-  TextColumn get city => text().withDefault(const Constant(''))(); // v2: المدينة / العنوان المختصر
+  TextColumn get contact =>
+      text().withDefault(const Constant(''))(); // v2: اسم جهة الاتصال
+  TextColumn get city =>
+      text().withDefault(const Constant(''))(); // v2: المدينة / العنوان المختصر
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -105,15 +114,19 @@ class BeneficiaryUnits extends Table {
   TextColumn get id => text()();
   TextColumn get code => text().withDefault(const Constant(''))();
   TextColumn get name => text()();
-  TextColumn get type => text().withDefault(const Constant('unit'))(); // camp | unit
+  TextColumn get type =>
+      text().withDefault(const Constant('unit'))(); // camp | unit
   TextColumn get parentId => text().withDefault(const Constant(''))();
   TextColumn get parentName => text().withDefault(const Constant(''))();
   BoolColumn get isCamp => boolean().withDefault(const Constant(false))();
   TextColumn get facilityId => text().withDefault(const Constant(''))();
+
   /// v6: الوحدة قد تشترك في مطبخ **وفرن معًا**، فصار الربط قائمة لا قيمة واحدة.
   /// `facilityId` يبقى للتوافق مع البيانات القديمة وملفات التصدير السابقة.
-  TextColumn get facilityIds => text().withDefault(const Constant('[]'))(); // JSON
-  TextColumn get category => text().withDefault(const Constant(''))(); // v2: الاختصاص (مشاة…)
+  TextColumn get facilityIds =>
+      text().withDefault(const Constant('[]'))(); // JSON
+  TextColumn get category =>
+      text().withDefault(const Constant(''))(); // v2: الاختصاص (مشاة…)
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -160,29 +173,35 @@ class Receipts extends Table with MovementColumns {
   TextColumn get supplier => text().withDefault(const Constant(''))();
   TextColumn get invoiceNo => text().withDefault(const Constant(''))();
   TextColumn get committee => text().withDefault(const Constant(''))();
-  TextColumn get supervision => text().withDefault(const Constant(''))(); // v2: المراجعة والتفتيش
-  TextColumn get audit => text().withDefault(const Constant(''))(); // v2: التدقيق
+  TextColumn get supervision =>
+      text().withDefault(const Constant(''))(); // v2: المراجعة والتفتيش
+  TextColumn get audit =>
+      text().withDefault(const Constant(''))(); // v2: التدقيق
   // v12: تاريخ انتهاء صلاحية دفعة هذا السطر (yyyy-MM-dd)، فارغ للأصناف بلا صلاحية.
   TextColumn get expiryDate => text().withDefault(const Constant(''))();
-  TextColumn get cylinderAction => text().withDefault(const Constant(''))(); // v2: RECEIVE_FULL | RECEIVE_EMPTY | REFILL
+  TextColumn get cylinderAction => text().withDefault(
+      const Constant(''))(); // v2: RECEIVE_FULL | RECEIVE_EMPTY | REFILL
   @override
   Set<Column> get primaryKey => {id};
 }
 
 class Issues extends Table with MovementColumns {
-  IntColumn get targetType => integer().withDefault(const Constant(0))(); // 0 وحدة 1 منشأة 2 مخصص 3 متعدد
+  IntColumn get targetType => integer()
+      .withDefault(const Constant(0))(); // 0 وحدة 1 منشأة 2 مخصص 3 متعدد
   TextColumn get recipientDisplay => text().withDefault(const Constant(''))();
   TextColumn get unitId => text().withDefault(const Constant(''))();
   TextColumn get facilityId => text().withDefault(const Constant(''))();
   TextColumn get beneficiaryUnitId => text().withDefault(const Constant(''))();
-  TextColumn get beneficiaryUnitName => text().withDefault(const Constant(''))();
+  TextColumn get beneficiaryUnitName =>
+      text().withDefault(const Constant(''))();
   RealColumn get soldierCount => real().withDefault(const Constant(0))();
   IntColumn get durationDays => integer().withDefault(const Constant(1))();
   // v2: اعتماد/رفض أوامر الصرف كما في الويب
   TextColumn get approvedBy => text().withDefault(const Constant(''))();
   TextColumn get rejectReason => text().withDefault(const Constant(''))();
   TextColumn get rejectedBy => text().withDefault(const Constant(''))();
-  TextColumn get cylinderAction => text().withDefault(const Constant(''))(); // v2: EXCHANGE | ISSUE_FULL | ISSUE_EMPTY | CONSUME
+  TextColumn get cylinderAction => text().withDefault(const Constant(
+      ''))(); // v2: EXCHANGE | ISSUE_FULL | ISSUE_EMPTY | CONSUME
   RealColumn get officerCount => real().withDefault(const Constant(0))(); // v2
   @override
   Set<Column> get primaryKey => {id};
@@ -210,8 +229,10 @@ class Returns extends Table with MovementColumns {
   /// كلما اختلف الإملاء أو أُعيدت تسمية الوحدة — فيبدو المعسكر مستلمًا ما
   /// ردّه، ويُحرم من استحقاقه في الشهر التالي.
   TextColumn get beneficiaryUnitId => text().withDefault(const Constant(''))();
-  TextColumn get beneficiaryUnitName => text().withDefault(const Constant(''))();
-  TextColumn get type => text().withDefault(const Constant('FROM_UNIT'))(); // FROM_UNIT | TO_SUPPLIER
+  TextColumn get beneficiaryUnitName =>
+      text().withDefault(const Constant(''))();
+  TextColumn get type => text()
+      .withDefault(const Constant('FROM_UNIT'))(); // FROM_UNIT | TO_SUPPLIER
   TextColumn get condition => text().withDefault(const Constant('صالحة'))();
   TextColumn get origRef => text().withDefault(const Constant(''))();
   // v13: حالة الأسطوانات المرتجعة: RETURN_FULL | RETURN_EMPTY (فارغ لغيرها).
@@ -246,7 +267,8 @@ class Strengths extends Table {
   RealColumn get officerCount => real().withDefault(const Constant(0))();
   RealColumn get total => real().withDefault(const Constant(0))();
   RealColumn get pct => real().withDefault(const Constant(0))();
-  TextColumn get mode => text().withDefault(const Constant('detail'))(); // camp | detail
+  TextColumn get mode =>
+      text().withDefault(const Constant('detail'))(); // camp | detail
   TextColumn get createdBy => text().withDefault(const Constant(''))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   @override
@@ -277,10 +299,12 @@ class KitchenLogs extends Table {
 class Entitlements extends Table {
   TextColumn get itemId => text()();
   TextColumn get itemName => text().withDefault(const Constant(''))();
-  RealColumn get qtyPerPerson => real().withDefault(const Constant(0))(); // للشهر
+  RealColumn get qtyPerPerson =>
+      real().withDefault(const Constant(0))(); // للشهر
   TextColumn get measureUnitName => text().withDefault(const Constant(''))();
   RealColumn get measureFactor => real().withDefault(const Constant(1))();
-  TextColumn get notes => text().withDefault(const Constant(''))(); // v3: ملاحظة أو شرط المقرر
+  TextColumn get notes =>
+      text().withDefault(const Constant(''))(); // v3: ملاحظة أو شرط المقرر
   DateTimeColumn get updatedAt => dateTime().nullable()();
   @override
   Set<Column> get primaryKey => {itemId};
@@ -334,7 +358,8 @@ class StocktakeLines extends Table {
   TextColumn get unitName => text().withDefault(const Constant(''))();
   RealColumn get systemQty => real().withDefault(const Constant(0))();
   RealColumn get countedQty => real().nullable()();
-  TextColumn get counts => text().withDefault(const Constant('{}'))(); // JSON بالوحدات
+  TextColumn get counts =>
+      text().withDefault(const Constant('{}'))(); // JSON بالوحدات
   RealColumn get variance => real().nullable()();
   TextColumn get reason => text().withDefault(const Constant(''))();
   TextColumn get decision => text().withDefault(const Constant('ADJUST'))();
@@ -398,7 +423,8 @@ class Assets extends Table {
   TextColumn get facilityId => text().withDefault(const Constant(''))();
   TextColumn get facilityName => text().withDefault(const Constant(''))();
   TextColumn get beneficiaryUnitId => text().withDefault(const Constant(''))();
-  TextColumn get beneficiaryUnitName => text().withDefault(const Constant(''))();
+  TextColumn get beneficiaryUnitName =>
+      text().withDefault(const Constant(''))();
   TextColumn get warehouse => text().withDefault(const Constant(''))();
   TextColumn get status => text().withDefault(const Constant('NEW'))();
 
@@ -427,7 +453,8 @@ class AssetAssignments extends Table {
   TextColumn get assetId => text()();
   TextColumn get assetName => text().withDefault(const Constant(''))();
   TextColumn get beneficiaryUnitId => text().withDefault(const Constant(''))();
-  TextColumn get beneficiaryUnitName => text().withDefault(const Constant(''))();
+  TextColumn get beneficiaryUnitName =>
+      text().withDefault(const Constant(''))();
   TextColumn get assignedDate => text().withDefault(const Constant(''))();
   TextColumn get returnedDate => text().withDefault(const Constant(''))();
   TextColumn get assignedTo => text().withDefault(const Constant(''))();
@@ -494,9 +521,34 @@ class FuelSettingsRows extends Table {
 
   /// النسبة التي يُنبَّه عند بلوغها من سعة الخزّان.
   RealColumn get lowStockPercent => real().withDefault(const Constant(20))();
-  RealColumn get defaultDailyLiters => real().withDefault(const Constant(200))();
-  RealColumn get defaultWeeklyLiters => real().withDefault(const Constant(1000))();
-  RealColumn get defaultMonthlyLiters => real().withDefault(const Constant(4000))();
+  RealColumn get defaultDailyLiters =>
+      real().withDefault(const Constant(200))();
+  RealColumn get defaultWeeklyLiters =>
+      real().withDefault(const Constant(1000))();
+  RealColumn get defaultMonthlyLiters =>
+      real().withDefault(const Constant(4000))();
+
+  /// v19: ترويسة البرقية الرسمية — أربعة أسطر فوق التقرير واسمٌ مختصر
+  /// للسندات. كانت مكتوبةً في الطباعة، فتغيير اسم القيادة يحتاج بناءً.
+  ///
+  /// وقيمها الابتدائية ترويسةُ الفرقة لا فراغ: ورقةٌ بلا رأسٍ لا تُرفع،
+  /// وأوّلُ من يفتح الشاشة يطبع قبل أن يمرّ على الإعدادات.
+  TextColumn get parentOrg =>
+      text().withDefault(const Constant('قيادة القوات المشتركة'))();
+  TextColumn get agencyTitle =>
+      text().withDefault(const Constant('هيئة إدارة القوات اليمنية'))();
+  TextColumn get commandTitle =>
+      text().withDefault(const Constant('قيادة الفرقة الأولى'))();
+  TextColumn get branchTitle =>
+      text().withDefault(const Constant('شعبة الإمداد والتموين'))();
+
+  /// اسم الجهة المختصر كما يظهر على السندات.
+  TextColumn get orgName =>
+      text().withDefault(const Constant('شعبة الإمداد والتموين'))();
+
+  /// شعار الترويسة — أسطرٌ داخل الدائرة تفصل بينها فاصلة.
+  TextColumn get sealLines =>
+      text().withDefault(const Constant('الفرقة،الأولى،طوارئ'))();
 
   /// تواقيع أوراق المحروقات.
   TextColumn get signOfficer => text().withDefault(const Constant(''))();
@@ -504,10 +556,12 @@ class FuelSettingsRows extends Table {
   TextColumn get signChief => text().withDefault(const Constant(''))();
 
   /// هل يُشترط رقم الشاصي في كل صرف؟
-  BoolColumn get requireChassis => boolean().withDefault(const Constant(false))();
+  BoolColumn get requireChassis =>
+      boolean().withDefault(const Constant(false))();
 
   /// هل يُسمح بالصرف الاستثنائي خارج التفريدة؟
-  BoolColumn get allowExceptional => boolean().withDefault(const Constant(true))();
+  BoolColumn get allowExceptional =>
+      boolean().withDefault(const Constant(true))();
   TextColumn get notes => text().withDefault(const Constant(''))();
   DateTimeColumn get updatedAt => dateTime().nullable()();
 
@@ -605,7 +659,8 @@ class FuelSupplies extends Table {
   RealColumn get quantityLiters => real().withDefault(const Constant(0))();
   TextColumn get supplierName => text().withDefault(const Constant(''))();
   TextColumn get warehouse => text().withDefault(const Constant(''))();
-  TextColumn get transportVehicleType => text().withDefault(const Constant(''))();
+  TextColumn get transportVehicleType =>
+      text().withDefault(const Constant(''))();
   TextColumn get driverName => text().withDefault(const Constant(''))();
   TextColumn get notes => text().withDefault(const Constant(''))();
   TextColumn get createdBy => text().withDefault(const Constant(''))();
@@ -639,7 +694,8 @@ class FuelTransfers extends Table {
   TextColumn get fromWarehouse => text().withDefault(const Constant(''))();
   TextColumn get toWarehouse => text().withDefault(const Constant(''))();
   TextColumn get driverName => text().withDefault(const Constant(''))();
-  TextColumn get transportVehicleType => text().withDefault(const Constant(''))();
+  TextColumn get transportVehicleType =>
+      text().withDefault(const Constant(''))();
   TextColumn get notes => text().withDefault(const Constant(''))();
   TextColumn get createdBy => text().withDefault(const Constant(''))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
@@ -717,7 +773,8 @@ class SupplyAuthorities extends Table {
 class RationOrders extends Table {
   TextColumn get id => text()();
   TextColumn get refNo => text().withDefault(const Constant(''))();
-  TextColumn get requestingWarehouse => text().withDefault(const Constant(''))();
+  TextColumn get requestingWarehouse =>
+      text().withDefault(const Constant(''))();
   TextColumn get supplyingWarehouse => text().withDefault(const Constant(''))();
   TextColumn get date => text().withDefault(const Constant(''))();
   TextColumn get requiredDate => text().withDefault(const Constant(''))();
@@ -1001,7 +1058,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 18;
+  int get schemaVersion => 19;
 
   /// الفهارس المخدومة فعليًا بالاستعلامات: البحث بالمرجع (فتح سند من سجل
   /// المستندات)، وبالحالة (الأوامر المعلقة والمسودات)، وبالمستودع والصنف
@@ -1010,7 +1067,13 @@ class AppDatabase extends _$AppDatabase {
   /// تُنشأ عند كل فتح بـ `IF NOT EXISTS` لا في ترقية بنسخة جديدة: العملية
   /// بلا تكلفة إذا كان الفهرس موجودًا، وتشمل قواعد البيانات القديمة كلها.
   Future<void> _createIndexes() async {
-    const movementTables = ['receipts', 'issues', 'transfers', 'returns', 'adjustments'];
+    const movementTables = [
+      'receipts',
+      'issues',
+      'transfers',
+      'returns',
+      'adjustments'
+    ];
     final statements = <String>[
       for (final t in movementTables) ...[
         'CREATE INDEX IF NOT EXISTS ix_${t}_ref ON $t (ref_no)',
@@ -1172,27 +1235,42 @@ class AppDatabase extends _$AppDatabase {
             await _addCol(m, receipts, receipts.audit);
             await _addCol(m, receipts, receipts.cylinderAction);
             for (final col in [
-              receipts.editedBy, receipts.cancelReason, receipts.cancelledBy, receipts.prevStatus,
+              receipts.editedBy,
+              receipts.cancelReason,
+              receipts.cancelledBy,
+              receipts.prevStatus,
             ]) {
               await _addCol(m, receipts, col);
             }
             for (final col in [
-              issues.editedBy, issues.cancelReason, issues.cancelledBy, issues.prevStatus,
+              issues.editedBy,
+              issues.cancelReason,
+              issues.cancelledBy,
+              issues.prevStatus,
             ]) {
               await _addCol(m, issues, col);
             }
             for (final col in [
-              transfers.editedBy, transfers.cancelReason, transfers.cancelledBy, transfers.prevStatus,
+              transfers.editedBy,
+              transfers.cancelReason,
+              transfers.cancelledBy,
+              transfers.prevStatus,
             ]) {
               await _addCol(m, transfers, col);
             }
             for (final col in [
-              returns.editedBy, returns.cancelReason, returns.cancelledBy, returns.prevStatus,
+              returns.editedBy,
+              returns.cancelReason,
+              returns.cancelledBy,
+              returns.prevStatus,
             ]) {
               await _addCol(m, returns, col);
             }
             for (final col in [
-              adjustments.editedBy, adjustments.cancelReason, adjustments.cancelledBy, adjustments.prevStatus,
+              adjustments.editedBy,
+              adjustments.cancelReason,
+              adjustments.cancelledBy,
+              adjustments.prevStatus,
             ]) {
               await _addCol(m, adjustments, col);
             }
@@ -1350,6 +1428,19 @@ class AppDatabase extends _$AppDatabase {
               'SELECT id, code, name, 1 FROM beneficiary_units '
               'WHERE id IN (SELECT unit_id FROM fuel_allocations)',
             );
+          }
+          // v19: ترويسة البرقية الرسمية في الإعدادات لا في الكود.
+          if (from < 19) {
+            for (final c in <GeneratedColumn>[
+              fuelSettingsRows.parentOrg,
+              fuelSettingsRows.agencyTitle,
+              fuelSettingsRows.commandTitle,
+              fuelSettingsRows.branchTitle,
+              fuelSettingsRows.orgName,
+              fuelSettingsRows.sealLines,
+            ]) {
+              await _addCol(m, fuelSettingsRows, c);
+            }
           }
           // v15: إصلاح ما خلّفه تنقّل القاعدة بين نسختين مختلفتي المخطط.
           //

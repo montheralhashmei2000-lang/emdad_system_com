@@ -11,7 +11,8 @@ import 'package:imdad/features/fuel/fuel_allocations_screen.dart';
 import 'package:imdad/features/fuel/fuel_consumption_screen.dart';
 import 'package:imdad/features/fuel/fuel_dashboard_screen.dart';
 import 'package:imdad/features/fuel/fuel_directories_screen.dart';
-import 'package:imdad/features/fuel/fuel_reports_screen.dart';
+import 'package:imdad/features/fuel/fuel_official_report_screen.dart';
+import 'package:imdad/features/fuel/fuel_vehicles_screen.dart';
 import 'package:imdad/features/fuel/fuel_settings_screen.dart';
 import 'package:imdad/features/fuel/fuel_moves_screen.dart';
 import 'package:imdad/features/fuel/fuel_stocktake_screen.dart';
@@ -105,7 +106,7 @@ void main() {
     'مستودعات المحروقات': () => const FuelWarehousesScreen(),
     'وحدات المحروقات': () => const FuelUnitsScreen(),
     'سجل المركبات': () => const FuelVehiclesScreen(),
-    'تقارير المحروقات': () => const FuelReportsScreen(),
+    'التقارير الرسمية': () => const FuelOfficialReportScreen(),
     'تقرير الاستهلاك': () => const FuelConsumptionScreen(),
     'إعدادات المحروقات': () => const FuelSettingsScreen(),
   };
@@ -168,23 +169,17 @@ void main() {
         reason: 'التبديل إلى محور المركبة لم يُغيّر التجميع');
   });
 
-  testWidgets('تقارير المحروقات تعرض الأرصدة والاستحقاق', (tester) async {
+  testWidgets('البرقية الرسمية تُبنى بترويستها وجداولها', (tester) async {
     await seed();
-    await show(tester, const FuelReportsScreen());
+    await show(tester, const FuelOfficialReportScreen());
     expect(tester.takeException(), isNull);
-    expect(find.textContaining('أرصدة المستودعات'), findsWidgets);
-
-    final plan = find.text('الاستحقاق مقابل الصرف').first;
-    await tester.ensureVisible(plan);
-    await tester.pumpAndSettle();
-    await tester.tap(plan, warnIfMissed: false);
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-    expect(find.text('المتبقي'), findsWidgets);
+    // الترويسة تأتي من الإعدادات لا من الكود.
+    expect(find.text('قيادة الفرقة الأولى'), findsWidgets);
+    expect(find.textContaining('الصادر من مادة البترول'), findsWidgets);
+    expect(find.textContaining('الصادر من مادة الديزل'), findsWidgets);
   });
 
-  testWidgets('شاشة الحركة تُظهر المتاح وتتنقّل بين تبويباتها',
-      (tester) async {
+  testWidgets('شاشة الحركة تُظهر المتاح وتتنقّل بين تبويباتها', (tester) async {
     await seed();
     await show(tester, const FuelMovesScreen());
     expect(find.textContaining('المتاح في'), findsWidgets,

@@ -109,6 +109,72 @@ void main() {
     });
   });
 
+  group('عكس سند التحويل', () {
+    Future<FuelTransfer> makeTransfer() async {
+      await supply(1000);
+      await repo.saveTransfer(
+        date: '2026-01-02',
+        fuelType: FuelType.diesel,
+        fromWarehouse: 'مستودع الوقود',
+        toWarehouse: 'الفرعي',
+        quantityLiters: 400,
+      );
+      return (await repo.transfers()).first;
+    }
+
+    test('العكس يعيد الرصيد ولا يمحو السند الأول', () async {
+      final t = await makeTransfer();
+      expect(await diesel(), 600);
+      expect(await diesel('الفرعي'), 400);
+
+      final res = await repo.reverseTransfer(t.id);
+      expect(res.ok, isTrue, reason: res.error);
+      expect(await diesel(), 1000);
+      expect(await diesel('الفرعي'), 0);
+      // **الورق لا يُمحى**: السندان معًا في السجل.
+      expect(await repo.transfers(), hasLength(2));
+    });
+
+    test('لا يُعكس سندٌ عُكس من قبل', () async {
+      final t = await makeTransfer();
+      expect((await repo.reverseTransfer(t.id)).ok, isTrue);
+      final again = await repo.reverseTransfer(t.id);
+      expect(again.ok, isFalse);
+      expect(again.error, contains('من قبل'));
+    });
+
+    test('سند العكس نفسه لا يُعكس', () async {
+      final t = await makeTransfer();
+      await repo.reverseTransfer(t.id);
+      final rev =
+          (await repo.transfers()).firstWhere((x) => FuelRepo.isReverse(x.notes));
+      final res = await repo.reverseTransfer(rev.id);
+      expect(res.ok, isFalse);
+      expect(res.error, contains('عكسٍ'));
+    });
+
+    test('العكس يمتنع إن لم يبقَ في الوجهة رصيدٌ كافٍ', () async {
+      final t = await makeTransfer();
+      // صُرف من الفرعي ثلاثمئة، فلم يبقَ ما يُعاد كاملًا.
+      await repo.saveIssue(
+        date: '2026-01-03',
+        fuelType: FuelType.diesel,
+        warehouse: 'الفرعي',
+        quantityLiters: 300,
+        source: FuelSource.exceptional,
+        justification: 'طوارئ',
+        orderAuthority: 'مكتب القائد',
+      );
+      final res = await repo.reverseTransfer(t.id);
+      expect(res.ok, isFalse, reason: 'لا يُعاد ما لم يعد موجودًا');
+    });
+
+    test('سندٌ غير موجود لا يُعكس', () async {
+      final res = await repo.reverseTransfer('لا-شيء');
+      expect(res.ok, isFalse);
+    });
+  });
+
   group('حدود الصرف', () {
     test('الصرف فوق رصيد المستودع يُمنع', () async {
       await supply(100);
@@ -277,8 +343,7 @@ void main() {
       final lines = await repo.stocktakeLines(id);
       final line = lines.firstWhere((l) => l.fuelType == FuelType.diesel);
       await repo.countLine(lineId: line.id, counted: 4800);
-      expect(await diesel(), 5000,
-          reason: 'عدٌّ لم يُراجع بعد غيّر الرصيد');
+      expect(await diesel(), 5000, reason: 'عدٌّ لم يُراجع بعد غيّر الرصيد');
     });
 
     test('الترحيل يُدخل الفرق في الرصيد', () async {
@@ -292,8 +357,8 @@ void main() {
         final res = await repo.advanceStocktake(id);
         expect(res.ok, isTrue, reason: res.error);
       }
-      expect((await repo.stocktakes()).single.status,
-          FuelStocktakeStatus.posted);
+      expect(
+          (await repo.stocktakes()).single.status, FuelStocktakeStatus.posted);
       expect(await diesel(), 4800, reason: 'العجز لم يدخل الرصيد بعد الترحيل');
     });
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/print/document_pdf.dart';
+import '../../core/ui/imd_charts.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_layout.dart';
@@ -11,6 +12,7 @@ import '../../data/db/app_database.dart';
 import '../../data/repos/fuel_repo.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../domain/fuel.dart';
+import 'fuel_print.dart';
 
 /// تقرير استهلاك المحروقات — من يشرب، وكم، وبأي نسبة.
 ///
@@ -29,6 +31,10 @@ class _FuelConsumptionScreenState extends State<FuelConsumptionScreen> {
 
   List<FuelConsumptionMove> _moves = const [];
   List<FuelWarehouse> _warehouses = const [];
+  List<FuelUnit> _units = const [];
+  List<FuelIssue> _issues = const [];
+  List<FuelAllocationRow> _allocations = const [];
+  String _unit = '';
 
   late String _from;
   String _to = '';
@@ -51,9 +57,14 @@ class _FuelConsumptionScreenState extends State<FuelConsumptionScreen> {
   Future<void> _load() async {
     final issues = await _repo.issues();
     final warehouses = await _repo.warehouses();
+    final units = await _repo.units();
+    final allocations = await _repo.allocations();
     if (!mounted) return;
     setState(() {
       _warehouses = warehouses;
+      _units = units;
+      _issues = issues;
+      _allocations = allocations;
       _moves = [
         for (final i in issues)
           FuelConsumptionMove(
@@ -70,13 +81,41 @@ class _FuelConsumptionScreenState extends State<FuelConsumptionScreen> {
     });
   }
 
-  List<FuelConsumptionMove> get _filtered => FuelConsumption.filter(
-        _moves,
-        from: _from,
-        to: _to,
-        warehouse: _warehouse,
-        fuelType: _fuelType,
-      );
+  List<FuelConsumptionMove> get _filtered {
+    final base = FuelConsumption.filter(
+      _moves,
+      from: _from,
+      to: _to,
+      warehouse: _warehouse,
+      fuelType: _fuelType,
+    );
+    if (_unit.isEmpty) return base;
+    return base.where((m) => m.beneficiary == _unit).toList();
+  }
+
+  /// السندات المطابقة للمرشّحات — لتُطبع فُرادى من الجدول.
+  List<FuelIssue> get _filteredIssues => _issues.where((i) {
+        if (_from.isNotEmpty && i.date.compareTo(_from) < 0) return false;
+        if (_to.isNotEmpty && i.date.compareTo(_to) > 0) return false;
+        if (_warehouse.isNotEmpty && i.warehouse != _warehouse) return false;
+        if (_fuelType.isNotEmpty && i.fuelType != _fuelType) return false;
+        if (_unit.isNotEmpty && i.beneficiaryName != _unit) return false;
+        return true;
+      }).toList();
+
+  /// «تفريدة تف-٠٠٠٠٣٣ — الدوريات» أو «أمر استثنائي»: الورقة تُقرأ بالسند
+  /// الذي صُرف عليه، لا باسم الجهة وحده.
+  String _party(FuelIssue i) {
+    if (i.source == FuelSource.exceptional) return 'أمر استثنائي';
+    final a = _allocations
+        .where((x) => x.allocation.id == i.allocationId)
+        .firstOrNull;
+    final unit = i.beneficiaryName.isEmpty
+        ? (_units.where((u) => u.id == i.beneficiaryUnitId).firstOrNull?.name ??
+            '—')
+        : i.beneficiaryName;
+    return a == null ? unit : 'تفريدة ${a.allocation.refNo} — $unit';
+  }
 
   Future<void> _print() async {
     final rows = FuelConsumption.group(_filtered, _groupBy);
@@ -147,8 +186,7 @@ class _FuelConsumptionScreenState extends State<FuelConsumptionScreen> {
             'أو المستودع أو النوع',
       ),
       ImdKpis(children: [
-        ImdKpi(
-            label: 'إجمالي المصروف', value: '${nf(total)} ${Fuel.unit}'),
+        ImdKpi(label: 'إجمالي المصروف', value: '${nf(total)} ${Fuel.unit}'),
         ImdKpi(
             label: 'بترول',
             value: nf(FuelConsumption.totalOf(moves, FuelType.petrol))),
@@ -186,6 +224,18 @@ class _FuelConsumptionScreenState extends State<FuelConsumptionScreen> {
               ],
               value: _warehouse,
               onChanged: (v) => setState(() => _warehouse = v ?? ''),
+            ),
+            size: 11,
+          ),
+          ImdLabeled(
+            'الوحدة',
+            ImdSelect<String>(
+              items: [
+                ('', 'كل الوحدات'),
+                for (final u in _units) (u.name, u.name),
+              ],
+              value: _unit,
+              onChanged: (v) => setState(() => _unit = v ?? ''),
             ),
             size: 11,
           ),
@@ -229,9 +279,79 @@ class _FuelConsumptionScreenState extends State<FuelConsumptionScreen> {
       ImdPanel(
         title: 'الاستهلاك حسب ${FuelGroupBy.label(_groupBy)}',
         icon: 'chart',
-        child: _table(rows, total),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (rows.isNotEmpty) ...[
+            _chart(rows),
+            const SizedBox(height: 16),
+          ],
+          _table(rows, total),
+        ]),
+      ),
+      ImdPanel(
+        title: 'حركات الصرف',
+        icon: 'list',
+        child: _moveTable(),
       ),
     ]);
+  }
+
+  /// أكبر ثمانية بنودٍ رسمًا: عشرون عمودًا متلاصقة لا تُقرأ، والجدول تحتها
+  /// يُتمّ البقية.
+  Widget _chart(List<FuelConsumptionRow> rows) {
+    final c = context.imd;
+    final top = rows.take(8).toList();
+    return ImdVBarChart(
+      labels: [for (final r in top) r.label],
+      height: 230,
+      series: [
+        ImdSeries('لتر', [for (final r in top) r.liters], c.accent),
+      ],
+    );
+  }
+
+  Widget _moveTable() {
+    final c = context.imd;
+    final rows = _filteredIssues;
+    return ImdTable(
+      empty: 'لا حركات صرف في هذا المدى',
+      minWidth: 900,
+      columns: const [
+        ImdCol('التاريخ'),
+        ImdCol('السند'),
+        ImdCol('المستودع'),
+        ImdCol('الصنف'),
+        ImdCol('الجهة'),
+        ImdCol('الكمية', numeric: true),
+        ImdCol('', center: true),
+      ],
+      rows: [
+        for (final i in rows)
+          [
+            Text(arDigits(i.date)),
+            Text(i.refNo, style: TextStyle(color: c.muted, fontSize: 12.5)),
+            Text(i.warehouse),
+            ImdChip(FuelType.label(i.fuelType),
+                tone: i.fuelType == FuelType.diesel
+                    ? ImdTone.code
+                    : ImdTone.info),
+            Text(_party(i)),
+            Text('${nf(i.quantityLiters)} ${Fuel.unit}',
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            ImdIconButton(
+              icon: 'printer',
+              tooltip: 'طباعة السند',
+              onPressed: () => FuelPrint.issueVoucher(
+                _db,
+                i,
+                allocation: _allocations
+                    .where((a) => a.allocation.id == i.allocationId)
+                    .firstOrNull,
+              ),
+            ),
+          ],
+      ],
+    );
   }
 
   Widget _table(List<FuelConsumptionRow> rows, double total) {

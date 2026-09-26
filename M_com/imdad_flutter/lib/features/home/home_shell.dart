@@ -21,7 +21,8 @@ import '../catalog/assets_screen.dart';
 import '../fuel/fuel_allocations_screen.dart';
 import '../fuel/fuel_consumption_screen.dart';
 import '../fuel/fuel_directories_screen.dart';
-import '../fuel/fuel_reports_screen.dart';
+import '../fuel/fuel_official_report_screen.dart';
+import '../fuel/fuel_vehicles_screen.dart';
 import '../fuel/fuel_settings_screen.dart';
 import '../fuel/fuel_dashboard_screen.dart';
 import '../fuel/fuel_moves_screen.dart';
@@ -134,7 +135,7 @@ const _menu = <_MenuSection>[
     _MenuItem('fuelVehicles', 'truck', 'سجل المركبات', space: AppSpace.fuel),
     _MenuItem('fuelOpening', 'compass', 'الرصيد الافتتاحي',
         space: AppSpace.fuel),
-    _MenuItem('fuelReports', 'chart', 'التقارير', space: AppSpace.fuel),
+    _MenuItem('fuelReports', 'chart', 'التقارير الرسمية', space: AppSpace.fuel),
     _MenuItem('fuelStocktake', 'clipboard', 'الجرد المخزني',
         space: AppSpace.fuel),
     _MenuItem('fuelConsumption', 'trending', 'تقرير الاستهلاك',
@@ -266,7 +267,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     'fuelOpening': 'fuelMoves',
   };
 
-  bool _hasPerm(AuthService auth, String page, [String action = PermAction.view]) {
+  bool _hasPerm(AuthService auth, String page,
+      [String action = PermAction.view]) {
     page = _permPage[page] ?? page;
     if (page == 'dailyOperations') {
       return _hasPerm(auth, 'mealPlans', action) ||
@@ -336,7 +338,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       case 'fuelVehicles':
         return const FuelVehiclesScreen();
       case 'fuelReports':
-        return const FuelReportsScreen();
+        return const FuelOfficialReportScreen();
       case 'fuelConsumption':
         return const FuelConsumptionScreen();
       case 'fuelSettings':
@@ -759,22 +761,21 @@ class _Sidebar extends StatelessWidget {
                               border: Border.all(color: c.sideBorder),
                               borderRadius: BorderRadius.circular(999),
                             ),
-                            child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  ImdIcon(
-                                      canSwitch
-                                          ? 'swap'
-                                          : (AppSpace.icons[space] ?? 'package'),
-                                      size: 12,
-                                      color: c.sideMuted),
-                                  const SizedBox(width: 6),
-                                  Text(canSwitch ? 'تبديل القسم' : 'قسم واحد',
-                                      style: TextStyle(
-                                          fontSize: 11.5,
-                                          fontWeight: FontWeight.w600,
-                                          color: c.sideMuted)),
-                                ]),
+                            child:
+                                Row(mainAxisSize: MainAxisSize.min, children: [
+                              ImdIcon(
+                                  canSwitch
+                                      ? 'swap'
+                                      : (AppSpace.icons[space] ?? 'package'),
+                                  size: 12,
+                                  color: c.sideMuted),
+                              const SizedBox(width: 6),
+                              Text(canSwitch ? 'تبديل القسم' : 'قسم واحد',
+                                  style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: c.sideMuted)),
+                            ]),
                           ),
                         ),
                       ),
@@ -793,10 +794,8 @@ class _Sidebar extends StatelessWidget {
                   // قسمٌ بقائمةٍ واحدة يُعرض مسطّحًا: رأسُ قسمٍ يُطوى على كل
                   // ما في الشاشة ليس تصنيفًا، بل نقرةٌ تُدفع قبل كل شيء.
                   if (_flat(space, hasPerm))
-                    for (final i in _menu
-                        .expand((x) => x.items)
-                        .where((i) =>
-                            AppSpace.shows(i.space, space) && hasPerm(i.id)))
+                    for (final i in _menu.expand((x) => x.items).where(
+                        (i) => AppSpace.shows(i.space, space) && hasPerm(i.id)))
                       _SideTile(
                         icon: i.icon,
                         label: i.name,
@@ -806,40 +805,40 @@ class _Sidebar extends StatelessWidget {
                         onTap: () => onGo(i.id),
                       )
                   else
-                  for (final s in _menu)
-                    if (s.items.any((i) =>
-                        AppSpace.shows(i.space, space) && hasPerm(i.id))) ...[
-                    _SideTile(
-                      icon: s.icon,
-                      label: s.name,
-                      kind: _SideKind.header,
-                      open: openSec == s.sec,
-                      onTap: () => onToggle(s.sec),
-                    ),
-                    AnimatedSize(
-                      duration: const Duration(milliseconds: 250),
-                      curve: Curves.ease,
-                      alignment: Alignment.topCenter,
-                      child: openSec == s.sec
-                          ? Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                for (final i
-                                    in s.items.where((i) =>
+                    for (final s in _menu)
+                      if (s.items.any((i) =>
+                          AppSpace.shows(i.space, space) && hasPerm(i.id))) ...[
+                        _SideTile(
+                          icon: s.icon,
+                          label: s.name,
+                          kind: _SideKind.header,
+                          open: openSec == s.sec,
+                          onTap: () => onToggle(s.sec),
+                        ),
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.ease,
+                          alignment: Alignment.topCenter,
+                          child: openSec == s.sec
+                              ? Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    for (final i in s.items.where((i) =>
                                         AppSpace.shows(i.space, space) &&
                                         hasPerm(i.id)))
-                                  _SideTile(
-                                    icon: i.icon,
-                                    label: i.name,
-                                    kind: _SideKind.item,
-                                    on: page == i.id,
-                                    onTap: () => onGo(i.id),
-                                  ),
-                              ],
-                            )
-                          : const SizedBox(width: double.infinity),
-                    ),
-                  ],
+                                      _SideTile(
+                                        icon: i.icon,
+                                        label: i.name,
+                                        kind: _SideKind.item,
+                                        on: page == i.id,
+                                        onTap: () => onGo(i.id),
+                                      ),
+                                  ],
+                                )
+                              : const SizedBox(width: double.infinity),
+                        ),
+                      ],
                   if (isAdmin) ...[
                     const SizedBox(height: 12),
                     _SideTile(
@@ -971,8 +970,12 @@ class _SideTileState extends State<_SideTile> {
         fw = FontWeight.w600;
         radius = 8;
       case _SideKind.item:
-        bg = widget.on ? c.sideActive : (_hover ? c.sideHover : Colors.transparent);
-        fg = (widget.on || _hover) ? Colors.white : c.sideText.withValues(alpha: .86);
+        bg = widget.on
+            ? c.sideActive
+            : (_hover ? c.sideHover : Colors.transparent);
+        fg = (widget.on || _hover)
+            ? Colors.white
+            : c.sideText.withValues(alpha: .86);
         iconColor = widget.on ? const Color(0xFF5EEAD4) : null;
         pad = const EdgeInsetsDirectional.fromSTEB(14, 11, 10, 11)
             .resolve(TextDirection.rtl);

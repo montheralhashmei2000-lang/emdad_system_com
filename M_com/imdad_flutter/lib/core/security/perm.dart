@@ -29,7 +29,7 @@ class Perm {
     'fuelUnits': 'وحدات المحروقات',
     'fuelSettings': 'إعدادات المحروقات',
     'fuelVehicles': 'سجل المركبات',
-    'fuelReports': 'تقارير المحروقات',
+    'fuelReports': 'التقارير الرسمية للمحروقات',
     'fuelConsumption': 'تقرير الاستهلاك',
     'fuelIssue': 'صرف المحروقات',
     'fuelSupply': 'توريد المحروقات',
@@ -78,7 +78,10 @@ class Perm {
 
   /// `pageManage(page)`
   bool manage(String page) =>
-      has(page, PermAction.create) || has(page, PermAction.edit) || has(page, PermAction.delete) || has(page, PermAction.approve);
+      has(page, PermAction.create) ||
+      has(page, PermAction.edit) ||
+      has(page, PermAction.delete) ||
+      has(page, PermAction.approve);
 
   /// `can() || pageManage(page)` — الشرط المتكرر لإظهار أزرار الإدارة.
   bool writable(String page) => admin || manage(page);
@@ -97,12 +100,15 @@ class Perm {
   }
 
   /// `blockMsg(wh)` في access-control.js
-  static String scopeBlock(String warehouse) => '✖ المستودع «$warehouse» خارج نطاق صلاحياتك — تواصل مع مدير النظام';
+  static String scopeBlock(String warehouse) =>
+      '✖ المستودع «$warehouse» خارج نطاق صلاحياتك — تواصل مع مدير النظام';
 
   /// `guardPerm(page, action)`
-  bool guard(BuildContext context, String page, [String action = PermAction.edit]) {
+  bool guard(BuildContext context, String page,
+      [String action = PermAction.edit]) {
     if (has(page, action)) return true;
-    showImdToast(context, '✖ لا تملك صلاحية: ${labels[page] ?? page} — $action');
+    showImdToast(
+        context, '✖ لا تملك صلاحية: ${labels[page] ?? page} — $action');
     return false;
   }
 }

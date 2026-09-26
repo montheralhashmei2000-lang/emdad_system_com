@@ -11,7 +11,11 @@ import 'imd_widgets.dart';
 
 /// `.itabs` — صف تبويبات أفقي قابل للتمرير بفجوة 6.
 class ImdItabs extends StatelessWidget {
-  const ImdItabs({super.key, required this.tabs, required this.value, required this.onChanged});
+  const ImdItabs(
+      {super.key,
+      required this.tabs,
+      required this.value,
+      required this.onChanged});
   final List<ImdTab<String>> tabs;
   final String value;
   final ValueChanged<String> onChanged;
@@ -23,7 +27,8 @@ class ImdItabs extends StatelessWidget {
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.only(bottom: 6),
-        child: ImdPillTabs<String>(tabs: tabs, value: value, onChanged: onChanged, wrap: false),
+        child: ImdPillTabs<String>(
+            tabs: tabs, value: value, onChanged: onChanged, wrap: false),
       ),
     );
   }
@@ -31,7 +36,8 @@ class ImdItabs extends StatelessWidget {
 
 /// `.icard` — حشوة 16 وهامش 14 وعنوان h4.
 class ImdICard extends StatelessWidget {
-  const ImdICard({super.key, this.title, required this.child, this.icon, this.titleColor});
+  const ImdICard(
+      {super.key, this.title, required this.child, this.icon, this.titleColor});
   final String? title;
   final String? icon;
   final Color? titleColor;
@@ -53,16 +59,22 @@ class ImdICard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (title != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Row(children: [
-              if (icon != null) ...[ImdIcon(icon!, size: 17, color: c.accent), const SizedBox(width: 6)],
-              Expanded(
-                child: Text(title!,
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: titleColor ?? c.text)),
-              ),
-            ]),
-          ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(children: [
+                if (icon != null) ...[
+                  ImdIcon(icon!, size: 17, color: c.accent),
+                  const SizedBox(width: 6)
+                ],
+                Expanded(
+                  child: Text(title!,
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: titleColor ?? c.text)),
+                ),
+              ]),
+            ),
           child,
         ],
       ),
@@ -72,7 +84,8 @@ class ImdICard extends StatelessWidget {
 
 /// `.f2` — عمودان بفجوة 12، وعمود واحد ≤600.
 class ImdF2 extends StatelessWidget {
-  const ImdF2({super.key, required this.children, this.cols = 2, this.gap = 12});
+  const ImdF2(
+      {super.key, required this.children, this.cols = 2, this.gap = 12});
   final List<Widget> children;
 
   /// 2 = `.f2`، 3 = `.f3`، 4 = `.f4`.
@@ -91,10 +104,15 @@ class ImdF2 extends StatelessWidget {
           ? slice.first
           : ImdEqualRow(gap: gap, children: [
               for (var j = 0; j < n; j++)
-                j < slice.length ? Align(alignment: Alignment.topCenter, child: slice[j]) : const SizedBox.shrink(),
+                j < slice.length
+                    ? Align(alignment: Alignment.topCenter, child: slice[j])
+                    : const SizedBox.shrink(),
             ]));
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: rows);
+    return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: rows);
   }
 }
 
@@ -139,6 +157,7 @@ class ImdFld extends StatelessWidget {
     this.onChanged,
     this.maxLines = 1,
     this.obscure = false,
+    this.suggestions = const [],
   });
   final TextEditingController controller;
   final String? hint;
@@ -152,23 +171,110 @@ class ImdFld extends StatelessWidget {
   /// حقل كلمة مرور — يُخفي النص المكتوب.
   final bool obscure;
 
+  /// قيمٌ تُقترح ولا تُلزم — كـ`<datalist>`: الحقل يبقى نصًّا حرًّا، والقائمة
+  /// تختصر الكتابة وتوحّد الإملاء («مكتب القائد» لا «مكتب قائد»).
+  final List<String> suggestions;
+
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
+    final field = TextField(
+      controller: controller,
+      readOnly: readOnly,
+      enabled: enabled,
+      obscureText: obscure,
+      onChanged: onChanged,
+      maxLines: maxLines,
+      keyboardType:
+          number ? const TextInputType.numberWithOptions(decimal: true) : null,
+      style: TextStyle(fontSize: 14, color: enabled ? c.text : c.muted),
+      decoration: imdFieldDecoration(context,
+          hint: hint, readOnly: readOnly || !enabled, dense: dense),
+    );
     return ConstrainedBox(
       constraints: BoxConstraints(minHeight: ImdSizes.touchMin),
-      child: TextField(
-        controller: controller,
-        readOnly: readOnly,
-        enabled: enabled,
-        obscureText: obscure,
-        onChanged: onChanged,
-        maxLines: maxLines,
-        keyboardType: number ? const TextInputType.numberWithOptions(decimal: true) : null,
-        style: TextStyle(fontSize: 14, color: enabled ? c.text : c.muted),
-        decoration: imdFieldDecoration(context, hint: hint, readOnly: readOnly || !enabled, dense: dense),
-      ),
+      child: suggestions.isEmpty || readOnly || !enabled
+          ? field
+          : _ImdSuggestions(
+              controller: controller,
+              items: suggestions,
+              onPick: onChanged,
+              child: field,
+            ),
     );
+  }
+}
+
+/// قائمة اقتراحاتٍ تحت الحقل، تُفتح بالضغط على السهم وتُغلق بالاختيار.
+///
+/// لا تُبنى على [Autocomplete]: ذاك يملك متحكّمه الخاص، وحقولُ النظام كلها
+/// تُدار بمتحكّمٍ خارجي يُقرأ عند الحفظ.
+class _ImdSuggestions extends StatefulWidget {
+  const _ImdSuggestions({
+    required this.controller,
+    required this.items,
+    required this.child,
+    this.onPick,
+  });
+
+  final TextEditingController controller;
+  final List<String> items;
+  final Widget child;
+  final ValueChanged<String>? onPick;
+
+  @override
+  State<_ImdSuggestions> createState() => _ImdSuggestionsState();
+}
+
+class _ImdSuggestionsState extends State<_ImdSuggestions> {
+  bool _open = false;
+
+  void _pick(String v) {
+    imdSetText(widget.controller, v);
+    widget.onPick?.call(v);
+    setState(() => _open = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.imd;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Expanded(child: widget.child),
+        const SizedBox(width: 6),
+        ImdIconButton(
+          icon: _open ? 'chevron-up' : 'chevron-down',
+          tooltip: 'اقتراحات',
+          onPressed: () => setState(() => _open = !_open),
+        ),
+      ]),
+      if (_open)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final v in widget.items)
+                InkWell(
+                  onTap: () => _pick(v),
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: c.subtle,
+                      border: Border.all(color: c.line),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child:
+                        Text(v, style: TextStyle(fontSize: 12, color: c.text2)),
+                  ),
+                ),
+            ],
+          ),
+        ),
+    ]);
   }
 }
 
@@ -206,7 +312,10 @@ class ImdLdText extends StatelessWidget {
   Widget build(BuildContext context) => ImdEmojiText(
         text,
         textAlign: center ? TextAlign.center : null,
-        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: context.imd.muted),
+        style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: context.imd.muted),
       );
 }
 
@@ -255,7 +364,10 @@ class ImdSearchBar extends StatelessWidget {
       );
     }
     return ImdRbar(fullFirst: true, children: [
-      Row(children: [Expanded(child: field), for (final l in leading) ...[const SizedBox(width: 6), l]]),
+      Row(children: [
+        Expanded(child: field),
+        for (final l in leading) ...[const SizedBox(width: 6), l]
+      ]),
       ...actions,
     ]);
   }
@@ -271,14 +383,21 @@ class ImdBullets extends StatelessWidget {
     final c = context.imd;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [for (final l in lines) Text('• $l', style: TextStyle(fontSize: 13, height: 2, color: c.text))],
+      children: [
+        for (final l in lines)
+          Text('• $l', style: TextStyle(fontSize: 13, height: 2, color: c.text))
+      ],
     );
   }
 }
 
 /// `input type=date` — قيمة YYYY-MM-DD مع منتقي التاريخ.
 class ImdDateField extends StatelessWidget {
-  const ImdDateField({super.key, required this.value, required this.onChanged, this.enabled = true});
+  const ImdDateField(
+      {super.key,
+      required this.value,
+      required this.onChanged,
+      this.enabled = true});
   final String value;
   final ValueChanged<String> onChanged;
   final bool enabled;
@@ -286,7 +405,8 @@ class ImdDateField extends StatelessWidget {
   static String _display(String v) {
     final d = DateTime.tryParse(v);
     if (d == null) return arDigits('يوم/شهر/سنة');
-    return arDigits('${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}');
+    return arDigits(
+        '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}');
   }
 
   @override
@@ -314,12 +434,14 @@ class ImdDateField extends StatelessWidget {
               padding: const EdgeInsetsDirectional.only(end: 10),
               child: ImdIcon('calendar', size: 16, color: c.muted),
             ),
-            suffixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+            suffixIconConstraints:
+                const BoxConstraints(minWidth: 0, minHeight: 0),
           ),
           // عرض حقل date في كروم بالعربية: يوم/شهر/سنة بأرقام هندية.
           child: Text(_display(value),
               textAlign: TextAlign.start,
-              style: TextStyle(fontSize: 14, color: value.isEmpty ? c.faint : c.text)),
+              style: TextStyle(
+                  fontSize: 14, color: value.isEmpty ? c.faint : c.text)),
         ),
       ),
     );
@@ -328,7 +450,8 @@ class ImdDateField extends StatelessWidget {
 
 /// `<input type="checkbox">` مع نصه — مربع 18px بحدود السمة ووزن نص 500.
 class ImdCheckbox extends StatelessWidget {
-  const ImdCheckbox({super.key, required this.value, required this.label, this.onChanged});
+  const ImdCheckbox(
+      {super.key, required this.value, required this.label, this.onChanged});
 
   final bool value;
   final String label;
@@ -351,15 +474,21 @@ class ImdCheckbox extends StatelessWidget {
               height: 18,
               decoration: BoxDecoration(
                 color: value ? c.accent : c.surface,
-                border: Border.all(color: value ? c.accent : c.line, width: 1.5),
+                border:
+                    Border.all(color: value ? c.accent : c.line, width: 1.5),
                 borderRadius: BorderRadius.circular(5),
               ),
-              child: value ? const ImdIcon('check', size: 13, color: Colors.white) : null,
+              child: value
+                  ? const ImdIcon('check', size: 13, color: Colors.white)
+                  : null,
             ),
             const SizedBox(width: 8),
             Flexible(
               child: ImdEmojiText(label,
-                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500, color: on ? c.text : c.muted)),
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w500,
+                      color: on ? c.text : c.muted)),
             ),
           ]),
         ),

@@ -40,7 +40,8 @@ class WebImporter {
       if (password.isEmpty) {
         throw const BackupError('هذه نسخة احتياطية مشفّرة — أدخل كلمة مرورها');
       }
-      return importJson(jsonDecode(BackupCrypto.open(bytes, password)) as Map<String, dynamic>);
+      return importJson(jsonDecode(BackupCrypto.open(bytes, password))
+          as Map<String, dynamic>);
     }
     return importJson(jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>);
   }
@@ -138,7 +139,8 @@ class WebImporter {
     for (final entry in _incoming.entries) {
       final incoming = entry.value;
       final local = _local[entry.key];
-      final winner = (local == null || incoming.stamp >= local.stamp) ? incoming : local;
+      final winner =
+          (local == null || incoming.stamp >= local.stamp) ? incoming : local;
       await marks.put(winner);
     }
   }
@@ -149,7 +151,9 @@ class WebImporter {
     final rows = _rows(raw);
     for (final s in rows) {
       if (!_accept('stocktakes', _id(s))) continue;
-      await db.into(db.stocktakes).insertOnConflictUpdate(StocktakesCompanion.insert(
+      await db
+          .into(db.stocktakes)
+          .insertOnConflictUpdate(StocktakesCompanion.insert(
             id: _id(s),
             orderNo: Value(_s(s, 'orderNo')),
             type: Value(_s(s, 'type', 'FULL')),
@@ -180,7 +184,9 @@ class WebImporter {
     final rows = _rows(raw);
     for (final l in rows) {
       if (!_accept('stocktake_lines', _id(l))) continue;
-      await db.into(db.stocktakeLines).insertOnConflictUpdate(StocktakeLinesCompanion.insert(
+      await db
+          .into(db.stocktakeLines)
+          .insertOnConflictUpdate(StocktakeLinesCompanion.insert(
             id: _id(l),
             sessionId: _s(l, 'sessionId'),
             itemId: _s(l, 'itemId'),
@@ -190,7 +196,8 @@ class WebImporter {
             systemQty: Value(_d(l, 'systemQty')),
             // الكمية المعدودة والفرق يبقيان فارغين ما لم يُعَدّ السطر فعلًا:
             // الصفر هنا يعني «عُدّ فوُجد صفرًا»، وهو غير «لم يُعَدّ بعد».
-            countedQty: Value(l['countedQty'] == null ? null : _d(l, 'countedQty')),
+            countedQty:
+                Value(l['countedQty'] == null ? null : _d(l, 'countedQty')),
             counts: Value(_json(l['counts'], '{}')),
             variance: Value(l['variance'] == null ? null : _d(l, 'variance')),
             reason: Value(_s(l, 'reason')),
@@ -206,12 +213,15 @@ class WebImporter {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('sensitive_reviews', _id(r))) continue;
-      await db.into(db.sensitiveReviews).insertOnConflictUpdate(SensitiveReviewsCompanion.insert(
+      await db
+          .into(db.sensitiveReviews)
+          .insertOnConflictUpdate(SensitiveReviewsCompanion.insert(
             id: _id(r),
             logId: _s(r, 'logId'),
             reviewedBy: Value(_s(r, 'reviewedBy')),
             note: Value(_s(r, 'note')),
-            reviewedAt: Value(DateTime.tryParse(_s(r, 'reviewedAt')) ?? DateTime.now()),
+            reviewedAt:
+                Value(DateTime.tryParse(_s(r, 'reviewedAt')) ?? DateTime.now()),
           ));
     }
     if (rows.isNotEmpty) _count(res, 'مراجعات حساسة', rows.length);
@@ -223,7 +233,9 @@ class WebImporter {
     final rows = _rows(raw);
     for (final a in rows) {
       if (!_accept('audit_logs', _id(a))) continue;
-      await db.into(db.auditLogs).insertOnConflictUpdate(AuditLogsCompanion.insert(
+      await db
+          .into(db.auditLogs)
+          .insertOnConflictUpdate(AuditLogsCompanion.insert(
             id: _id(a),
             action: _s(a, 'action'),
             entityType: Value(_s(a, 'entityType')),
@@ -303,7 +315,9 @@ class WebImporter {
     final rows = _rows(raw);
     for (final o in rows) {
       if (!_accept('ration_orders', _id(o))) continue;
-      await db.into(db.rationOrders).insertOnConflictUpdate(RationOrdersCompanion.insert(
+      await db
+          .into(db.rationOrders)
+          .insertOnConflictUpdate(RationOrdersCompanion.insert(
             id: _id(o),
             refNo: Value(_s(o, 'refNo')),
             requestingWarehouse: Value(_s(o, 'requestingWarehouse')),
@@ -330,7 +344,8 @@ class WebImporter {
     if (rows.isNotEmpty) _count(res, 'طلبيات الإعاشة', rows.length);
   }
 
-  Future<void> _importSupplyAuthorities(Object? raw, WebImportResult res) async {
+  Future<void> _importSupplyAuthorities(
+      Object? raw, WebImportResult res) async {
     final rows = _rows(raw);
     for (final a in rows) {
       if (!_accept('supply_authorities', _id(a))) continue;
@@ -348,7 +363,8 @@ class WebImporter {
     if (rows.isNotEmpty) _count(res, 'جهات الإمداد', rows.length);
   }
 
-  Future<void> _importFuel(Map<String, dynamic> data, WebImportResult res) async {
+  Future<void> _importFuel(
+      Map<String, dynamic> data, WebImportResult res) async {
     for (final w in _rows(data['fuelWarehouses'])) {
       if (!_accept('fuel_warehouses', _id(w))) continue;
       await db
@@ -367,7 +383,9 @@ class WebImporter {
     }
     for (final u in _rows(data['fuelUnits'])) {
       if (!_accept('fuel_units', _id(u))) continue;
-      await db.into(db.fuelUnits).insertOnConflictUpdate(FuelUnitsCompanion.insert(
+      await db
+          .into(db.fuelUnits)
+          .insertOnConflictUpdate(FuelUnitsCompanion.insert(
             id: _id(u),
             code: Value(_s(u, 'code')),
             name: _s(u, 'name'),
@@ -388,6 +406,12 @@ class WebImporter {
             defaultDailyLiters: Value(_d(x, 'defaultDailyLiters', 200)),
             defaultWeeklyLiters: Value(_d(x, 'defaultWeeklyLiters', 1000)),
             defaultMonthlyLiters: Value(_d(x, 'defaultMonthlyLiters', 4000)),
+            parentOrg: Value(_s(x, 'parentOrg')),
+            agencyTitle: Value(_s(x, 'agencyTitle')),
+            commandTitle: Value(_s(x, 'commandTitle')),
+            branchTitle: Value(_s(x, 'branchTitle')),
+            orgName: Value(_s(x, 'orgName')),
+            sealLines: Value(_s(x, 'sealLines')),
             signOfficer: Value(_s(x, 'signOfficer')),
             signSupply: Value(_s(x, 'signSupply')),
             signChief: Value(_s(x, 'signChief')),
@@ -423,7 +447,9 @@ class WebImporter {
     }
     for (final i in _rows(data['fuelIssues'])) {
       if (!_accept('fuel_issues', _id(i))) continue;
-      await db.into(db.fuelIssues).insertOnConflictUpdate(FuelIssuesCompanion.insert(
+      await db
+          .into(db.fuelIssues)
+          .insertOnConflictUpdate(FuelIssuesCompanion.insert(
             id: _id(i),
             refNo: Value(_s(i, 'refNo')),
             date: Value(_s(i, 'date')),
@@ -551,7 +577,8 @@ class WebImporter {
             minStock: Value(_d(l, 'minStock')),
             maxStock: Value(_d(l, 'maxStock')),
             notes: Value(_s(l, 'notes')),
-            updatedAt: Value(DateTime.tryParse(_s(l, 'updatedAt')) ?? DateTime.now()),
+            updatedAt:
+                Value(DateTime.tryParse(_s(l, 'updatedAt')) ?? DateTime.now()),
           ));
     }
     if (rows.isNotEmpty) _count(res, 'حدود مخزون المستودعات', rows.length);
@@ -584,7 +611,9 @@ class WebImporter {
     final rows = _rows(raw);
     for (final p in rows) {
       if (!_accept('meal_plans', _id(p))) continue;
-      await db.into(db.mealPlans).insertOnConflictUpdate(MealPlansCompanion.insert(
+      await db
+          .into(db.mealPlans)
+          .insertOnConflictUpdate(MealPlansCompanion.insert(
             id: _id(p),
             name: _s(p, 'name'),
             planType: Value(_s(p, 'planType', 'WEEKLY')),
@@ -629,7 +658,9 @@ class WebImporter {
     final rows = _rows(raw);
     for (final l in rows) {
       if (!_accept('camp_ledgers', _id(l))) continue;
-      await db.into(db.campLedgers).insertOnConflictUpdate(CampLedgersCompanion.insert(
+      await db
+          .into(db.campLedgers)
+          .insertOnConflictUpdate(CampLedgersCompanion.insert(
             id: _id(l),
             campId: _s(l, 'campId'),
             campName: Value(_s(l, 'campName')),
@@ -691,7 +722,8 @@ class WebImporter {
             itemsCount: Value(_i(m, 'itemsCount')),
             totalCredit: Value(_d(m, 'totalCredit')),
             totalDebit: Value(_d(m, 'totalDebit')),
-            settledAt: Value(DateTime.tryParse(_s(m, 'settledAt')) ?? DateTime.now()),
+            settledAt:
+                Value(DateTime.tryParse(_s(m, 'settledAt')) ?? DateTime.now()),
           ));
     }
     if (rows.isNotEmpty) _count(res, 'تصفيات الشهور', rows.length);
@@ -718,7 +750,8 @@ class WebImporter {
     return def;
   }
 
-  int _i(Map<String, dynamic> m, String k, [int def = 0]) => _d(m, k, def.toDouble()).round();
+  int _i(Map<String, dynamic> m, String k, [int def = 0]) =>
+      _d(m, k, def.toDouble()).round();
 
   bool _b(Map<String, dynamic> m, String k, [bool def = false]) {
     final v = m[k];
@@ -742,7 +775,8 @@ class WebImporter {
   DateTime _created(Map<String, dynamic> m) {
     final v = m['createdAt'];
     if (v is Map && v['seconds'] is num) {
-      return DateTime.fromMillisecondsSinceEpoch(((v['seconds'] as num) * 1000).round());
+      return DateTime.fromMillisecondsSinceEpoch(
+          ((v['seconds'] as num) * 1000).round());
     }
     if (v is num) return DateTime.fromMillisecondsSinceEpoch(v.round());
     if (v is String) return DateTime.tryParse(v) ?? DateTime.now();
@@ -793,8 +827,9 @@ class WebImporter {
     }
     _count(res, 'users', rows.length);
     if (passwordless > 0) {
-      res.warnings.add('$passwordless حسابًا وصل بلا كلمة مرور (تصدير قديم لا يحمل '
-          'الملح والبصمة) — يُعيّنها مدير النظام من شاشة المستخدمين.');
+      res.warnings
+          .add('$passwordless حسابًا وصل بلا كلمة مرور (تصدير قديم لا يحمل '
+              'الملح والبصمة) — يُعيّنها مدير النظام من شاشة المستخدمين.');
     }
   }
 
@@ -802,7 +837,9 @@ class WebImporter {
     final rows = _rows(raw);
     for (final c in rows) {
       if (!_accept('categories', _id(c))) continue;
-      await db.into(db.categories).insertOnConflictUpdate(CategoriesCompanion.insert(
+      await db
+          .into(db.categories)
+          .insertOnConflictUpdate(CategoriesCompanion.insert(
             id: _id(c),
             name: _s(c, 'name'),
             description: Value(_s(c, 'description')),
@@ -839,7 +876,9 @@ class WebImporter {
     final rows = _rows(raw);
     for (final w in rows) {
       if (!_accept('warehouses', _id(w))) continue;
-      await db.into(db.warehouses).insertOnConflictUpdate(WarehousesCompanion.insert(
+      await db
+          .into(db.warehouses)
+          .insertOnConflictUpdate(WarehousesCompanion.insert(
             id: _id(w),
             name: _s(w, 'name'),
             code: Value(_s(w, 'code')),
@@ -859,7 +898,9 @@ class WebImporter {
     final rows = _rows(raw);
     for (final s in rows) {
       if (!_accept('suppliers', _id(s))) continue;
-      await db.into(db.suppliers).insertOnConflictUpdate(SuppliersCompanion.insert(
+      await db
+          .into(db.suppliers)
+          .insertOnConflictUpdate(SuppliersCompanion.insert(
             id: _id(s),
             name: _s(s, 'name'),
             phone: Value(_s(s, 'phone')),
@@ -875,7 +916,9 @@ class WebImporter {
     final rows = _rows(raw);
     for (final u in rows) {
       if (!_accept('beneficiary_units', _id(u))) continue;
-      await db.into(db.beneficiaryUnits).insertOnConflictUpdate(BeneficiaryUnitsCompanion.insert(
+      await db
+          .into(db.beneficiaryUnits)
+          .insertOnConflictUpdate(BeneficiaryUnitsCompanion.insert(
             id: _id(u),
             name: _s(u, 'name'),
             code: Value(_s(u, 'code')),
@@ -885,9 +928,11 @@ class WebImporter {
             isCamp: Value(_b(u, 'isCamp') || _s(u, 'type') == 'camp'),
             facilityId: Value(_s(u, 'facilityId')),
             // القائمة الجديدة، ومع البيانات القديمة يُشتق منها الارتباط المفرد.
-            facilityIds: Value(_json(u['facilityIds'], _s(u, 'facilityId').isEmpty
-                ? '[]'
-                : '["${_s(u, 'facilityId')}"]')),
+            facilityIds: Value(_json(
+                u['facilityIds'],
+                _s(u, 'facilityId').isEmpty
+                    ? '[]'
+                    : '["${_s(u, 'facilityId')}"]')),
             category: Value(_s(u, 'category')),
           ));
     }
@@ -898,7 +943,9 @@ class WebImporter {
     final rows = _rows(raw);
     for (final f in rows) {
       if (!_accept('facilities', _id(f))) continue;
-      await db.into(db.facilities).insertOnConflictUpdate(FacilitiesCompanion.insert(
+      await db
+          .into(db.facilities)
+          .insertOnConflictUpdate(FacilitiesCompanion.insert(
             id: _id(f),
             name: _s(f, 'name'),
             fType: Value(_s(f, 'fType', 'KITCHEN')),
@@ -914,7 +961,9 @@ class WebImporter {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('receipts', _id(r))) continue;
-      await db.into(db.receipts).insertOnConflictUpdate(ReceiptsCompanion.insert(
+      await db
+          .into(db.receipts)
+          .insertOnConflictUpdate(ReceiptsCompanion.insert(
             id: _id(r),
             refNo: Value(_s(r, 'refNo')),
             date: Value(_s(r, 'date')),
@@ -996,7 +1045,9 @@ class WebImporter {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('transfers', _id(r))) continue;
-      await db.into(db.transfers).insertOnConflictUpdate(TransfersCompanion.insert(
+      await db
+          .into(db.transfers)
+          .insertOnConflictUpdate(TransfersCompanion.insert(
             id: _id(r),
             refNo: Value(_s(r, 'refNo')),
             date: Value(_s(r, 'date')),
@@ -1072,7 +1123,9 @@ class WebImporter {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('opening_balances', _id(r))) continue;
-      await db.into(db.openingBalances).insertOnConflictUpdate(OpeningBalancesCompanion.insert(
+      await db
+          .into(db.openingBalances)
+          .insertOnConflictUpdate(OpeningBalancesCompanion.insert(
             id: _id(r),
             itemId: _s(r, 'itemId'),
             itemCode: Value(_s(r, 'itemCode')),
@@ -1086,7 +1139,8 @@ class WebImporter {
     }
     _count(res, 'openingBalances', rows.length);
     if (rows.any((r) => _s(r, 'warehouse').isEmpty)) {
-      res.warnings.add('بعض الأرصدة الافتتاحية بلا مستودع — حدّد لها مستودعًا بعد الترحيل لتدخل في رصيده.');
+      res.warnings.add(
+          'بعض الأرصدة الافتتاحية بلا مستودع — حدّد لها مستودعًا بعد الترحيل لتدخل في رصيده.');
     }
   }
 
@@ -1096,7 +1150,9 @@ class WebImporter {
     final rows = _rows(raw);
     for (final a in rows) {
       if (!_accept('adjustments', _id(a))) continue;
-      await db.into(db.adjustments).insertOnConflictUpdate(AdjustmentsCompanion.insert(
+      await db
+          .into(db.adjustments)
+          .insertOnConflictUpdate(AdjustmentsCompanion.insert(
             id: _id(a),
             refNo: Value(_s(a, 'refNo')),
             date: Value(_s(a, 'date')),
@@ -1130,7 +1186,9 @@ class WebImporter {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('strengths', _id(r))) continue;
-      await db.into(db.strengths).insertOnConflictUpdate(StrengthsCompanion.insert(
+      await db
+          .into(db.strengths)
+          .insertOnConflictUpdate(StrengthsCompanion.insert(
             id: _id(r),
             unitId: _s(r, 'unitId'),
             unitName: Value(_s(r, 'unitName')),
@@ -1153,7 +1211,9 @@ class WebImporter {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('kitchen_logs', _id(r))) continue;
-      await db.into(db.kitchenLogs).insertOnConflictUpdate(KitchenLogsCompanion.insert(
+      await db
+          .into(db.kitchenLogs)
+          .insertOnConflictUpdate(KitchenLogsCompanion.insert(
             id: _id(r),
             facilityId: _s(r, 'facilityId'),
             facilityName: Value(_s(r, 'facilityName')),
@@ -1184,13 +1244,17 @@ class WebImporter {
       // وإلا فالمعامل المصدَّر مع المقرر (تصدير هذا التطبيق) حين لا يكون الصنف هنا بعد.
       var factor = _d(r, 'measureFactor', 1);
       if (factor <= 0) factor = 1;
-      final item = await (db.select(db.items)..where((t) => t.id.equals(itemId))).getSingleOrNull();
+      final item = await (db.select(db.items)
+            ..where((t) => t.id.equals(itemId)))
+          .getSingleOrNull();
       if (item != null) {
         try {
           final units = jsonDecode(item.units);
           if (units is List) {
             for (final u in units.whereType<Map>()) {
-              if (u['name']?.toString() == unitName && u['factor'] is num && (u['factor'] as num) > 0) {
+              if (u['name']?.toString() == unitName &&
+                  u['factor'] is num &&
+                  (u['factor'] as num) > 0) {
                 factor = (u['factor'] as num).toDouble();
               }
             }
@@ -1200,7 +1264,9 @@ class WebImporter {
       // `entMeasureQty`: السجلات القديمة (بدون qtyUnit='measure') محفوظة بالوحدة الأساسية فتُحوَّل.
       final q = _d(r, 'qtyPerPerson');
       final measureQty = _s(r, 'qtyUnit') == 'measure' ? q : q / factor;
-      await db.into(db.entitlements).insertOnConflictUpdate(EntitlementsCompanion.insert(
+      await db
+          .into(db.entitlements)
+          .insertOnConflictUpdate(EntitlementsCompanion.insert(
             itemId: itemId,
             itemName: Value(_s(r, 'itemName')),
             qtyPerPerson: Value((measureQty * 1000).round() / 1000),
@@ -1218,7 +1284,9 @@ class WebImporter {
     final map = raw.cast<String, dynamic>();
     for (final entry in map.entries) {
       if (!_accept('app_settings', entry.key)) continue;
-      await db.into(db.appSettings).insertOnConflictUpdate(AppSettingsCompanion.insert(
+      await db
+          .into(db.appSettings)
+          .insertOnConflictUpdate(AppSettingsCompanion.insert(
             key: entry.key,
             value: Value(_json(entry.value, '{}')),
             updatedAt: Value(DateTime.now()),

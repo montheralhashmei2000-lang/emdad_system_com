@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/ui/imd_form.dart';
+import '../../core/ui/imd_charts.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_layout.dart';
@@ -35,6 +36,8 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
   List<FuelStock> _stocks = const [];
   List<FuelAlert> _alerts = const [];
   List<FuelWarehouse> _warehouses = const [];
+  List<FuelIssue> _issues = const [];
+  List<FuelAllocationRow> _allocations = const [];
   double _issuedMonth = 0;
   double _suppliedMonth = 0;
   bool _loading = true;
@@ -51,6 +54,7 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
     final warehouses = await _repo.warehouses();
     final issues = await _repo.issues();
     final supplies = await _repo.supplies();
+    final allocations = await _repo.allocations();
     if (!mounted) return;
 
     final now = DateTime.now();
@@ -62,6 +66,8 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
       _stocks = stocks;
       _alerts = alerts;
       _warehouses = warehouses;
+      _issues = issues;
+      _allocations = allocations;
       _issuedMonth = sum(issues
           .where((i) => i.date.compareTo(from) >= 0)
           .map((i) => i.quantityLiters));
@@ -105,8 +111,7 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
             label: 'ديزل',
             value: '${nf(_total(FuelType.diesel))} ${Fuel.unit}'),
         ImdKpi(
-            label: 'صرف هذا الشهر',
-            value: '${nf(_issuedMonth)} ${Fuel.unit}'),
+            label: 'صرف هذا الشهر', value: '${nf(_issuedMonth)} ${Fuel.unit}'),
         ImdKpi(
             label: 'توريد هذا الشهر',
             value: '${nf(_suppliedMonth)} ${Fuel.unit}'),
@@ -118,8 +123,7 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
               : const ImdChip('يحتاج إجراء', tone: ImdTone.err),
         ),
       ]),
-      ImdPanel(
-          title: 'إشغال المستودعات', icon: 'package', child: _occupancy()),
+      ImdPanel(title: 'إشغال المستودعات', icon: 'package', child: _occupancy()),
       if (_alerts.isNotEmpty)
         ImdPanel(
           title: 'تنبيهات تشغيلية',
@@ -133,7 +137,8 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
       ImdPanel(
         title: 'أرصدة المستودعات',
         icon: 'chart',
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Wrap(spacing: 10, runSpacing: 10, children: [
@@ -150,10 +155,87 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
               ),
             ]),
           ),
+          _chart(),
+          const SizedBox(height: 16),
           _stockTable(),
         ]),
       ),
+      ImdPanel(
+        title: 'آخر حركات الصرف',
+        icon: 'upload',
+        child: _recent(),
+      ),
     ]);
+  }
+
+  /// أعمدةُ كل خزّان: بترولٌ وديزل جنبًا إلى جنب.
+  ///
+  /// الجدول تحته يقول الرقم، والرسم يقول **أين يختل التوازن** — خزّانٌ مليء
+  /// بالبترول فارغٌ من الديزل لا يُرى في عمودٍ من أرقام.
+  Widget _chart() {
+    final c = context.imd;
+    final names = [for (final w in _warehouses) w.name];
+    if (names.isEmpty) return const SizedBox.shrink();
+    double of(String w, String type) => _stocks
+        .where((s) => s.warehouse == w && s.fuelType == type)
+        .fold<double>(0, (sum, s) => sum + s.stock);
+    return ImdVBarChart(
+      labels: names,
+      height: 240,
+      series: [
+        ImdSeries('بترول', [for (final w in names) of(w, FuelType.petrol)],
+            c.success),
+        ImdSeries(
+            'ديزل', [for (final w in names) of(w, FuelType.diesel)], c.info),
+      ],
+    );
+  }
+
+  Widget _recent() {
+    final c = context.imd;
+    final rows = _issues.take(6).toList();
+    if (rows.isEmpty) {
+      return const ImdLdText('لا توجد حركات بعد.');
+    }
+    return ImdTable(
+      empty: 'لا توجد حركات بعد',
+      minWidth: 760,
+      columns: const [
+        ImdCol('السند'),
+        ImdCol('التاريخ'),
+        ImdCol('المستودع'),
+        ImdCol('الجهة المستفيدة'),
+        ImdCol('النوع'),
+        ImdCol('الكمية', numeric: true),
+        ImdCol('', center: true),
+      ],
+      rows: [
+        for (final i in rows)
+          [
+            Text(i.refNo, style: TextStyle(color: c.muted, fontSize: 12.5)),
+            Text(arDigits(i.date)),
+            Text(i.warehouse),
+            Text(i.beneficiaryName.isEmpty ? '—' : i.beneficiaryName),
+            ImdChip(FuelType.label(i.fuelType),
+                tone: i.fuelType == FuelType.diesel
+                    ? ImdTone.code
+                    : ImdTone.info),
+            Text('${nf(i.quantityLiters)} ${Fuel.unit}',
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            ImdIconButton(
+              icon: 'printer',
+              tooltip: 'طباعة السند',
+              onPressed: () => FuelPrint.issueVoucher(
+                _db,
+                i,
+                allocation: _allocations
+                    .where((a) => a.allocation.id == i.allocationId)
+                    .firstOrNull,
+              ),
+            ),
+          ],
+      ],
+    );
   }
 
   /// شريط لكل خزّان: النسبة تُري ما لا يُريه الرقم — خزّانان برصيدٍ واحد
@@ -186,30 +268,78 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
         minItem: 230,
         children: [
           for (final s in const [
-            ('fuelIssue', 'upload', 'الصرف',
-                'سند صرف حسب التفريدة أو أمر استثنائي'),
-            ('fuelSupply', 'download', 'التوريد',
-                'تسجيل الكميات الواردة للمستودعات'),
-            ('fuelAllocations', 'clipboard', 'تفريدة المحروقات',
-                'خطة الاستحقاق الأسبوعي والشهري لجميع الوحدات'),
-            ('fuelUnits', 'building', 'الوحدات المستفيدة',
-                'سجل الجهات المستفيدة من الصرف'),
-            ('fuelWarehouses', 'warehouse', 'المستودعات',
-                'السعة والأرصدة الحالية'),
-            ('fuelTransfer', 'swap', 'التحويل المخزني',
-                'نقل الرصيد بين المستودعات'),
-            ('fuelVehicles', 'truck', 'سجل المركبات',
-                'حركات الصرف حسب رقم الشاصي'),
-            ('fuelOpening', 'compass', 'الرصيد الافتتاحي',
-                'أرصدة بداية الفترة'),
-            ('fuelReports', 'chart', 'التقارير',
-                'الأرصدة والاستحقاق مقابل الصرف'),
-            ('fuelStocktake', 'clipboard', 'الجرد المخزني',
-                'أمر الجرد والعد الفعلي والتسوية'),
-            ('fuelConsumption', 'trending', 'تقرير الاستهلاك',
-                'حركات الصرف حسب الفترة'),
-            ('fuelSettings', 'settings', 'الإعدادات',
-                'الحدود والتواقيع وقواعد الصرف'),
+            (
+              'fuelIssue',
+              'upload',
+              'الصرف',
+              'سند صرف حسب التفريدة أو أمر استثنائي'
+            ),
+            (
+              'fuelSupply',
+              'download',
+              'التوريد',
+              'تسجيل الكميات الواردة للمستودعات'
+            ),
+            (
+              'fuelAllocations',
+              'clipboard',
+              'تفريدة المحروقات',
+              'خطة الاستحقاق الأسبوعي والشهري لجميع الوحدات'
+            ),
+            (
+              'fuelUnits',
+              'building',
+              'الوحدات المستفيدة',
+              'سجل الجهات المستفيدة من الصرف'
+            ),
+            (
+              'fuelWarehouses',
+              'warehouse',
+              'المستودعات',
+              'السعة والأرصدة الحالية'
+            ),
+            (
+              'fuelTransfer',
+              'swap',
+              'التحويل المخزني',
+              'نقل الرصيد بين المستودعات'
+            ),
+            (
+              'fuelVehicles',
+              'truck',
+              'سجل المركبات',
+              'حركات الصرف حسب رقم الشاصي'
+            ),
+            (
+              'fuelOpening',
+              'compass',
+              'الرصيد الافتتاحي',
+              'أرصدة بداية الفترة'
+            ),
+            (
+              'fuelReports',
+              'chart',
+              'التقارير',
+              'الأرصدة والاستحقاق مقابل الصرف'
+            ),
+            (
+              'fuelStocktake',
+              'clipboard',
+              'الجرد المخزني',
+              'أمر الجرد والعد الفعلي والتسوية'
+            ),
+            (
+              'fuelConsumption',
+              'trending',
+              'تقرير الاستهلاك',
+              'حركات الصرف حسب الفترة'
+            ),
+            (
+              'fuelSettings',
+              'settings',
+              'الإعدادات',
+              'الحدود والتواقيع وقواعد الصرف'
+            ),
           ])
             _ShortcutCard(
               icon: s.$2,

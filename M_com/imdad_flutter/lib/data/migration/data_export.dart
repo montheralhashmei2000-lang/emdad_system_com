@@ -23,7 +23,8 @@ class DataExporter {
   /// والدمج في الطرف الآخر إضافيّ لا استبداليّ ([WebImporter]): ما غاب عن
   /// الحمولة يبقى كما هو، والحذف ينتقل بشاهده في `syncMarks` لا بغياب السجل.
   /// فالحمولة الجزئية آمنة تمامًا — ولولا ذلك لاستحال هذا كله.
-  Future<Map<String, dynamic>> toMap({bool includeUsers = false, int? since}) async {
+  Future<Map<String, dynamic>> toMap(
+      {bool includeUsers = false, int? since}) async {
     final marks = SyncMarks(db);
     // **الترتيب هنا ليس اعتباطًا.** علامة الماء تُقرأ **قبل** مسح التغييرات:
     // سجلٌ يُكتب بين القراءتين ختمُه أكبر من العلامة المُعلنة، فيُلتقط في
@@ -35,7 +36,10 @@ class DataExporter {
     /// معرّفات ما تغيّر في جدول واحد. `null` ⇒ تصدير كامل بلا ترشيح.
     Set<String>? ids(String entity) {
       if (delta == null) return null;
-      return {for (final m in delta) if (m.entity == entity) m.rowId};
+      return {
+        for (final m in delta)
+          if (m.entity == entity) m.rowId
+      };
     }
 
     final receipts = await _rows(db.receipts, ids('receipts'), (t) => t.id);
@@ -72,7 +76,8 @@ class DataExporter {
                 })
             .toList(),
       'categories': (await _rows(db.categories, ids('categories'), (t) => t.id))
-          .map((c) => {'id': c.id, 'name': c.name, 'description': c.description})
+          .map(
+              (c) => {'id': c.id, 'name': c.name, 'description': c.description})
           .toList(),
       'items': (await _rows(db.items, ids('items'), (t) => t.id))
           .map((i) => {
@@ -105,9 +110,17 @@ class DataExporter {
               })
           .toList(),
       'suppliers': (await _rows(db.suppliers, ids('suppliers'), (t) => t.id))
-          .map((s) => {'id': s.id, 'name': s.name, 'contact': s.contact, 'phone': s.phone, 'city': s.city, 'notes': s.notes})
+          .map((s) => {
+                'id': s.id,
+                'name': s.name,
+                'contact': s.contact,
+                'phone': s.phone,
+                'city': s.city,
+                'notes': s.notes
+              })
           .toList(),
-      'units': (await _rows(db.beneficiaryUnits, ids('beneficiary_units'), (t) => t.id))
+      'units': (await _rows(
+              db.beneficiaryUnits, ids('beneficiary_units'), (t) => t.id))
           .map((u) => {
                 'id': u.id,
                 'code': u.code,
@@ -158,7 +171,8 @@ class DataExporter {
                 // توريد التعبئة لا يزيد عدد الأسطوانات: بدونه يُحسب في الجهاز الآخر توريدًا جديدًا.
                 'cylinderAction': r.cylinderAction,
                 'expiryDate': r.expiryDate,
-                ..._edits(r.editCount, r.editLog, r.editedBy, r.cancelReason, r.cancelledBy, r.prevStatus),
+                ..._edits(r.editCount, r.editLog, r.editedBy, r.cancelReason,
+                    r.cancelledBy, r.prevStatus),
               })
           .toList(),
       'issues': issues
@@ -193,7 +207,8 @@ class DataExporter {
                 'approvedBy': i.approvedBy,
                 'rejectReason': i.rejectReason,
                 'rejectedBy': i.rejectedBy,
-                ..._edits(i.editCount, i.editLog, i.editedBy, i.cancelReason, i.cancelledBy, i.prevStatus),
+                ..._edits(i.editCount, i.editLog, i.editedBy, i.cancelReason,
+                    i.cancelledBy, i.prevStatus),
               })
           .toList(),
       'transfers': transfers
@@ -222,7 +237,8 @@ class DataExporter {
                 'durationDays': t.durationDays,
                 'rejectReason': t.rejectReason,
                 'cylinderAction': t.cylinderAction,
-                ..._edits(t.editCount, t.editLog, t.editedBy, t.cancelReason, t.cancelledBy, t.prevStatus),
+                ..._edits(t.editCount, t.editLog, t.editedBy, t.cancelReason,
+                    t.cancelledBy, t.prevStatus),
               })
           .toList(),
       'returns': returns
@@ -251,10 +267,12 @@ class DataExporter {
                 'condition': r.condition,
                 'origRef': r.origRef,
                 'cylinderAction': r.cylinderAction,
-                ..._edits(r.editCount, r.editLog, r.editedBy, r.cancelReason, r.cancelledBy, r.prevStatus),
+                ..._edits(r.editCount, r.editLog, r.editedBy, r.cancelReason,
+                    r.cancelledBy, r.prevStatus),
               })
           .toList(),
-      'openingBalances': (await _rows(db.openingBalances, ids('opening_balances'), (t) => t.id))
+      'openingBalances': (await _rows(
+              db.openingBalances, ids('opening_balances'), (t) => t.id))
           .map((o) => {
                 'id': o.id,
                 'itemId': o.itemId,
@@ -266,29 +284,31 @@ class DataExporter {
                 'setBy': o.setBy,
               })
           .toList(),
-      'adjustments': (await _rows(db.adjustments, ids('adjustments'), (t) => t.id))
-          .map((a) => {
-                'id': a.id,
-                'refNo': a.refNo,
-                'date': a.date,
-                'warehouse': a.warehouse,
-                'itemId': a.itemId,
-                'itemCode': a.itemCode,
-                'itemName': a.itemName,
-                'unitName': a.unitName,
-                'factor': a.factor,
-                'qty': a.qty,
-                'baseQty': a.baseQty,
-                'status': a.status,
-                'notes': a.notes,
-                'createdBy': a.createdBy,
-                'createdAt': a.createdAt.toIso8601String(),
-                'sessionId': a.sessionId,
-                'reason': a.reason,
-                'approvedBy': a.approvedBy,
-                ..._edits(a.editCount, a.editLog, a.editedBy, a.cancelReason, a.cancelledBy, a.prevStatus),
-              })
-          .toList(),
+      'adjustments':
+          (await _rows(db.adjustments, ids('adjustments'), (t) => t.id))
+              .map((a) => {
+                    'id': a.id,
+                    'refNo': a.refNo,
+                    'date': a.date,
+                    'warehouse': a.warehouse,
+                    'itemId': a.itemId,
+                    'itemCode': a.itemCode,
+                    'itemName': a.itemName,
+                    'unitName': a.unitName,
+                    'factor': a.factor,
+                    'qty': a.qty,
+                    'baseQty': a.baseQty,
+                    'status': a.status,
+                    'notes': a.notes,
+                    'createdBy': a.createdBy,
+                    'createdAt': a.createdAt.toIso8601String(),
+                    'sessionId': a.sessionId,
+                    'reason': a.reason,
+                    'approvedBy': a.approvedBy,
+                    ..._edits(a.editCount, a.editLog, a.editedBy,
+                        a.cancelReason, a.cancelledBy, a.prevStatus),
+                  })
+              .toList(),
       'strengths': (await _rows(db.strengths, ids('strengths'), (t) => t.id))
           .map((s) => {
                 'id': s.id,
@@ -305,37 +325,39 @@ class DataExporter {
                 'createdBy': s.createdBy,
               })
           .toList(),
-      'kitchenLogs': (await _rows(db.kitchenLogs, ids('kitchen_logs'), (t) => t.id))
-          .map((l) => {
-                'id': l.id,
-                'facilityId': l.facilityId,
-                'facilityName': l.facilityName,
-                'date': l.date,
-                'mealType': l.mealType,
-                'strength': l.strength,
-                'itemId': l.itemId,
-                'itemName': l.itemName,
-                'unitName': l.unitName,
-                'qty': l.qty,
-                'baseQty': l.baseQty,
-                'expectedBase': l.expectedBase,
-                'varianceBase': l.varianceBase,
-                'notes': l.notes,
-              })
-          .toList(),
-      'entitlements': (await _rows(db.entitlements, ids('entitlements'), (t) => t.itemId))
-          .map((e) => {
-                'itemId': e.itemId,
-                'itemName': e.itemName,
-                'qtyPerPerson': e.qtyPerPerson,
-                'measureUnitName': e.measureUnitName,
-                'measureFactor': e.measureFactor,
-                // الكمية محفوظة بوحدة القياس المقررة. بدون هذا الوسم يعاملها المستورِد
-                // كتصدير ويب قديم بالوحدة الأساسية فيقسمها على المعامل في كل مزامنة.
-                'qtyUnit': 'measure',
-                'notes': e.notes,
-              })
-          .toList(),
+      'kitchenLogs':
+          (await _rows(db.kitchenLogs, ids('kitchen_logs'), (t) => t.id))
+              .map((l) => {
+                    'id': l.id,
+                    'facilityId': l.facilityId,
+                    'facilityName': l.facilityName,
+                    'date': l.date,
+                    'mealType': l.mealType,
+                    'strength': l.strength,
+                    'itemId': l.itemId,
+                    'itemName': l.itemName,
+                    'unitName': l.unitName,
+                    'qty': l.qty,
+                    'baseQty': l.baseQty,
+                    'expectedBase': l.expectedBase,
+                    'varianceBase': l.varianceBase,
+                    'notes': l.notes,
+                  })
+              .toList(),
+      'entitlements':
+          (await _rows(db.entitlements, ids('entitlements'), (t) => t.itemId))
+              .map((e) => {
+                    'itemId': e.itemId,
+                    'itemName': e.itemName,
+                    'qtyPerPerson': e.qtyPerPerson,
+                    'measureUnitName': e.measureUnitName,
+                    'measureFactor': e.measureFactor,
+                    // الكمية محفوظة بوحدة القياس المقررة. بدون هذا الوسم يعاملها المستورِد
+                    // كتصدير ويب قديم بالوحدة الأساسية فيقسمها على المعامل في كل مزامنة.
+                    'qtyUnit': 'measure',
+                    'notes': e.notes,
+                  })
+              .toList(),
       'stocktakes': (await _rows(db.stocktakes, ids('stocktakes'), (t) => t.id))
           .map((s) => {
                 'id': s.id,
@@ -361,25 +383,27 @@ class DataExporter {
                 'adjustedCount': s.adjustedCount,
               })
           .toList(),
-      'stocktakeLines': (await _rows(db.stocktakeLines, ids('stocktake_lines'), (t) => t.id))
-          .map((l) => {
-                'id': l.id,
-                'sessionId': l.sessionId,
-                'itemId': l.itemId,
-                'itemCode': l.itemCode,
-                'itemName': l.itemName,
-                'unitName': l.unitName,
-                'systemQty': l.systemQty,
-                'countedQty': l.countedQty,
-                'counts': l.counts,
-                'variance': l.variance,
-                'reason': l.reason,
-                'decision': l.decision,
-                'status': l.status,
-                'discovered': l.discovered,
-              })
-          .toList(),
-      'sensitiveReviews': (await _rows(db.sensitiveReviews, ids('sensitive_reviews'), (t) => t.id))
+      'stocktakeLines':
+          (await _rows(db.stocktakeLines, ids('stocktake_lines'), (t) => t.id))
+              .map((l) => {
+                    'id': l.id,
+                    'sessionId': l.sessionId,
+                    'itemId': l.itemId,
+                    'itemCode': l.itemCode,
+                    'itemName': l.itemName,
+                    'unitName': l.unitName,
+                    'systemQty': l.systemQty,
+                    'countedQty': l.countedQty,
+                    'counts': l.counts,
+                    'variance': l.variance,
+                    'reason': l.reason,
+                    'decision': l.decision,
+                    'status': l.status,
+                    'discovered': l.discovered,
+                  })
+              .toList(),
+      'sensitiveReviews': (await _rows(
+              db.sensitiveReviews, ids('sensitive_reviews'), (t) => t.id))
           .map((r) => {
                 'id': r.id,
                 'logId': r.logId,
@@ -433,47 +457,48 @@ class DataExporter {
                 'createdAt': a.createdAt.toIso8601String(),
               })
           .toList(),
-      'assetAssignments':
-          (await _rows(db.assetAssignments, ids('asset_assignments'), (t) => t.id))
-              .map((g) => {
-                    'id': g.id,
-                    'assetId': g.assetId,
-                    'assetName': g.assetName,
-                    'beneficiaryUnitId': g.beneficiaryUnitId,
-                    'beneficiaryUnitName': g.beneficiaryUnitName,
-                    'assignedDate': g.assignedDate,
-                    'returnedDate': g.returnedDate,
-                    'assignedTo': g.assignedTo,
-                    'notes': g.notes,
-                    'createdBy': g.createdBy,
-                    'createdAt': g.createdAt.toIso8601String(),
-                  })
-              .toList(),
-      'rationOrders': (await _rows(db.rationOrders, ids('ration_orders'), (t) => t.id))
-          .map((o) => {
-                'id': o.id,
-                'refNo': o.refNo,
-                'requestingWarehouse': o.requestingWarehouse,
-                'supplyingWarehouse': o.supplyingWarehouse,
-                'date': o.date,
-                'requiredDate': o.requiredDate,
-                'status': o.status,
-                'priority': o.priority,
-                'notes': o.notes,
-                'rejectReason': o.rejectReason,
-                'createdBy': o.createdBy,
-                'approvedBy': o.approvedBy,
-                'receivedBy': o.receivedBy,
-                'receiptRef': o.receiptRef,
-                'orderKind': o.orderKind,
-                'authorityId': o.authorityId,
-                'authorityName': o.authorityName,
-                'fulfillRef': o.fulfillRef,
-                'fulfillKind': o.fulfillKind,
-                'fulfillDate': o.fulfillDate,
-                'createdAt': o.createdAt.toIso8601String(),
+      'assetAssignments': (await _rows(
+              db.assetAssignments, ids('asset_assignments'), (t) => t.id))
+          .map((g) => {
+                'id': g.id,
+                'assetId': g.assetId,
+                'assetName': g.assetName,
+                'beneficiaryUnitId': g.beneficiaryUnitId,
+                'beneficiaryUnitName': g.beneficiaryUnitName,
+                'assignedDate': g.assignedDate,
+                'returnedDate': g.returnedDate,
+                'assignedTo': g.assignedTo,
+                'notes': g.notes,
+                'createdBy': g.createdBy,
+                'createdAt': g.createdAt.toIso8601String(),
               })
           .toList(),
+      'rationOrders':
+          (await _rows(db.rationOrders, ids('ration_orders'), (t) => t.id))
+              .map((o) => {
+                    'id': o.id,
+                    'refNo': o.refNo,
+                    'requestingWarehouse': o.requestingWarehouse,
+                    'supplyingWarehouse': o.supplyingWarehouse,
+                    'date': o.date,
+                    'requiredDate': o.requiredDate,
+                    'status': o.status,
+                    'priority': o.priority,
+                    'notes': o.notes,
+                    'rejectReason': o.rejectReason,
+                    'createdBy': o.createdBy,
+                    'approvedBy': o.approvedBy,
+                    'receivedBy': o.receivedBy,
+                    'receiptRef': o.receiptRef,
+                    'orderKind': o.orderKind,
+                    'authorityId': o.authorityId,
+                    'authorityName': o.authorityName,
+                    'fulfillRef': o.fulfillRef,
+                    'fulfillKind': o.fulfillKind,
+                    'fulfillDate': o.fulfillDate,
+                    'createdAt': o.createdAt.toIso8601String(),
+                  })
+              .toList(),
       'fuelWarehouses':
           (await _rows(db.fuelWarehouses, ids('fuel_warehouses'), (t) => t.id))
               .map((w) => {
@@ -508,6 +533,12 @@ class DataExporter {
                 'defaultDailyLiters': x.defaultDailyLiters,
                 'defaultWeeklyLiters': x.defaultWeeklyLiters,
                 'defaultMonthlyLiters': x.defaultMonthlyLiters,
+                'parentOrg': x.parentOrg,
+                'agencyTitle': x.agencyTitle,
+                'commandTitle': x.commandTitle,
+                'branchTitle': x.branchTitle,
+                'orgName': x.orgName,
+                'sealLines': x.sealLines,
                 'signOfficer': x.signOfficer,
                 'signSupply': x.signSupply,
                 'signChief': x.signChief,
@@ -516,56 +547,57 @@ class DataExporter {
                 'notes': x.notes,
               })
           .toList(),
-      'fuelAllocations':
-          (await _rows(db.fuelAllocations, ids('fuel_allocations'), (t) => t.id))
-              .map((a) => {
-                    'id': a.id,
-                    'refNo': a.refNo,
-                    'unitId': a.unitId,
-                    'unitName': a.unitName,
-                    'fuelType': a.fuelType,
-                    'periodType': a.periodType,
-                    'quantityPerPeriod': a.quantityPerPeriod,
-                    'totalQuantity': a.totalQuantity,
-                    'weeklyLiters': a.weeklyLiters,
-                    'monthlyLiters': a.monthlyLiters,
-                    'issueLocation': a.issueLocation,
-                    'startDate': a.startDate,
-                    'endDate': a.endDate,
-                    'active': a.active,
-                    'disbursable': a.disbursable,
-                    'notes': a.notes,
-                    'createdBy': a.createdBy,
-                    'createdAt': a.createdAt.toIso8601String(),
-                  })
-              .toList(),
-      'fuelIssues': (await _rows(db.fuelIssues, ids('fuel_issues'), (t) => t.id))
-          .map((i) => {
-                'id': i.id,
-                'refNo': i.refNo,
-                'date': i.date,
-                'fuelType': i.fuelType,
-                'warehouse': i.warehouse,
-                'source': i.source,
-                'quantityLiters': i.quantityLiters,
-                'driverName': i.driverName,
-                'vehicleType': i.vehicleType,
-                'chassisNo': i.chassisNo,
-                'allocationId': i.allocationId,
-                'beneficiaryUnitId': i.beneficiaryUnitId,
-                'beneficiaryName': i.beneficiaryName,
-                'entitledLiters': i.entitledLiters,
-                'periodType': i.periodType,
-                'customFrom': i.customFrom,
-                'customTo': i.customTo,
-                'justification': i.justification,
-                'orderAuthority': i.orderAuthority,
-                'purpose': i.purpose,
-                'notes': i.notes,
-                'createdBy': i.createdBy,
-                'createdAt': i.createdAt.toIso8601String(),
+      'fuelAllocations': (await _rows(
+              db.fuelAllocations, ids('fuel_allocations'), (t) => t.id))
+          .map((a) => {
+                'id': a.id,
+                'refNo': a.refNo,
+                'unitId': a.unitId,
+                'unitName': a.unitName,
+                'fuelType': a.fuelType,
+                'periodType': a.periodType,
+                'quantityPerPeriod': a.quantityPerPeriod,
+                'totalQuantity': a.totalQuantity,
+                'weeklyLiters': a.weeklyLiters,
+                'monthlyLiters': a.monthlyLiters,
+                'issueLocation': a.issueLocation,
+                'startDate': a.startDate,
+                'endDate': a.endDate,
+                'active': a.active,
+                'disbursable': a.disbursable,
+                'notes': a.notes,
+                'createdBy': a.createdBy,
+                'createdAt': a.createdAt.toIso8601String(),
               })
           .toList(),
+      'fuelIssues':
+          (await _rows(db.fuelIssues, ids('fuel_issues'), (t) => t.id))
+              .map((i) => {
+                    'id': i.id,
+                    'refNo': i.refNo,
+                    'date': i.date,
+                    'fuelType': i.fuelType,
+                    'warehouse': i.warehouse,
+                    'source': i.source,
+                    'quantityLiters': i.quantityLiters,
+                    'driverName': i.driverName,
+                    'vehicleType': i.vehicleType,
+                    'chassisNo': i.chassisNo,
+                    'allocationId': i.allocationId,
+                    'beneficiaryUnitId': i.beneficiaryUnitId,
+                    'beneficiaryName': i.beneficiaryName,
+                    'entitledLiters': i.entitledLiters,
+                    'periodType': i.periodType,
+                    'customFrom': i.customFrom,
+                    'customTo': i.customTo,
+                    'justification': i.justification,
+                    'orderAuthority': i.orderAuthority,
+                    'purpose': i.purpose,
+                    'notes': i.notes,
+                    'createdBy': i.createdBy,
+                    'createdAt': i.createdAt.toIso8601String(),
+                  })
+              .toList(),
       'fuelSupplies':
           (await _rows(db.fuelSupplies, ids('fuel_supplies'), (t) => t.id))
               .map((x) => {
@@ -639,8 +671,8 @@ class DataExporter {
                 'countedLiters': x.countedLiters,
               })
           .toList(),
-      'warehouseStockLimits': (await _rows(
-              db.warehouseStockLimits, ids('warehouse_stock_limits'), (t) => t.id))
+      'warehouseStockLimits': (await _rows(db.warehouseStockLimits,
+              ids('warehouse_stock_limits'), (t) => t.id))
           .map((l) => {
                 'id': l.id,
                 'warehouseId': l.warehouseId,
@@ -655,33 +687,33 @@ class DataExporter {
                 'updatedAt': l.updatedAt.toIso8601String(),
               })
           .toList(),
-      'supplyAuthorities':
-          (await _rows(db.supplyAuthorities, ids('supply_authorities'), (t) => t.id))
-              .map((a) => {
-                    'id': a.id,
-                    'name': a.name,
-                    'title': a.title,
-                    'notes': a.notes,
-                    'active': a.active,
-                    'createdAt': a.createdAt.toIso8601String(),
-                  })
-              .toList(),
-      'rationOrderLines':
-          (await _rows(db.rationOrderLines, ids('ration_order_lines'), (t) => t.id))
-              .map((l) => {
-                    'id': l.id,
-                    'orderId': l.orderId,
-                    'itemId': l.itemId,
-                    'itemCode': l.itemCode,
-                    'itemName': l.itemName,
-                    'unitName': l.unitName,
-                    'factor': l.factor,
-                    'requestedQty': l.requestedQty,
-                    'approvedQty': l.approvedQty,
-                    'receivedQty': l.receivedQty,
-                    'notes': l.notes,
-                  })
-              .toList(),
+      'supplyAuthorities': (await _rows(
+              db.supplyAuthorities, ids('supply_authorities'), (t) => t.id))
+          .map((a) => {
+                'id': a.id,
+                'name': a.name,
+                'title': a.title,
+                'notes': a.notes,
+                'active': a.active,
+                'createdAt': a.createdAt.toIso8601String(),
+              })
+          .toList(),
+      'rationOrderLines': (await _rows(
+              db.rationOrderLines, ids('ration_order_lines'), (t) => t.id))
+          .map((l) => {
+                'id': l.id,
+                'orderId': l.orderId,
+                'itemId': l.itemId,
+                'itemCode': l.itemCode,
+                'itemName': l.itemName,
+                'unitName': l.unitName,
+                'factor': l.factor,
+                'requestedQty': l.requestedQty,
+                'approvedQty': l.approvedQty,
+                'receivedQty': l.receivedQty,
+                'notes': l.notes,
+              })
+          .toList(),
       'mealPlans': (await _rows(db.mealPlans, ids('meal_plans'), (t) => t.id))
           .map((p) => {
                 'id': p.id,
@@ -698,82 +730,86 @@ class DataExporter {
                 'createdAt': p.createdAt.toIso8601String(),
               })
           .toList(),
-      'mealPlanEntries':
-          (await _rows(db.mealPlanEntries, ids('meal_plan_entries'), (t) => t.id))
-              .map((e) => {
-                    'id': e.id,
-                    'planId': e.planId,
-                    'entryDate': e.entryDate,
-                    'mealType': e.mealType,
-                    'itemId': e.itemId,
-                    'itemCode': e.itemCode,
-                    'itemName': e.itemName,
-                    'unitName': e.unitName,
-                    'factor': e.factor,
-                    'qtyPerPerson': e.qtyPerPerson,
-                    'notes': e.notes,
-                  })
-              .toList(),
-      'campLedgers': (await _rows(db.campLedgers, ids('camp_ledgers'), (t) => t.id))
-          .map((l) => {
-                'id': l.id,
-                'campId': l.campId,
-                'campName': l.campName,
-                'itemId': l.itemId,
-                'itemName': l.itemName,
-                'unitName': l.unitName,
-                'year': l.year,
-                'month': l.month,
-                'openingEntitled': l.openingEntitled,
-                'openingStock': l.openingStock,
-                'entitlementTotal': l.entitlementTotal,
-                'transferredIn': l.transferredIn,
-                'issuedDirect': l.issuedDirect,
-                'returnedQty': l.returnedQty,
-                'consumedKitchen': l.consumedKitchen,
-                'strengthSum': l.strengthSum,
-                'strengthDays': l.strengthDays,
-                'status': l.status,
-                'closedBy': l.closedBy,
-                if (l.closedAt != null) 'closedAt': l.closedAt!.toIso8601String(),
+      'mealPlanEntries': (await _rows(
+              db.mealPlanEntries, ids('meal_plan_entries'), (t) => t.id))
+          .map((e) => {
+                'id': e.id,
+                'planId': e.planId,
+                'entryDate': e.entryDate,
+                'mealType': e.mealType,
+                'itemId': e.itemId,
+                'itemCode': e.itemCode,
+                'itemName': e.itemName,
+                'unitName': e.unitName,
+                'factor': e.factor,
+                'qtyPerPerson': e.qtyPerPerson,
+                'notes': e.notes,
               })
           .toList(),
-      'campStockLimits':
-          (await _rows(db.campStockLimits, ids('camp_stock_limits'), (t) => t.id))
-              .map((c) => {
-                    'id': c.id,
-                    'campId': c.campId,
-                    'campName': c.campName,
-                    'itemId': c.itemId,
-                    'itemName': c.itemName,
-                    'minStock': c.minStock,
-                    'maxStock': c.maxStock,
-                    'alertDaysBefore': c.alertDaysBefore,
+      'campLedgers':
+          (await _rows(db.campLedgers, ids('camp_ledgers'), (t) => t.id))
+              .map((l) => {
+                    'id': l.id,
+                    'campId': l.campId,
+                    'campName': l.campName,
+                    'itemId': l.itemId,
+                    'itemName': l.itemName,
+                    'unitName': l.unitName,
+                    'year': l.year,
+                    'month': l.month,
+                    'openingEntitled': l.openingEntitled,
+                    'openingStock': l.openingStock,
+                    'entitlementTotal': l.entitlementTotal,
+                    'transferredIn': l.transferredIn,
+                    'issuedDirect': l.issuedDirect,
+                    'returnedQty': l.returnedQty,
+                    'consumedKitchen': l.consumedKitchen,
+                    'strengthSum': l.strengthSum,
+                    'strengthDays': l.strengthDays,
+                    'status': l.status,
+                    'closedBy': l.closedBy,
+                    if (l.closedAt != null)
+                      'closedAt': l.closedAt!.toIso8601String(),
                   })
               .toList(),
-      'monthlySettlements':
-          (await _rows(db.monthlySettlements, ids('monthly_settlements'), (t) => t.id))
-              .map((m) => {
-                    'id': m.id,
-                    'year': m.year,
-                    'month': m.month,
-                    'settledBy': m.settledBy,
-                    'notes': m.notes,
-                    'campsCount': m.campsCount,
-                    'itemsCount': m.itemsCount,
-                    'totalCredit': m.totalCredit,
-                    'totalDebit': m.totalDebit,
-                    'settledAt': m.settledAt.toIso8601String(),
-                  })
-              .toList(),
-      'settings': (await _rows(db.appSettings, ids('app_settings'), (t) => t.key))
-          .map((s) => {'key': s.key, 'value': s.value})
+      'campStockLimits': (await _rows(
+              db.campStockLimits, ids('camp_stock_limits'), (t) => t.id))
+          .map((c) => {
+                'id': c.id,
+                'campId': c.campId,
+                'campName': c.campName,
+                'itemId': c.itemId,
+                'itemName': c.itemName,
+                'minStock': c.minStock,
+                'maxStock': c.maxStock,
+                'alertDaysBefore': c.alertDaysBefore,
+              })
           .toList(),
+      'monthlySettlements': (await _rows(
+              db.monthlySettlements, ids('monthly_settlements'), (t) => t.id))
+          .map((m) => {
+                'id': m.id,
+                'year': m.year,
+                'month': m.month,
+                'settledBy': m.settledBy,
+                'notes': m.notes,
+                'campsCount': m.campsCount,
+                'itemsCount': m.itemsCount,
+                'totalCredit': m.totalCredit,
+                'totalDebit': m.totalDebit,
+                'settledAt': m.settledAt.toIso8601String(),
+              })
+          .toList(),
+      'settings':
+          (await _rows(db.appSettings, ids('app_settings'), (t) => t.key))
+              .map((s) => {'key': s.key, 'value': s.value})
+              .toList(),
       // سجل التغييرات: به يعرف الجهاز الآخر أيّ نسخة أحدث، وما حُذف هنا عمدًا.
       // في التصدير التفاضلي تخرج علامات ما تغيّر وحدها — ومعها شواهد الحذف،
       // فينتقل الحذف كما ينتقل التعديل.
-      'syncMarks':
-          (delta ?? (await marks.snapshot()).values).map((m) => m.toMap()).toList(),
+      'syncMarks': (delta ?? (await marks.snapshot()).values)
+          .map((m) => m.toMap())
+          .toList(),
     };
   }
 
@@ -863,7 +899,8 @@ class DataExporter {
       await file.writeAsString(const JsonEncoder.withIndent('  ').convert(map));
       return (path: path, records: records, encrypted: false);
     }
-    await file.writeAsBytes(BackupCrypto.seal(jsonEncode(map), password), flush: true);
+    await file.writeAsBytes(BackupCrypto.seal(jsonEncode(map), password),
+        flush: true);
     return (path: path, records: records, encrypted: true);
   }
 }

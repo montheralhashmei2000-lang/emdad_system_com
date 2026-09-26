@@ -5,6 +5,7 @@ import '../../core/security/auth_service.dart';
 import '../../core/security/perm.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
+import '../../core/ui/imd_scan.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
@@ -16,8 +17,11 @@ import 'fuel_print.dart';
 /// حركة المحروقات: الصرف والتوريد والتحويل والرصيد الافتتاحي.
 ///
 /// الأربعة في شاشةٍ واحدة بتبويبات لأنها تُدار من مقعدٍ واحد ومن شخصٍ واحد:
-/// أمين المحروقات يورّد صباحًا ويصرف نهارًا ويحوّل عند الطلب، وتفريقها على
-/// أربع شاشات يجعله يبحث عن الشاشة أكثر مما يكتب فيها.
+/// أمين المحروقات يورّد صباحًا ويصرف نهارًا ويحوّل عند الطلب.
+///
+/// وكل تبويبٍ **بطاقاتٌ لا شبكةُ حقول**: الصرف سؤالٌ بعد سؤال — من أي مخزن،
+/// وعلى أي أساس، ولمن، وبأي مركبة — وخلطُها في شبكةٍ واحدة يجعل الكاتب يقفز
+/// بين المعاني في السطر الواحد.
 class FuelMovesScreen extends StatefulWidget {
   const FuelMovesScreen({super.key, this.initialTab = 'issue'});
 
@@ -29,32 +33,55 @@ class FuelMovesScreen extends StatefulWidget {
 }
 
 class _FuelMovesScreenState extends State<FuelMovesScreen> {
+  /// أنواع الوسائل المعتادة — تُقترح ولا تُلزم.
+  static const List<String> vehicles = [
+    'شاص',
+    'هايلوكس',
+    'مولد',
+    'دينة',
+    'قاطرة',
+    'كرار',
+    'ماطور ماء',
+    'ماطور الطلاء',
+    'دراجة نارية',
+    'وسيلة مدني',
+    'باص مدني',
+    'برادو',
+  ];
+
   late final AppDatabase _db = context.read<AppDatabase>();
   late final FuelRepo _repo = FuelRepo(_db);
 
   List<FuelWarehouse> _warehouses = const [];
+  List<FuelUnit> _units = const [];
   List<FuelAllocationRow> _allocations = const [];
   List<FuelStock> _stocks = const [];
   List<FuelIssue> _issues = const [];
   List<FuelSupply> _supplies = const [];
   List<FuelTransfer> _transfers = const [];
   List<FuelOpening> _openings = const [];
+  FuelSettingsRow? _settings;
 
   late String _tab = widget.initialTab;
   bool _loading = true;
   bool _busy = false;
 
+  /// آخر سندٍ حُفظ — يظهر شريطه فوق النموذج ليُطبع قبل أن يُنسى.
+  String _savedRef = '';
+
   // مشترك
   String _date = DateTime.now().toIso8601String().substring(0, 10);
-  String _fuelType = FuelType.diesel;
+  String _fuelType = FuelType.petrol;
   String _warehouse = '';
   final _qty = TextEditingController();
   final _notes = TextEditingController();
+  final _q = TextEditingController();
 
   // صرف
   String _source = FuelSource.allocation;
   String _allocationId = '';
-  String _orderAuthority = '';
+  String _unitId = '';
+  final _orderAuthority = TextEditingController(text: 'استحقاق');
   final _driver = TextEditingController();
   final _vehicle = TextEditingController();
   final _chassis = TextEditingController();
@@ -69,6 +96,21 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
   // تحويل
   String _toWarehouse = '';
 
+  List<TextEditingController> get _all => [
+        _qty,
+        _notes,
+        _q,
+        _orderAuthority,
+        _driver,
+        _vehicle,
+        _chassis,
+        _justification,
+        _purpose,
+        _beneficiary,
+        _supplier,
+        _transport,
+      ];
+
   @override
   void initState() {
     super.initState();
@@ -80,24 +122,16 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
     super.didUpdateWidget(old);
     // التنقّل بين بنود القائمة يعيد بناء الشاشة نفسها بتبويبٍ آخر.
     if (old.initialTab != widget.initialTab) {
-      setState(() => _tab = widget.initialTab);
+      setState(() {
+        _tab = widget.initialTab;
+        _savedRef = '';
+      });
     }
   }
 
   @override
   void dispose() {
-    for (final c in [
-      _qty,
-      _notes,
-      _driver,
-      _vehicle,
-      _chassis,
-      _justification,
-      _purpose,
-      _beneficiary,
-      _supplier,
-      _transport,
-    ]) {
+    for (final c in _all) {
       c.dispose();
     }
     super.dispose();
@@ -105,21 +139,25 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
 
   Future<void> _load() async {
     final warehouses = await _repo.warehouses(onlyActive: true);
+    final units = await _repo.units(onlyActive: true);
     final allocations = await _repo.allocations(onlyActive: true);
     final stocks = await _repo.stocks();
     final issues = await _repo.issues();
     final supplies = await _repo.supplies();
     final transfers = await _repo.transfers();
     final openings = await _repo.openings();
+    final settings = await _repo.settings();
     if (!mounted) return;
     setState(() {
       _warehouses = warehouses;
+      _units = units;
       _allocations = allocations;
       _stocks = stocks;
       _issues = issues;
       _supplies = supplies;
       _transfers = transfers;
       _openings = openings;
+      _settings = settings;
       if (_warehouse.isEmpty && warehouses.isNotEmpty) {
         _warehouse = warehouses.first.name;
       }
@@ -127,10 +165,20 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
     });
   }
 
-  double get _available => _stocks
-      .where((s) => s.warehouse == _warehouse && s.fuelType == _fuelType)
-      .firstOrNull
-      ?.stock ??
+  // ───────────────────────── قيمٌ محسوبة
+
+  double get _available =>
+      _stocks
+          .where((s) => s.warehouse == _warehouse && s.fuelType == _fuelType)
+          .firstOrNull
+          ?.stock ??
+      0;
+
+  double get _capacity =>
+      _warehouses
+          .where((w) => w.name == _warehouse)
+          .firstOrNull
+          ?.capacityLiters ??
       0;
 
   double get _qtyValue => double.tryParse(_qty.text.trim()) ?? 0;
@@ -138,24 +186,73 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
   FuelAllocationRow? get _allocation =>
       _allocations.where((a) => a.allocation.id == _allocationId).firstOrNull;
 
+  List<FuelAllocationRow> get _pickable => _allocations
+      .where(
+          (a) => a.allocation.fuelType == _fuelType && a.allocation.disbursable)
+      .toList();
+
+  /// مانع الصرف من التفريدة المختارة، أو `null` إن جاز.
+  String? get _allocationError {
+    final a = _allocation;
+    if (a == null) return null;
+    return Fuel.issueBlock(
+      allocation: a.calc,
+      date: _date,
+      qty: _qtyValue,
+      alreadyIssued: a.issued,
+    );
+  }
+
+  bool get _chassisRequired => _settings?.requireChassis ?? false;
+  bool get _allowExceptional => _settings?.allowExceptional ?? true;
+
+  /// آخر سندٍ لهذا الشاصي — منه يُعبّأ السائق والوسيلة.
+  FuelIssue? get _lastForChassis {
+    final v = _chassis.text.trim();
+    if (v.isEmpty) return null;
+    return _issues.where((i) => i.chassisNo.trim() == v).firstOrNull;
+  }
+
+  // ───────────────────────── أفعال
+
+  void _onChassis(String v) {
+    final prev = _lastForChassis;
+    if (prev != null) {
+      if (_driver.text.trim().isEmpty) imdSetText(_driver, prev.driverName);
+      if (_vehicle.text.trim().isEmpty) imdSetText(_vehicle, prev.vehicleType);
+    }
+    setState(() {});
+  }
+
+  void _pickAllocation(String id) {
+    final a = _allocations.where((x) => x.allocation.id == id).firstOrNull;
+    setState(() => _allocationId = id);
+    if (a == null) return;
+    // الكمية المقترحة حصّةُ الفترة، ولا تتجاوز ما بقي من الاستحقاق.
+    final suggested = a.allocation.quantityPerPeriod;
+    final value = suggested > a.remaining ? a.remaining : suggested;
+    imdSetText(_qty, value <= 0 ? '' : _num(value));
+    imdSetText(_orderAuthority, 'استحقاق');
+    if (_beneficiary.text.trim().isEmpty) {
+      imdSetText(_beneficiary, a.allocation.unitName);
+    }
+    setState(() {});
+  }
+
+  static String _num(double v) =>
+      v == v.roundToDouble() ? '${v.toInt()}' : '$v';
+
   void _clearForm() {
-    for (final c in [
-      _qty,
-      _notes,
-      _driver,
-      _vehicle,
-      _chassis,
-      _justification,
-      _purpose,
-      _beneficiary,
-      _supplier,
-      _transport,
-    ]) {
+    for (final c in _all) {
+      if (c == _q) continue;
       imdSetText(c, '');
     }
+    imdSetText(
+        _orderAuthority, _source == FuelSource.allocation ? 'استحقاق' : '');
     setState(() {
       _allocationId = '';
-      _orderAuthority = '';
+      _unitId = '';
+      _savedRef = '';
     });
   }
 
@@ -167,19 +264,26 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
     late FuelResult res;
     switch (_tab) {
       case 'issue':
+        final unit = _allocation?.allocation.unitId ?? _unitId;
         res = await _repo.saveIssue(
           date: _date,
           fuelType: _fuelType,
           warehouse: _warehouse,
           quantityLiters: _qtyValue,
           source: _source,
-          allocationId: _allocationId,
-          beneficiaryName: _beneficiary.text.trim(),
+          allocationId: _source == FuelSource.allocation ? _allocationId : '',
+          beneficiaryUnitId: unit,
+          beneficiaryName: _beneficiary.text.trim().isNotEmpty
+              ? _beneficiary.text.trim()
+              : (_units.where((u) => u.id == unit).firstOrNull?.name ??
+                  _driver.text.trim()),
           driverName: _driver.text.trim(),
           vehicleType: _vehicle.text.trim(),
           chassisNo: _chassis.text.trim(),
           justification: _justification.text.trim(),
-          orderAuthority: _orderAuthority,
+          orderAuthority: _orderAuthority.text.trim().isNotEmpty
+              ? _orderAuthority.text.trim()
+              : (_source == FuelSource.allocation ? 'استحقاق' : 'أمر استثنائي'),
           purpose: _purpose.text.trim(),
           notes: _notes.text.trim(),
           actor: actor,
@@ -230,10 +334,10 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
     if (res.ok) {
       _clearForm();
       await _load();
+      if (mounted) setState(() => _savedRef = res.refNo);
     }
   }
 
-  /// طباعة سند الصرف مع استحقاق تفريدته وقت الطباعة.
   Future<void> _printIssue(FuelIssue issue) async {
     final row = issue.allocationId.isEmpty
         ? null
@@ -243,18 +347,58 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
     await FuelPrint.issueVoucher(_db, issue, allocation: row);
   }
 
-  Future<void> _printLog() async {
+  Future<void> _printSaved() async {
     switch (_tab) {
       case 'issue':
-        if (_issues.isEmpty) {
-          showImdToast(context, '✖ لا سندات للطباعة');
-          return;
-        }
-        await FuelPrint.issuesReport(_db, _issues);
-      default:
-        showImdToast(context, 'ℹ الكشف المجمّع متاح لسجل الصرف');
+        final doc = _issues.where((i) => i.refNo == _savedRef).firstOrNull;
+        if (doc != null) await _printIssue(doc);
+      case 'supply':
+        final doc = _supplies.where((s) => s.refNo == _savedRef).firstOrNull;
+        if (doc != null) await FuelPrint.supplyVoucher(_db, doc);
+      case 'transfer':
+        final doc = _transfers.where((t) => t.refNo == _savedRef).firstOrNull;
+        if (doc != null) await FuelPrint.transferVoucher(_db, doc);
     }
   }
+
+  Future<void> _reverse(FuelTransfer t) async {
+    if (!Perm.of(context).guard(context, 'fuelMoves', PermAction.create)) {
+      return;
+    }
+    if (!await imdConfirm(
+      context,
+      'يُنشأ سند تحويل عكسي بنفس الكمية والصنف من «${t.toWarehouse}» إلى '
+      '«${t.fromWarehouse}». متابعة؟',
+      ok: 'تأكيد العكس',
+    )) {
+      return;
+    }
+    if (!mounted) return;
+    final res = await _repo.reverseTransfer(
+      t.id,
+      actor: context.read<AuthService>().currentUser?.email ?? '',
+    );
+    if (!mounted) return;
+    showImdToast(context, res.ok ? '✔ سند عكس ${res.refNo}' : res.error,
+        error: !res.ok);
+    if (res.ok) await _load();
+  }
+
+  Future<void> _deleteOpening(FuelOpening o) async {
+    if (!Perm.of(context).guard(context, 'fuelMoves', PermAction.delete)) {
+      return;
+    }
+    if (!await imdConfirm(context, 'حذف الرصيد الافتتاحي لـ«${o.warehouse}»؟',
+        ok: 'حذف', danger: true)) {
+      return;
+    }
+    await _repo.deleteOpening(o.id);
+    if (!mounted) return;
+    showImdToast(context, '✔ حُذف الرصيد الافتتاحي');
+    await _load();
+  }
+
+  // ───────────────────────── البناء
 
   @override
   Widget build(BuildContext context) {
@@ -273,93 +417,740 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
     final can = Perm.of(context).writable('fuelMoves');
 
     return ImdPage(children: [
-      const ImdPageTitle(
-        title: 'حركة المحروقات',
-        icon: 'swap',
-        subtitle: 'الصرف والتوريد والتحويل والرصيد الافتتاحي — كلها تحرّك '
-            'رصيد المستودع من الوقود',
+      ImdPageTitle(
+        title: switch (_tab) {
+          'issue' => 'صرف محروقات',
+          'supply' => 'توريد محروقات',
+          'transfer' => 'التحويل المخزني',
+          _ => 'الرصيد الافتتاحي',
+        },
+        icon: switch (_tab) {
+          'issue' => 'upload',
+          'supply' => 'download',
+          'transfer' => 'swap',
+          _ => 'compass',
+        },
+        subtitle: switch (_tab) {
+          'issue' => 'يُخصم من رصيد المستودع فورًا — الجهة المستفيدة وجهة '
+              'الأمر تظهران في التقرير اليومي',
+          'supply' => 'تُضاف الكمية إلى رصيد المخزن المستلم فور الحفظ',
+          'transfer' => 'نقل نفس الصنف بين مستودعين — يمكن عكس السند إذا بقي '
+              'الرصيد كافيًا',
+          _ => 'أرصدة بداية الفترة لكل مستودع وصنف — تدخل في حساب الجرد',
+        },
+        trailing: can
+            ? ImdButton(
+                label: switch (_tab) {
+                  'issue' => 'حفظ الصرف',
+                  'supply' => 'حفظ التوريد',
+                  'transfer' => 'حفظ التحويل',
+                  _ => 'حفظ الرصيد',
+                },
+                icon: 'check',
+                busy: _busy,
+                onPressed: _submit,
+              )
+            : null,
       ),
       ImdItabs(
         value: _tab,
         onChanged: (v) => setState(() {
           _tab = v;
+          _savedRef = '';
           _clearForm();
         }),
         tabs: const [
           ImdTab('issue', 'صرف', icon: 'upload'),
           ImdTab('supply', 'توريد', icon: 'download'),
           ImdTab('transfer', 'تحويل', icon: 'swap'),
-          ImdTab('opening', 'رصيد افتتاحي', icon: 'clipboard'),
+          ImdTab('opening', 'رصيد افتتاحي', icon: 'compass'),
         ],
       ),
       const SizedBox(height: 4),
+      if (_savedRef.isNotEmpty) _savedBanner(),
       if (can)
+        ...switch (_tab) {
+          'issue' => _issueForm(),
+          'supply' => _supplyForm(),
+          'transfer' => _transferForm(),
+          _ => _openingForm(),
+        },
+      ...switch (_tab) {
+        'issue' => _issueLog(),
+        'supply' => _supplyLog(),
+        'transfer' => _transferLog(),
+        _ => _openingLog(),
+      },
+    ]);
+  }
+
+  Widget _savedBanner() {
+    final c = context.imd;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: c.successSoft,
+        border: Border.all(color: c.success),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text('حُفظ السند $_savedRef',
+              style: TextStyle(fontWeight: FontWeight.w600, color: c.text)),
+          if (_tab != 'opening')
+            ImdButton.outline(
+                label: 'طباعة السند',
+                icon: 'printer',
+                small: true,
+                onPressed: _printSaved),
+          ImdButton.outline(
+            label: 'حركة جديدة',
+            icon: 'plus',
+            small: true,
+            onPressed: () => setState(() => _savedRef = ''),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ───────────────────────── الصرف
+
+  List<Widget> _issueForm() => [
         ImdPanel(
-          title: switch (_tab) {
-            'issue' => 'صرف محروقات',
-            'supply' => 'توريد محروقات',
-            'transfer' => 'تحويل بين مستودعين',
-            _ => 'ضبط رصيد افتتاحي',
-          },
-          icon: 'plus-square',
-          child: _form(),
-        ),
-      ImdPanel(
-        title: 'السجل',
-        icon: 'list',
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (_tab == 'issue')
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: ImdButton.outline(
-                  label: 'طباعة كشف الصرف',
-                  icon: 'printer',
-                  small: true,
-                  onPressed: _printLog,
-                ),
+          title: 'بيانات الصرف',
+          icon: 'file',
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ImdF2(children: [
+              _fuelField(),
+              _warehouseField('المخزن *'),
+              _dateField('التاريخ *'),
+            ]),
+            const SizedBox(height: 10),
+            ImdChipsRow(bottom: 0, children: [
+              ImdChip(
+                'الرصيد المتاح في المخزن: ${nf(_available)} ${Fuel.unit}',
+                tone: _available <= 0 ? ImdTone.err : ImdTone.ok,
               ),
+            ]),
+          ]),
+        ),
+        ImdPanel(
+          title: 'مصدر الصرف',
+          icon: 'scale',
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ImdPillTabs<String>(
+              value: _source,
+              onChanged: (v) => setState(() {
+                _source = v;
+                _allocationId = '';
+                imdSetText(_orderAuthority,
+                    v == FuelSource.allocation ? 'استحقاق' : '');
+              }),
+              tabs: [
+                for (final s in FuelSource.all) ImdTab(s, FuelSource.label(s)),
+              ],
             ),
-          _log(),
+            const SizedBox(height: 14),
+            if (_source == FuelSource.allocation) ...[
+              ImdLabeled(
+                'التفريدة *',
+                ImdSelect<String>(
+                  items: [
+                    ('', '— اختر التفريدة —'),
+                    for (final a in _pickable)
+                      (
+                        a.allocation.id,
+                        '${a.allocation.refNo} — ${a.allocation.unitName} '
+                            '— ${nf(a.allocation.quantityPerPeriod)} '
+                            '${Fuel.unit}'
+                      ),
+                  ],
+                  value: _allocationId,
+                  onChanged: (v) => _pickAllocation(v ?? ''),
+                ),
+                size: 11,
+              ),
+              if (_allocation != null) ...[
+                const SizedBox(height: 12),
+                _allocationBox(_allocation!),
+              ],
+            ] else ...[
+              if (!_allowExceptional)
+                const ImdNote(
+                    'الصرف الاستثنائي **موقوف من الإعدادات** — لن يُحفظ.'),
+              ImdF2(children: [
+                ImdLabeled(
+                  'الوحدة المستفيدة',
+                  ImdSelect<String>(
+                    items: [
+                      ('', '— اختر الوحدة (اختياري) —'),
+                      for (final u in _units) (u.id, u.name),
+                    ],
+                    value: _unitId,
+                    onChanged: (v) => setState(() => _unitId = v ?? ''),
+                  ),
+                  size: 11,
+                ),
+              ]),
+              const SizedBox(height: 10),
+              ImdLabeled(
+                'مبرر الأمر الاستثنائي *',
+                ImdFld(
+                    controller: _justification,
+                    maxLines: 2,
+                    hint: 'اذكر سبب الصرف الاستثنائي…'),
+              ),
+              const SizedBox(height: 8),
+              const ImdNote(
+                'الأمر الاستثنائي يخرج عن كل تفريدة، فيلزمه **مبرر وجهة '
+                'أمر** ويُسجَّل في التدقيق عالي الخطورة.',
+              ),
+            ],
+          ]),
+        ),
+        ImdPanel(
+          title: 'الجهة المستفيدة وجهة الأمر',
+          icon: 'building',
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const ImdLdText('تظهر كما هي في اليومية الرسمية'),
+            const SizedBox(height: 10),
+            ImdF2(children: [
+              ImdLabeled(
+                'الجهة المستفيدة',
+                ImdFld(
+                    controller: _beneficiary,
+                    hint: 'الاسم كما سيظهر في التقرير'),
+                size: 11,
+              ),
+              ImdLabeled(
+                'جهة الأمر',
+                ImdFld(
+                  controller: _orderAuthority,
+                  hint: 'استحقاق / مكتب القائد',
+                  suggestions: Fuel.orderAuthorities,
+                ),
+                size: 11,
+              ),
+            ]),
+            const SizedBox(height: 10),
+            ImdLabeled(
+              'الغرض',
+              ImdFld(
+                  controller: _purpose, hint: 'إصلاح الاتصالات / تشغيل مولد…'),
+            ),
+          ]),
+        ),
+        ImdPanel(
+          title: 'بيانات الوسيلة والكمية',
+          icon: 'truck',
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ImdF2(children: [
+              ImdLabeled(
+                'الكمية (${Fuel.unit}) *',
+                ImdFld(
+                    controller: _qty,
+                    number: true,
+                    onChanged: (_) => setState(() {})),
+                size: 11,
+              ),
+              ImdLabeled(
+                'اسم السائق',
+                ImdFld(controller: _driver, hint: 'اختياري'),
+                size: 11,
+              ),
+              ImdLabeled(
+                'نوع الوسيلة *',
+                ImdFld(
+                  controller: _vehicle,
+                  hint: 'شاص / هايلوكس / مولد',
+                  suggestions: vehicles,
+                ),
+                size: 11,
+              ),
+            ]),
+            const SizedBox(height: 10),
+            ImdLabeled(
+              _chassisRequired ? 'رقم الشاصي *' : 'رقم الشاصي (اختياري)',
+              Row(children: [
+                Expanded(
+                  child: ImdFld(
+                    controller: _chassis,
+                    hint: 'يدويًا أو بمسح الكاميرا',
+                    onChanged: _onChassis,
+                  ),
+                ),
+                if (ImdScanner.supported) ...[
+                  const SizedBox(width: 8),
+                  ImdScanButton(controller: _chassis, onScanned: _onChassis),
+                ],
+              ]),
+            ),
+            if (_lastForChassis != null) ...[
+              const SizedBox(height: 6),
+              const ImdLdText(
+                  'وُجدت حركة سابقة لهذه المركبة — عُبّئ السائق ونوع '
+                  'الوسيلة تلقائيًا إن كانا فارغين.'),
+            ],
+            const SizedBox(height: 10),
+            ImdLabeled('ملاحظات', ImdFld(controller: _notes, maxLines: 2)),
+          ]),
+        ),
+      ];
+
+  Widget _allocationBox(FuelAllocationRow a) {
+    final c = context.imd;
+    final err = _allocationError;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: c.subtle,
+        border: Border.all(color: c.line),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(children: [
+        _kv('الوحدة', a.allocation.unitName),
+        _kv(
+            'مكان الصرف',
+            a.allocation.issueLocation.isEmpty
+                ? '—'
+                : a.allocation.issueLocation),
+        _kv('الاستحقاق الأسبوعي', '${nf(Fuel.weeklyOf(a.calc))} ${Fuel.unit}'),
+        _kv('الكمية المقررة',
+            '${nf(a.allocation.quantityPerPeriod)} ${Fuel.unit}'),
+        _kv('المتبقي من الاستحقاق', '${nf(a.remaining)} ${Fuel.unit}',
+            strong: true),
+        if (err != null) ...[
+          const SizedBox(height: 8),
+          Text(err, style: TextStyle(fontSize: 12, color: c.danger)),
+        ],
+      ]),
+    );
+  }
+
+  Widget _kv(String k, String v, {bool strong = false}) {
+    final c = context.imd;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(k, style: TextStyle(fontSize: 12.5, color: c.muted)),
+          Text(v,
+              style: TextStyle(
+                fontSize: 12.5,
+                color: strong ? c.accent : c.text,
+                fontWeight: strong ? FontWeight.w700 : FontWeight.w500,
+              )),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _issueLog() {
+    final c = context.imd;
+    final rows = _search(
+        _issues,
+        (i) => '${i.refNo} ${i.chassisNo} ${i.driverName} ${i.beneficiaryName} '
+            '${i.orderAuthority} ${i.purpose} ${i.warehouse}');
+    return [
+      ImdPanel(
+        title: 'سجل الصرف',
+        icon: 'list',
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ImdSearchBar(
+            controller: _q,
+            hint: 'بحث برقم السند أو الجهة أو الشاصي…',
+            onChanged: (_) => setState(() {}),
+            actions: [
+              ImdButton.outline(
+                label: 'طباعة كشف الصرف',
+                icon: 'printer',
+                small: true,
+                onPressed: () => _issues.isEmpty
+                    ? showImdToast(context, '✖ لا سندات للطباعة')
+                    : FuelPrint.issuesReport(_db, rows),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ImdTable(
+            empty: 'لا صرف بعد',
+            minWidth: 1000,
+            columns: const [
+              ImdCol('السند'),
+              ImdCol('التاريخ'),
+              ImdCol('النوع'),
+              ImdCol('المستودع'),
+              ImdCol('الجهة المستفيدة'),
+              ImdCol('جهة الأمر'),
+              ImdCol('الوسيلة'),
+              ImdCol('الكمية', numeric: true),
+              ImdCol('', center: true),
+            ],
+            rows: [
+              for (final i in rows)
+                [
+                  Text(i.refNo,
+                      style: TextStyle(color: c.muted, fontSize: 12.5)),
+                  Text(arDigits(i.date)),
+                  ImdChip(FuelType.label(i.fuelType),
+                      tone: i.fuelType == FuelType.diesel
+                          ? ImdTone.code
+                          : ImdTone.info),
+                  Text(i.warehouse),
+                  Text(i.beneficiaryName.isEmpty ? '—' : i.beneficiaryName),
+                  i.source == FuelSource.exceptional
+                      ? ImdChip(
+                          i.orderAuthority.isEmpty
+                              ? 'أمر استثنائي'
+                              : i.orderAuthority,
+                          tone: ImdTone.pend)
+                      : Text(i.orderAuthority.isEmpty
+                          ? 'استحقاق'
+                          : i.orderAuthority),
+                  Text(i.vehicleType.isEmpty ? '—' : i.vehicleType),
+                  Text('${nf(i.quantityLiters)} ${Fuel.unit}',
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ImdIconButton(
+                      icon: 'printer',
+                      tooltip: 'طباعة السند',
+                      onPressed: () => _printIssue(i)),
+                ],
+            ],
+          ),
         ]),
       ),
-    ]);
+    ];
   }
 
-  Widget _stockHint() {
-    return ImdChipsRow(bottom: 0, children: [
-      ImdChip(
-        'المتاح في «$_warehouse» من ${FuelType.label(_fuelType)}: '
-        '${nf(_available)} ${Fuel.unit}',
-        tone: _available <= 0 ? ImdTone.err : ImdTone.ok,
-      ),
-      if (_tab == 'issue' && _source == FuelSource.allocation && _allocation != null)
-        ImdChip(
-          'متبقي التفريدة: ${nf(_allocation!.remaining)} ${Fuel.unit}',
-          tone: _allocation!.remaining <= 0 ? ImdTone.err : ImdTone.info,
+  // ───────────────────────── التوريد
+
+  List<Widget> _supplyForm() => [
+        ImdPanel(
+          title: 'بيانات التوريد',
+          icon: 'download',
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ImdF2(children: [
+              _fuelField(),
+              ImdLabeled(
+                'الكمية (${Fuel.unit}) *',
+                ImdFld(
+                    controller: _qty,
+                    number: true,
+                    onChanged: (_) => setState(() {})),
+                size: 11,
+              ),
+              _dateField('تاريخ التوريد *'),
+              ImdLabeled(
+                'جهة التوريد *',
+                ImdFld(controller: _supplier, hint: 'اسم المورد / الجهة'),
+                size: 11,
+              ),
+              _warehouseField('المخزن المستلم *'),
+              ImdLabeled(
+                'نوع الوسيلة',
+                ImdFld(controller: _transport, hint: 'صهريج / شاحنة'),
+                size: 11,
+              ),
+              ImdLabeled('اسم السائق', ImdFld(controller: _driver), size: 11),
+            ]),
+            const SizedBox(height: 10),
+            ImdChipsRow(bottom: 0, children: [
+              ImdChip('الرصيد الحالي: ${nf(_available)} ${Fuel.unit}'),
+              if (_capacity > 0) ...[
+                ImdChip('السعة ${nf(_capacity)} ${Fuel.unit}',
+                    tone: ImdTone.off),
+                ImdChip(
+                  'المتبقي '
+                  '${nf(_capacity - _available < 0 ? 0 : _capacity - _available)} '
+                  '${Fuel.unit}',
+                  tone: ImdTone.info,
+                ),
+              ],
+            ]),
+            const SizedBox(height: 10),
+            ImdLabeled('ملاحظات', ImdFld(controller: _notes, maxLines: 2)),
+          ]),
         ),
-    ]);
+      ];
+
+  List<Widget> _supplyLog() {
+    final c = context.imd;
+    final rows = _search(_supplies,
+        (s) => '${s.refNo} ${s.supplierName} ${s.driverName} ${s.warehouse}');
+    return [
+      ImdPanel(
+        title: 'آخر التوريدات',
+        icon: 'list',
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ImdSearchBar(
+            controller: _q,
+            hint: 'بحث برقم السند أو الجهة…',
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          ImdTable(
+            empty: 'لا توريد بعد',
+            minWidth: 900,
+            columns: const [
+              ImdCol('السند'),
+              ImdCol('التاريخ'),
+              ImdCol('النوع'),
+              ImdCol('المخزن المستلم'),
+              ImdCol('جهة التوريد'),
+              ImdCol('الوسيلة'),
+              ImdCol('الكمية', numeric: true),
+              ImdCol('', center: true),
+            ],
+            rows: [
+              for (final s in rows)
+                [
+                  Text(s.refNo,
+                      style: TextStyle(color: c.muted, fontSize: 12.5)),
+                  Text(arDigits(s.date)),
+                  ImdChip(FuelType.label(s.fuelType),
+                      tone: s.fuelType == FuelType.diesel
+                          ? ImdTone.code
+                          : ImdTone.info),
+                  Text(s.warehouse),
+                  Text(s.supplierName.isEmpty ? '—' : s.supplierName),
+                  Text(s.transportVehicleType.isEmpty
+                      ? '—'
+                      : s.transportVehicleType),
+                  Text('${nf(s.quantityLiters)} ${Fuel.unit}',
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ImdIconButton(
+                      icon: 'printer',
+                      tooltip: 'طباعة السند',
+                      onPressed: () => FuelPrint.supplyVoucher(_db, s)),
+                ],
+            ],
+          ),
+        ]),
+      ),
+    ];
   }
 
-  Widget _form() {
-    final common = <Widget>[
-      ImdLabeled(
-        'التاريخ *',
-        ImdDateField(value: _date, onChanged: (v) => setState(() => _date = v)),
-        size: 11,
+  // ───────────────────────── التحويل
+
+  List<Widget> _transferForm() => [
+        ImdPanel(
+          title: 'سند تحويل مخزني جديد',
+          icon: 'swap',
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ImdF2(children: [
+              _warehouseField('من مستودع *'),
+              ImdLabeled(
+                'إلى مستودع *',
+                ImdSelect<String>(
+                  items: [
+                    ('', '— اختر —'),
+                    for (final w in _warehouses)
+                      if (w.name != _warehouse) (w.name, w.name),
+                  ],
+                  value: _toWarehouse,
+                  onChanged: (v) => setState(() => _toWarehouse = v ?? ''),
+                ),
+                size: 11,
+              ),
+              _fuelField(label: 'الصنف *'),
+              ImdLabeled(
+                'الكمية (${Fuel.unit}) *',
+                ImdFld(
+                    controller: _qty,
+                    number: true,
+                    onChanged: (_) => setState(() {})),
+                size: 11,
+              ),
+              _dateField('التاريخ *'),
+              ImdLabeled('السائق', ImdFld(controller: _driver), size: 11),
+              ImdLabeled('وسيلة النقل', ImdFld(controller: _transport),
+                  size: 11),
+            ]),
+            const SizedBox(height: 10),
+            ImdChipsRow(bottom: 0, children: [
+              ImdChip(
+                'المتاح في المصدر: ${nf(_available)} ${Fuel.unit}',
+                tone: _available <= 0 ? ImdTone.err : ImdTone.ok,
+              ),
+            ]),
+            const SizedBox(height: 10),
+            ImdLabeled('ملاحظات', ImdFld(controller: _notes, maxLines: 2)),
+          ]),
+        ),
+      ];
+
+  List<Widget> _transferLog() {
+    final c = context.imd;
+    if (_transfers.isEmpty) {
+      return const [
+        ImdEmptyBox('لا توجد تحويلات بعد — استخدم النموذج أعلاه لنقل الرصيد'),
+      ];
+    }
+    return [
+      ImdPanel(
+        title: 'سجل التحويل',
+        icon: 'list',
+        child: ImdTable(
+          empty: 'لا تحويلات بعد',
+          minWidth: 980,
+          columns: const [
+            ImdCol('السند'),
+            ImdCol('التاريخ'),
+            ImdCol('النوع'),
+            ImdCol('من ← إلى'),
+            ImdCol('السائق'),
+            ImdCol('الكمية', numeric: true),
+            ImdCol('الحالة'),
+            ImdCol('', center: true),
+          ],
+          rows: [
+            for (final t in _transfers)
+              [
+                Text(t.refNo, style: TextStyle(color: c.muted, fontSize: 12.5)),
+                Text(arDigits(t.date)),
+                ImdChip(FuelType.label(t.fuelType),
+                    tone: t.fuelType == FuelType.diesel
+                        ? ImdTone.code
+                        : ImdTone.info),
+                Text('${t.fromWarehouse} ← ${t.toWarehouse}'),
+                Text(t.driverName.isEmpty ? '—' : t.driverName),
+                Text('${nf(t.quantityLiters)} ${Fuel.unit}',
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                Wrap(spacing: 4, runSpacing: 4, children: [
+                  if (FuelRepo.isReverse(t.notes))
+                    const ImdChip('عكس', tone: ImdTone.pend),
+                  if (FuelRepo.reversedAlready(_transfers, t.refNo))
+                    const ImdChip('معكوس', tone: ImdTone.off),
+                ]),
+                Wrap(spacing: 4, alignment: WrapAlignment.center, children: [
+                  ImdIconButton(
+                      icon: 'printer',
+                      tooltip: 'طباعة السند',
+                      onPressed: () => FuelPrint.transferVoucher(_db, t)),
+                  if (!FuelRepo.isReverse(t.notes) &&
+                      !FuelRepo.reversedAlready(_transfers, t.refNo))
+                    ImdIconButton(
+                        icon: 'undo',
+                        tooltip: 'عكس السند',
+                        onPressed: () => _reverse(t)),
+                ]),
+              ],
+          ],
+        ),
       ),
-      ImdLabeled(
-        'نوع الوقود *',
+    ];
+  }
+
+  // ───────────────────────── الرصيد الافتتاحي
+
+  List<Widget> _openingForm() => [
+        ImdPanel(
+          title: 'رصيد افتتاحي جديد',
+          icon: 'compass',
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ImdF2(children: [
+              _warehouseField('المستودع *'),
+              _fuelField(label: 'الصنف *'),
+              ImdLabeled(
+                'الكمية (${Fuel.unit}) *',
+                ImdFld(
+                    controller: _qty,
+                    number: true,
+                    onChanged: (_) => setState(() {})),
+                size: 11,
+              ),
+              _dateField('اعتبارًا من *'),
+            ]),
+            const SizedBox(height: 10),
+            ImdLabeled('ملاحظة', ImdFld(controller: _notes, maxLines: 2)),
+            const SizedBox(height: 10),
+            const ImdNote(
+              'الرصيد الافتتاحي هو ما كان في الخزّان **قبل أن يبدأ '
+              'النظام**. ولا يُستعمل لتصحيح فرقٍ بعد التشغيل — ذلك بابه '
+              'الجرد، فيبقى له أثرٌ ولجنةٌ وتاريخ.',
+            ),
+          ]),
+        ),
+      ];
+
+  List<Widget> _openingLog() {
+    final c = context.imd;
+    final can = Perm.of(context).writable('fuelMoves');
+    return [
+      ImdPanel(
+        title: 'الأرصدة الافتتاحية',
+        icon: 'list',
+        child: ImdTable(
+          empty: 'لا أرصدة افتتاحية — أدخل أرصدة بداية الفترة لتصح التقارير',
+          minWidth: 780,
+          columns: const [
+            ImdCol('المستودع'),
+            ImdCol('الصنف'),
+            ImdCol('اعتبارًا من'),
+            ImdCol('الرصيد', numeric: true),
+            ImdCol('ملاحظة'),
+            ImdCol('', center: true),
+          ],
+          rows: [
+            for (final o in _openings)
+              [
+                Text(o.warehouse,
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                ImdChip(FuelType.label(o.fuelType),
+                    tone: o.fuelType == FuelType.diesel
+                        ? ImdTone.code
+                        : ImdTone.info),
+                Text(arDigits(o.asOfDate)),
+                Text('${nf(o.liters)} ${Fuel.unit}',
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text(o.note.isEmpty ? '—' : o.note,
+                    style: TextStyle(color: c.muted)),
+                if (can)
+                  ImdIconButton(
+                      icon: 'trash',
+                      tooltip: 'حذف',
+                      onPressed: () => _deleteOpening(o))
+                else
+                  const SizedBox.shrink(),
+              ],
+          ],
+        ),
+      ),
+    ];
+  }
+
+  // ───────────────────────── حقولٌ مشتركة
+
+  Widget _fuelField({String label = 'نوع الصنف *'}) => ImdLabeled(
+        label,
         ImdSelect<String>(
           items: [for (final t in FuelType.all) (t, FuelType.label(t))],
           value: _fuelType,
-          onChanged: (v) => setState(() => _fuelType = v ?? FuelType.diesel),
+          onChanged: (v) => setState(() {
+            _fuelType = v ?? FuelType.petrol;
+            _allocationId = '';
+          }),
         ),
         size: 11,
-      ),
-      ImdLabeled(
-        _tab == 'transfer' ? 'من مستودع *' : 'المستودع *',
+      );
+
+  Widget _warehouseField(String label) => ImdLabeled(
+        label,
         ImdSelect<String>(
           items: [
             // نطاق مستودعات الإعاشة لا يحكم خزّانات الوقود: دليلٌ مستقل
@@ -370,257 +1161,18 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
           onChanged: (v) => setState(() => _warehouse = v ?? ''),
         ),
         size: 11,
-      ),
-      if (_tab == 'transfer')
-        ImdLabeled(
-          'إلى مستودع *',
-          ImdSelect<String>(
-            items: [
-              ('', '— اختر —'),
-              for (final w in _warehouses)
-                if (w.name != _warehouse) (w.name, w.name),
-            ],
-            value: _toWarehouse,
-            onChanged: (v) => setState(() => _toWarehouse = v ?? ''),
-          ),
-          size: 11,
-        ),
-      ImdLabeled(
-        'الكمية (${Fuel.unit}) *',
-        ImdFld(
-            controller: _qty, number: true, onChanged: (_) => setState(() {})),
+      );
+
+  Widget _dateField(String label) => ImdLabeled(
+        label,
+        ImdDateField(value: _date, onChanged: (v) => setState(() => _date = v)),
         size: 11,
-      ),
-    ];
+      );
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _stockHint(),
-      const SizedBox(height: 12),
-      ImdF2(children: [
-        ...common,
-        if (_tab == 'issue') ..._issueFields(),
-        if (_tab == 'supply') ..._supplyFields(),
-        if (_tab == 'transfer') ..._transportFields(),
-      ]),
-      const SizedBox(height: 10),
-      ImdLabeled(
-          _tab == 'opening' ? 'ملاحظة' : 'ملاحظات',
-          ImdFld(controller: _notes, maxLines: 2)),
-      if (_tab == 'opening') ...[
-        const SizedBox(height: 10),
-        const ImdNote(
-          'الرصيد الافتتاحي هو ما كان في الخزّان **قبل أن يبدأ النظام**. '
-          'ولا يُستعمل لتصحيح فرقٍ بعد التشغيل — ذلك بابه الجرد، فيبقى له أثرٌ '
-          'ولجنةٌ وتاريخ.',
-        ),
-      ],
-      if (_tab == 'issue' && _source == FuelSource.exceptional) ...[
-        const SizedBox(height: 10),
-        const ImdNote(
-          'الأمر الاستثنائي يخرج عن كل تفريدة، فيلزمه **مبرر وجهة أمر** '
-          'ويُسجَّل في التدقيق عالي الخطورة.',
-        ),
-      ],
-      const SizedBox(height: 12),
-      Wrap(spacing: 10, runSpacing: 10, children: [
-        ImdButton(
-          label: 'حفظ',
-          icon: 'check',
-          busy: _busy,
-          onPressed: _submit,
-        ),
-        ImdButton.outline(label: 'مسح', icon: 'eraser', onPressed: _clearForm),
-      ]),
-    ]);
-  }
-
-  List<Widget> _issueFields() => [
-        ImdLabeled(
-          'مصدر الصرف *',
-          ImdSelect<String>(
-            items: [for (final s in FuelSource.all) (s, FuelSource.label(s))],
-            value: _source,
-            onChanged: (v) => setState(() {
-              _source = v ?? FuelSource.allocation;
-              _allocationId = '';
-            }),
-          ),
-          size: 11,
-        ),
-        if (_source == FuelSource.allocation)
-          ImdLabeled(
-            'التفريدة *',
-            ImdSelect<String>(
-              items: [
-                ('', '— اختر —'),
-                for (final a in _allocations)
-                  if (a.allocation.fuelType == _fuelType)
-                    (
-                      a.allocation.id,
-                      '${a.allocation.unitName} — متبقي ${nf(a.remaining)}'
-                    ),
-              ],
-              value: _allocationId,
-              onChanged: (v) => setState(() => _allocationId = v ?? ''),
-            ),
-            size: 11,
-          )
-        else ...[
-          ImdLabeled(
-              'الجهة المستفيدة', ImdFld(controller: _beneficiary), size: 11),
-          ImdLabeled(
-            'جهة الأمر *',
-            ImdSelect<String>(
-              items: [
-                ('', '— اختر —'),
-                for (final a in Fuel.orderAuthorities) (a, a),
-              ],
-              value: _orderAuthority,
-              onChanged: (v) => setState(() => _orderAuthority = v ?? ''),
-            ),
-            size: 11,
-          ),
-          ImdLabeled('المبرر *', ImdFld(controller: _justification), size: 11),
-        ],
-        ImdLabeled('اسم السائق', ImdFld(controller: _driver), size: 11),
-        ImdLabeled('نوع المركبة', ImdFld(controller: _vehicle), size: 11),
-        ImdLabeled(
-          'رقم الشاصي',
-          ImdFld(controller: _chassis, hint: 'به يُعرف ما شربته المركبة'),
-          size: 11,
-        ),
-        ImdLabeled('الغرض', ImdFld(controller: _purpose), size: 11),
-      ];
-
-  List<Widget> _supplyFields() => [
-        ImdLabeled('المورّد', ImdFld(controller: _supplier), size: 11),
-        ..._transportFields(),
-      ];
-
-  List<Widget> _transportFields() => [
-        ImdLabeled('اسم السائق', ImdFld(controller: _driver), size: 11),
-        ImdLabeled('مركبة النقل', ImdFld(controller: _transport), size: 11),
-      ];
-
-  Widget _log() {
-    final c = context.imd;
-    return switch (_tab) {
-      'issue' => ImdTable(
-          empty: 'لا صرف بعد',
-          minWidth: 980,
-          columns: const [
-            ImdCol('السند'),
-            ImdCol('التاريخ'),
-            ImdCol('النوع'),
-            ImdCol('المستودع'),
-            ImdCol('المستفيد'),
-            ImdCol('المصدر'),
-            ImdCol('الشاصي'),
-            ImdCol('الكمية', numeric: true),
-            ImdCol('', center: true),
-          ],
-          rows: [
-            for (final i in _issues)
-              [
-                Text(i.refNo, style: TextStyle(color: c.muted, fontSize: 12.5)),
-                Text(arDigits(i.date)),
-                Text(FuelType.label(i.fuelType)),
-                Text(i.warehouse),
-                Text(i.beneficiaryName.isEmpty ? '—' : i.beneficiaryName),
-                i.source == FuelSource.exceptional
-                    ? const ImdChip('استثنائي', tone: ImdTone.pend)
-                    : const ImdChip('تفريدة', tone: ImdTone.ok),
-                Text(i.chassisNo.isEmpty ? '—' : i.chassisNo),
-                Text('${nf(i.quantityLiters)} ${Fuel.unit}',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                ImdIconButton(
-                    icon: 'printer',
-                    tooltip: 'طباعة السند',
-                    onPressed: () => _printIssue(i)),
-              ],
-          ],
-        ),
-      'supply' => ImdTable(
-          empty: 'لا توريد بعد',
-          minWidth: 820,
-          columns: const [
-            ImdCol('السند'),
-            ImdCol('التاريخ'),
-            ImdCol('النوع'),
-            ImdCol('المستودع'),
-            ImdCol('المورّد'),
-            ImdCol('الكمية', numeric: true),
-            ImdCol('', center: true),
-          ],
-          rows: [
-            for (final s in _supplies)
-              [
-                Text(s.refNo, style: TextStyle(color: c.muted, fontSize: 12.5)),
-                Text(arDigits(s.date)),
-                Text(FuelType.label(s.fuelType)),
-                Text(s.warehouse),
-                Text(s.supplierName.isEmpty ? '—' : s.supplierName),
-                Text('${nf(s.quantityLiters)} ${Fuel.unit}',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                ImdIconButton(
-                    icon: 'printer',
-                    tooltip: 'طباعة السند',
-                    onPressed: () => FuelPrint.supplyVoucher(_db, s)),
-              ],
-          ],
-        ),
-      'transfer' => ImdTable(
-          empty: 'لا تحويلات بعد',
-          minWidth: 820,
-          columns: const [
-            ImdCol('السند'),
-            ImdCol('التاريخ'),
-            ImdCol('النوع'),
-            ImdCol('من ← إلى'),
-            ImdCol('السائق'),
-            ImdCol('الكمية', numeric: true),
-            ImdCol('', center: true),
-          ],
-          rows: [
-            for (final t in _transfers)
-              [
-                Text(t.refNo, style: TextStyle(color: c.muted, fontSize: 12.5)),
-                Text(arDigits(t.date)),
-                Text(FuelType.label(t.fuelType)),
-                Text('${t.fromWarehouse} ← ${t.toWarehouse}'),
-                Text(t.driverName.isEmpty ? '—' : t.driverName),
-                Text('${nf(t.quantityLiters)} ${Fuel.unit}',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                ImdIconButton(
-                    icon: 'printer',
-                    tooltip: 'طباعة السند',
-                    onPressed: () => FuelPrint.transferVoucher(_db, t)),
-              ],
-          ],
-        ),
-      _ => ImdTable(
-          empty: 'لا أرصدة افتتاحية',
-          minWidth: 700,
-          columns: const [
-            ImdCol('المستودع'),
-            ImdCol('النوع'),
-            ImdCol('بتاريخ'),
-            ImdCol('الرصيد', numeric: true),
-            ImdCol('ملاحظة'),
-          ],
-          rows: [
-            for (final o in _openings)
-              [
-                Text(o.warehouse),
-                Text(FuelType.label(o.fuelType)),
-                Text(arDigits(o.asOfDate)),
-                Text('${nf(o.liters)} ${Fuel.unit}',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                Text(o.note.isEmpty ? '—' : o.note,
-                    style: TextStyle(color: c.muted)),
-              ],
-          ],
-        ),
-    };
+  /// ترشيحٌ نصّي على السجل — البحث في السجل أسرع من تقليب صفحاته.
+  List<T> _search<T>(List<T> list, String Function(T) hay) {
+    final q = _q.text.trim().toLowerCase();
+    if (q.isEmpty) return list;
+    return list.where((e) => hay(e).toLowerCase().contains(q)).toList();
   }
 }

@@ -140,8 +140,8 @@ class _FuelWarehousesScreenState extends State<FuelWarehousesScreen> {
     }
   }
 
-  double _stockOf(String name) => _stocks
-      .where((s) => s.warehouse == name)
+  double _stockOf(String name, [String? type]) => _stocks
+      .where((s) => s.warehouse == name && (type == null || s.fuelType == type))
       .fold<double>(0, (sum, s) => sum + s.stock);
 
   @override
@@ -154,8 +154,7 @@ class _FuelWarehousesScreenState extends State<FuelWarehousesScreen> {
     }
     final can = Perm.of(context).writable('fuelWarehouses');
     final active = _items.where((w) => w.active).length;
-    final capacity =
-        _items.fold<double>(0, (sum, w) => sum + w.capacityLiters);
+    final capacity = _items.fold<double>(0, (sum, w) => sum + w.capacityLiters);
 
     return ImdPage(children: [
       const ImdPageTitle(
@@ -166,9 +165,7 @@ class _FuelWarehousesScreenState extends State<FuelWarehousesScreen> {
       ImdKpis(children: [
         ImdKpi(label: 'المستودعات', value: nf(_items.length)),
         ImdKpi(label: 'مفعَّلة', value: nf(active)),
-        ImdKpi(
-            label: 'إجمالي السعة',
-            value: '${nf(capacity)} ${Fuel.unit}'),
+        ImdKpi(label: 'إجمالي السعة', value: '${nf(capacity)} ${Fuel.unit}'),
         ImdKpi(
             label: 'الرصيد الكلي',
             value:
@@ -178,7 +175,8 @@ class _FuelWarehousesScreenState extends State<FuelWarehousesScreen> {
         ImdPanel(
           title: _editId == null ? 'إضافة مستودع' : 'تعديل مستودع',
           icon: _editId == null ? 'plus-square' : 'edit',
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             ImdF2(children: [
               ImdLabeled('الكود', ImdFld(controller: _code), size: 11),
               ImdLabeled('اسم المستودع *', ImdFld(controller: _name), size: 11),
@@ -186,7 +184,10 @@ class _FuelWarehousesScreenState extends State<FuelWarehousesScreen> {
               ImdLabeled('الموقع', ImdFld(controller: _location), size: 11),
               ImdLabeled(
                 'السعة (${Fuel.unit})',
-                ImdFld(controller: _capacity, number: true, hint: 'اتركها فارغة إن لم تُعرف'),
+                ImdFld(
+                    controller: _capacity,
+                    number: true,
+                    hint: 'اتركها فارغة إن لم تُعرف'),
                 size: 11,
               ),
             ]),
@@ -222,14 +223,16 @@ class _FuelWarehousesScreenState extends State<FuelWarehousesScreen> {
     final c = context.imd;
     return ImdTable(
       empty: 'لا مستودعات محروقات — أضف أول خزّان',
-      minWidth: 880,
+      minWidth: 1080,
       columns: const [
         ImdCol('الكود'),
         ImdCol('المستودع'),
-        ImdCol('المسؤول'),
         ImdCol('الموقع'),
         ImdCol('السعة', numeric: true),
+        ImdCol('بترول', numeric: true),
+        ImdCol('ديزل', numeric: true),
         ImdCol('الرصيد', numeric: true),
+        ImdCol('إشغال السعة'),
         ImdCol('الحالة'),
         ImdCol('', center: true),
       ],
@@ -238,12 +241,24 @@ class _FuelWarehousesScreenState extends State<FuelWarehousesScreen> {
           [
             Text(w.code.isEmpty ? '—' : w.code,
                 style: TextStyle(color: c.muted, fontSize: 12.5)),
-            Text(w.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-            Text(w.manager.isEmpty ? '—' : w.manager),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(w.name,
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                if (w.manager.isNotEmpty)
+                  Text(w.manager,
+                      style: TextStyle(fontSize: 11, color: c.muted)),
+              ],
+            ),
             Text(w.location.isEmpty ? '—' : w.location),
             Text(w.capacityLiters == 0 ? '—' : nf(w.capacityLiters)),
+            Text(nf(_stockOf(w.name, FuelType.petrol))),
+            Text(nf(_stockOf(w.name, FuelType.diesel))),
             Text('${nf(_stockOf(w.name))} ${Fuel.unit}',
-                style: const TextStyle(fontWeight: FontWeight.w600)),
+                style: const TextStyle(fontWeight: FontWeight.w700)),
+            _occupancy(w),
             w.active
                 ? const ImdChip('مفعَّل', tone: ImdTone.ok)
                 : const ImdChip('معطَّل', tone: ImdTone.off),
@@ -258,6 +273,35 @@ class _FuelWarehousesScreenState extends State<FuelWarehousesScreen> {
               const SizedBox.shrink(),
           ],
       ],
+    );
+  }
+
+  /// شريط الإشغال: خزّانان برصيدٍ واحد وسعتين مختلفتين ليسا في حالٍ واحدة.
+  Widget _occupancy(FuelWarehouse w) {
+    final c = context.imd;
+    if (w.capacityLiters <= 0) {
+      return Text('—', style: TextStyle(color: c.muted));
+    }
+    final pct =
+        Fuel.occupancy(used: _stockOf(w.name), capacity: w.capacityLiters);
+    final color = pct >= 90 ? c.warn : (pct <= 20 ? c.danger : c.accent);
+    return SizedBox(
+      width: 130,
+      child: Row(children: [
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: (pct / 100).clamp(0.0, 1.0),
+              minHeight: 7,
+              backgroundColor: c.subtle,
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text('${pct.round()}٪', style: TextStyle(fontSize: 11, color: c.muted)),
+      ]),
     );
   }
 }
@@ -355,7 +399,8 @@ class _FuelUnitsScreenState extends State<FuelUnitsScreen> {
       actor: context.read<AuthService>().currentUser?.email ?? '',
     );
     if (!mounted) return;
-    showImdToast(context, res.ok ? '✔ حُفظت الوحدة' : res.error, error: !res.ok);
+    showImdToast(context, res.ok ? '✔ حُفظت الوحدة' : res.error,
+        error: !res.ok);
     if (res.ok) {
       _reset();
       await _load();
@@ -363,7 +408,9 @@ class _FuelUnitsScreenState extends State<FuelUnitsScreen> {
   }
 
   Future<void> _delete(FuelUnit u) async {
-    if (!Perm.of(context).guard(context, 'fuelUnits', PermAction.delete)) return;
+    if (!Perm.of(context).guard(context, 'fuelUnits', PermAction.delete)) {
+      return;
+    }
     if (!await imdConfirm(context, 'حذف وحدة «${u.name}»؟',
         ok: 'حذف', danger: true)) {
       return;
@@ -372,7 +419,8 @@ class _FuelUnitsScreenState extends State<FuelUnitsScreen> {
     final res = await _repo.deleteUnit(u.id,
         actor: context.read<AuthService>().currentUser?.email ?? '');
     if (!mounted) return;
-    showImdToast(context, res.ok ? '✔ حُذفت الوحدة' : res.error, error: !res.ok);
+    showImdToast(context, res.ok ? '✔ حُذفت الوحدة' : res.error,
+        error: !res.ok);
     if (res.ok) {
       if (_editId == u.id) _reset();
       await _load();
@@ -408,12 +456,13 @@ class _FuelUnitsScreenState extends State<FuelUnitsScreen> {
         ImdPanel(
           title: _editId == null ? 'إضافة وحدة' : 'تعديل وحدة',
           icon: _editId == null ? 'plus-square' : 'edit',
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             ImdF2(children: [
               ImdLabeled('الكود', ImdFld(controller: _code), size: 11),
               ImdLabeled('اسم الوحدة *', ImdFld(controller: _name), size: 11),
-              ImdLabeled('القائد / المسؤول',
-                  ImdFld(controller: _commander), size: 11),
+              ImdLabeled('القائد / المسؤول', ImdFld(controller: _commander),
+                  size: 11),
               ImdLabeled('الهاتف', ImdFld(controller: _phone), size: 11),
             ]),
             const SizedBox(height: 10),

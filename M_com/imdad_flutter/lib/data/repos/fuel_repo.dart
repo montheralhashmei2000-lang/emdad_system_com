@@ -207,7 +207,9 @@ class FuelRepo {
       return const FuelResult(ok: false, error: '✖ توجد وحدة بهذا الاسم');
     }
     final newId = id ?? Ids.next('fun');
-    await db.into(db.fuelUnits).insertOnConflictUpdate(FuelUnitsCompanion.insert(
+    await db
+        .into(db.fuelUnits)
+        .insertOnConflictUpdate(FuelUnitsCompanion.insert(
           id: newId,
           code: Value(code.trim()),
           name: name.trim(),
@@ -259,10 +261,8 @@ class FuelRepo {
           ..where((t) => t.id.equals(settingsId)))
         .getSingleOrNull();
     if (row != null) return row;
-    await db
-        .into(db.fuelSettingsRows)
-        .insertOnConflictUpdate(
-            FuelSettingsRowsCompanion.insert(id: settingsId));
+    await db.into(db.fuelSettingsRows).insertOnConflictUpdate(
+        FuelSettingsRowsCompanion.insert(id: settingsId));
     return (db.select(db.fuelSettingsRows)
           ..where((t) => t.id.equals(settingsId)))
         .getSingle();
@@ -273,6 +273,12 @@ class FuelRepo {
     required double defaultDailyLiters,
     required double defaultWeeklyLiters,
     required double defaultMonthlyLiters,
+    String parentOrg = '',
+    String agencyTitle = '',
+    String commandTitle = '',
+    String branchTitle = '',
+    String orgName = '',
+    String sealLines = '',
     String signOfficer = '',
     String signSupply = '',
     String signChief = '',
@@ -293,6 +299,12 @@ class FuelRepo {
       defaultDailyLiters: Value(defaultDailyLiters),
       defaultWeeklyLiters: Value(defaultWeeklyLiters),
       defaultMonthlyLiters: Value(defaultMonthlyLiters),
+      parentOrg: Value(parentOrg.trim()),
+      agencyTitle: Value(agencyTitle.trim()),
+      commandTitle: Value(commandTitle.trim()),
+      branchTitle: Value(branchTitle.trim()),
+      orgName: Value(orgName.trim()),
+      sealLines: Value(sealLines.trim()),
       signOfficer: Value(signOfficer.trim()),
       signSupply: Value(signSupply.trim()),
       signChief: Value(signChief.trim()),
@@ -318,7 +330,8 @@ class FuelRepo {
   ///
   /// [upTo] يحصر الحساب بتاريخٍ فأقل — به يُقرأ الرصيد الدفتري وقت فتح الجرد
   /// لا رصيد اليوم.
-  Future<List<FuelStock>> stocks({String warehouse = '', String upTo = ''}) async {
+  Future<List<FuelStock>> stocks(
+      {String warehouse = '', String upTo = ''}) async {
     final warehouses = await this.warehouses();
     final wanted = warehouse.trim();
     final list = wanted.isEmpty
@@ -350,7 +363,9 @@ class FuelRepo {
         var inn = 0.0, outQty = 0.0, adjustments = 0.0;
 
         for (final o in openings) {
-          if (o.warehouse == w.name && o.fuelType == type && within(o.asOfDate)) {
+          if (o.warehouse == w.name &&
+              o.fuelType == type &&
+              within(o.asOfDate)) {
             opening += o.liters;
           }
         }
@@ -472,7 +487,9 @@ class FuelRepo {
     final newId = id ?? Ids.next('fal');
     final ref = code.trim().isNotEmpty
         ? code.trim()
-        : (id == null ? await DocNumbering(db).peek('fuel_allocations', 'تف-') : code);
+        : (id == null
+            ? await DocNumbering(db).peek('fuel_allocations', 'تف-')
+            : code);
     await db
         .into(db.fuelAllocations)
         .insertOnConflictUpdate(FuelAllocationsCompanion.insert(
@@ -495,7 +512,9 @@ class FuelRepo {
           createdBy: Value(actor),
           updatedAt: Value(id == null ? null : DateTime.now()),
         ));
-    if (id == null) await DocNumbering(db).claim('fuel_allocations', 'تف-', ref);
+    if (id == null) {
+      await DocNumbering(db).claim('fuel_allocations', 'تف-', ref);
+    }
     await AuditRepo(db).log(
       action: id == null ? 'fuel.allocation.create' : 'fuel.allocation.update',
       entityType: 'تفريدة محروقات',
@@ -594,7 +613,8 @@ class FuelRepo {
         return const FuelResult(ok: false, error: '✖ اختر التفريدة');
       }
       final rows = await allocations();
-      final row = rows.where((r) => r.allocation.id == allocationId).firstOrNull;
+      final row =
+          rows.where((r) => r.allocation.id == allocationId).firstOrNull;
       if (row == null) {
         return const FuelResult(ok: false, error: '✖ التفريدة غير موجودة');
       }
@@ -607,9 +627,8 @@ class FuelRepo {
       if (block != null) return FuelResult(ok: false, error: '✖ $block');
       entitled = row.entitled;
       periodType = row.allocation.periodType;
-      beneficiaryUnitId = beneficiaryUnitId.isEmpty
-          ? row.allocation.unitId
-          : beneficiaryUnitId;
+      beneficiaryUnitId =
+          beneficiaryUnitId.isEmpty ? row.allocation.unitId : beneficiaryUnitId;
       beneficiaryName =
           beneficiaryName.isEmpty ? row.allocation.unitName : beneficiaryName;
     } else {
@@ -637,7 +656,8 @@ class FuelRepo {
           driverName: Value(driverName),
           vehicleType: Value(vehicleType),
           chassisNo: Value(chassisNo.trim()),
-          allocationId: Value(source == FuelSource.allocation ? allocationId : ''),
+          allocationId:
+              Value(source == FuelSource.allocation ? allocationId : ''),
           beneficiaryUnitId: Value(beneficiaryUnitId),
           beneficiaryName: Value(beneficiaryName),
           entitledLiters: Value(entitled),
@@ -723,9 +743,9 @@ class FuelRepo {
 
   // ───────────────────────── التحويل
 
-  Future<List<FuelTransfer>> transfers() => (db.select(db.fuelTransfers)
-        ..orderBy([(t) => OrderingTerm.desc(t.date)]))
-      .get();
+  Future<List<FuelTransfer>> transfers() =>
+      (db.select(db.fuelTransfers)..orderBy([(t) => OrderingTerm.desc(t.date)]))
+          .get();
 
   Future<FuelResult> saveTransfer({
     required String date,
@@ -772,6 +792,56 @@ class FuelRepo {
       actorEmail: actor,
     );
     return FuelResult(ok: true, refNo: docNo);
+  }
+
+  /// علامة سند العكس في ملاحظاته — بها يُعرف السند ولا يُعكس مرتين.
+  static const String reverseMark = 'عكس سند';
+
+  static bool isReverse(String notes) => notes.contains(reverseMark);
+
+  /// هل عُكس هذا السند من قبل؟
+  static bool reversedAlready(List<FuelTransfer> all, String refNo) =>
+      all.any((t) => t.notes.contains('$reverseMark $refNo'));
+
+  /// عكس سند تحويل: سندٌ جديد بالاتجاه المعاكس، لا حذفٌ للأول.
+  ///
+  /// **الورق لا يُمحى.** السند الأصلي طُبع وسُلّم ووُقّع عليه، فإبطاله بحذفه
+  /// يترك من بيده الورقة أمام نظامٍ ينكرها. والعكس يُبقي الأثرين معًا.
+  Future<FuelResult> reverseTransfer(
+    String id, {
+    String date = '',
+    String reason = '',
+    String actor = '',
+  }) async {
+    final all = await transfers();
+    final src = all.where((t) => t.id == id).firstOrNull;
+    if (src == null) {
+      return const FuelResult(ok: false, error: '✖ السند غير موجود');
+    }
+    if (isReverse(src.notes)) {
+      return const FuelResult(ok: false, error: '✖ هذا سند عكسٍ لا يُعكس');
+    }
+    if (reversedAlready(all, src.refNo)) {
+      return const FuelResult(ok: false, error: '✖ عُكس هذا السند من قبل');
+    }
+    final note = [
+      '$reverseMark ${src.refNo}',
+      if (reason.trim().isNotEmpty) reason.trim(),
+    ].join(' — ');
+    return saveTransfer(
+      date: date.isEmpty
+          ? DateTime.now().toIso8601String().substring(0, 10)
+          : date,
+      fuelType: src.fuelType,
+      // الاتجاه معكوس: ما خرج يعود من حيث ذهب.
+      fromWarehouse: src.toWarehouse,
+      toWarehouse: src.fromWarehouse,
+      quantityLiters: src.quantityLiters,
+      driverName: src.driverName,
+      transportVehicleType: src.transportVehicleType,
+      notes: note,
+      actor: actor,
+    );
   }
 
   // ───────────────────────── الرصيد الافتتاحي
@@ -825,8 +895,7 @@ class FuelRepo {
       .get();
 
   Future<List<FuelStocktakeLine>> stocktakeLines(String id) =>
-      (db.select(db.fuelStocktakeLines)
-            ..where((t) => t.stocktakeId.equals(id)))
+      (db.select(db.fuelStocktakeLines)..where((t) => t.stocktakeId.equals(id)))
           .get();
 
   /// فتح أمر جرد — يلتقط الرصيد الدفتري وقت الفتح.
@@ -895,8 +964,7 @@ class FuelRepo {
     if (counted < 0) {
       return const FuelResult(ok: false, error: '✖ المعدود لا يكون سالبًا');
     }
-    await (db.update(db.fuelStocktakeLines)
-          ..where((t) => t.id.equals(lineId)))
+    await (db.update(db.fuelStocktakeLines)..where((t) => t.id.equals(lineId)))
         .write(FuelStocktakeLinesCompanion(
       counted: const Value(true),
       countedLiters: Value(counted),
@@ -914,7 +982,8 @@ class FuelRepo {
     }
     final next = FuelStocktakeStatus.next(head.status);
     if (next == null) {
-      return const FuelResult(ok: false, error: '✖ الجرد مرحّل — لا مرحلة بعده');
+      return const FuelResult(
+          ok: false, error: '✖ الجرد مرحّل — لا مرحلة بعده');
     }
     if (next == FuelStocktakeStatus.posted) {
       final lines = await stocktakeLines(id);
