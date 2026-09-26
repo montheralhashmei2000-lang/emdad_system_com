@@ -16,10 +16,14 @@ import '../../domain/notification_item.dart';
 /// الفحص دوري وعند فتح اللوحة: التنبيهات مشتقّة من حالة البيانات، فلا يبقى
 /// تنبيهٌ على حالةٍ عولجت.
 class NotificationBell extends StatefulWidget {
-  const NotificationBell({super.key, required this.onOpenPage});
+  const NotificationBell(
+      {super.key, required this.onOpenPage, this.space = ''});
 
   /// يفتح شاشة التنبيه في القشرة.
   final ValueChanged<String> onOpenPage;
+
+  /// القسم الذي يقف فيه المستخدم — الجرس يخصّ ما بين يديه.
+  final String space;
 
   @override
   State<NotificationBell> createState() => _NotificationBellState();
@@ -58,7 +62,7 @@ class _NotificationBellState extends State<NotificationBell> {
       final allowed = perm.admin
           ? null
           : {for (final p in Perm.labels.keys) if (perm.has(p)) p};
-      final items = await _repo.scan(allowed: allowed);
+      final items = await _repo.scan(allowed: allowed, space: widget.space);
       await _repo.prune(items.map((n) => n.id));
       if (!mounted) return;
       setState(() => _items = items);

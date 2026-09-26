@@ -44,6 +44,9 @@ enum NotifyKind {
   mealPlanEnding,
   settlementDue,
   stockNegative,
+
+  /// نفادُ وقودٍ في خزّان أو انخفاضُه عن حدّ التنبيه.
+  fuelLow,
 }
 
 extension NotifyKindX on NotifyKind {
@@ -54,6 +57,7 @@ extension NotifyKindX on NotifyKind {
         NotifyKind.mealPlanEnding => 'utensils',
         NotifyKind.settlementDue => 'lock',
         NotifyKind.stockNegative => 'alert',
+        NotifyKind.fuelLow => 'zap',
       };
 
   /// مسار الشاشة التي يفتحها التنبيه في القشرة.
@@ -64,6 +68,8 @@ extension NotifyKindX on NotifyKind {
         NotifyKind.mealPlanEnding => 'mealPlans',
         NotifyKind.settlementDue => 'campSettlement',
         NotifyKind.stockNegative => 'campLedger',
+        // يفتح لوحة المحروقات: منها يُرى الخزّان وإشغاله ويُورَّد.
+        NotifyKind.fuelLow => 'fuelDashboard',
       };
 
   /// الصفحة التي تحكم ظهور التنبيه: من لا يرى الشاشة لا يُنبَّه بما فيها.

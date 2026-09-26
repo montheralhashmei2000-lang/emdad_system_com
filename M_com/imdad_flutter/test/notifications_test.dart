@@ -5,8 +5,11 @@ import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/repos/assets_repo.dart';
 import 'package:imdad/data/repos/camp_ledger_repo.dart';
 import 'package:imdad/data/repos/catalog_repo.dart';
+import 'package:imdad/data/repos/fuel_repo.dart';
 import 'package:imdad/data/repos/notifications_repo.dart';
+import 'package:imdad/domain/app_space.dart';
 import 'package:imdad/domain/assets.dart';
+import 'package:imdad/domain/fuel.dart';
 import 'package:imdad/domain/notification_item.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -208,6 +211,80 @@ void main() {
       final repo = CampLedgerRepo(db);
       await repo.setAutoSettle(true);
       expect(await repo.isAutoSettle(), isTrue);
+    });
+  });
+
+  group('تنبيهات المحروقات', () {
+    /// خزّانٌ بسعةٍ معلومة ورصيدٍ تحت حدّ التنبيه.
+    Future<void> seedLowTank() async {
+      final fuel = FuelRepo(db);
+      await fuel.saveWarehouse(name: 'معسكر الخشعة', capacityLiters: 20000);
+      await fuel.saveOpening(
+        warehouse: 'معسكر الخشعة',
+        fuelType: FuelType.diesel,
+        liters: 500,
+        asOfDate: '2026-01-01',
+      );
+    }
+
+    test('النفاد والانخفاض يصلان الجرس', () async {
+      await seedLowTank();
+      // **الخزّان الفارغ لا يُكتشف بفتح شاشة**: من لم يدخل القسم يُنبَّه.
+      final items =
+          await NotificationsRepo(db).scan(space: AppSpace.fuel);
+      final fuelItems =
+          items.where((n) => n.kind == NotifyKind.fuelLow).toList();
+      expect(fuelItems, isNotEmpty);
+      expect(fuelItems.first.id, startsWith('fuel:'));
+      expect(fuelItems.first.kind.route, 'fuelDashboard');
+    });
+
+    test('لا تظهر في شريط الإمداد — القسمان مفصولان', () async {
+      await seedLowTank();
+      final items =
+          await NotificationsRepo(db).scan(space: AppSpace.supply);
+      expect(items.any((n) => n.kind == NotifyKind.fuelLow), isFalse,
+          reason: 'تنبيهٌ يفتح شاشةً ليست في قائمة القسم');
+    });
+
+    test('من لا يرى لوحة المحروقات لا يُنبَّه بها', () async {
+      await seedLowTank();
+      final items = await NotificationsRepo(db)
+          .scan(allowed: const {'items', 'stores'}, space: AppSpace.fuel);
+      expect(items.any((n) => n.kind == NotifyKind.fuelLow), isFalse);
+    });
+
+    test('معرّف التنبيه ثابتٌ فتبقى قراءته', () async {
+      await seedLowTank();
+      final repo = NotificationsRepo(db);
+      final first = await repo.scan(space: AppSpace.fuel);
+      final id = first.firstWhere((n) => n.kind == NotifyKind.fuelLow).id;
+      await repo.markRead(id);
+      final second = await repo.scan(space: AppSpace.fuel);
+      expect(second.firstWhere((n) => n.id == id).read, isTrue);
+    });
+
+    test('خزّانٌ مريح لا يُنبَّه عنه', () async {
+      final fuel = FuelRepo(db);
+      await fuel.saveWarehouse(name: 'معسكر الثنية', capacityLiters: 20000);
+      await fuel.saveOpening(
+        warehouse: 'معسكر الثنية',
+        fuelType: FuelType.diesel,
+        liters: 18000,
+        asOfDate: '2026-01-01',
+      );
+      await fuel.saveOpening(
+        warehouse: 'معسكر الثنية',
+        fuelType: FuelType.petrol,
+        liters: 1,
+        asOfDate: '2026-01-01',
+      );
+      final items =
+          await NotificationsRepo(db).scan(space: AppSpace.fuel);
+      // الديزل مريح، والبترول شبه فارغ — فينبّه عن هذا وحده.
+      final titles =
+          items.where((n) => n.kind == NotifyKind.fuelLow).map((n) => n.title);
+      expect(titles.any((t) => t.contains('ديزل')), isFalse);
     });
   });
 }

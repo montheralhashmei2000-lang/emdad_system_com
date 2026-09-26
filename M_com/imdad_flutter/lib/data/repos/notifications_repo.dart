@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../domain/assets.dart';
+import '../../domain/app_space.dart';
 import '../../domain/camp_ledger.dart';
 import '../../domain/meal_plan.dart';
 import '../../domain/notification_item.dart';
@@ -10,6 +11,7 @@ import '../db/app_database.dart';
 import 'assets_repo.dart';
 import 'camp_ledger_repo.dart';
 import 'meal_plan_repo.dart';
+import 'fuel_repo.dart';
 import 'ration_repo.dart';
 
 /// يفحص حالة النظام ويبني تنبيهاته.
@@ -28,9 +30,20 @@ class NotificationsRepo {
   ///
   /// [allowed] الصفحات التي يراها المستخدم — من لا يرى شاشة لا يُنبَّه بما
   /// فيها، وإلا سرّب الجرسُ ما حجبته الصلاحيات.
-  Future<List<AppNotification>> scan({Set<String>? allowed}) async {
+  ///
+  /// و[space] القسم الذي يقف فيه: **الجرس يخصّ ما بين يديه.** تنبيهُ وقودٍ
+  /// في شريط الإمداد يفتح شاشةً ليست في قائمته، وقد فُصل القسمان.
+  Future<List<AppNotification>> scan({
+    Set<String>? allowed,
+    String space = '',
+  }) async {
     final found = <AppNotification>[];
-    bool can(NotifyKind k) => allowed == null || allowed.contains(k.page);
+    final inSpace = space.isEmpty
+        ? null
+        : (AppSpace.pages[space] ?? const <String>[]).toSet();
+    bool can(NotifyKind k) =>
+        (allowed == null || allowed.contains(k.page)) &&
+        (inSpace == null || inSpace.contains(k.page));
 
     if (can(NotifyKind.campStockLow)) found.addAll(await _campStock());
     if (can(NotifyKind.stockNegative)) found.addAll(await _negativeStock());
@@ -38,6 +51,7 @@ class NotificationsRepo {
     if (can(NotifyKind.rationPending)) found.addAll(await _ration());
     if (can(NotifyKind.mealPlanEnding)) found.addAll(await _mealPlans());
     if (can(NotifyKind.settlementDue)) found.addAll(await _settlement());
+    if (can(NotifyKind.fuelLow)) found.addAll(await _fuel());
 
     final read = await _readIds();
     return NotifyRules.cap([
@@ -204,6 +218,28 @@ class NotificationsRepo {
   }
 
   // ───────────────────────── حالة القراءة
+
+  /// نفاد الوقود وانخفاضه.
+  ///
+  /// **الخزّان الفارغ لا يُكتشف بفتح شاشة.** تنبيهات المحروقات كانت تُحسب
+  /// في لوحتها ولا تصل الجرس، فلا يعلم بها إلا من دخل القسم — ومن يدخله
+  /// يراها بعينه أصلًا. والجرس هو الذي يصل إلى من لم يدخل.
+  Future<List<AppNotification>> _fuel() async {
+    final alerts = await FuelRepo(db).alerts();
+    return [
+      for (final a in alerts)
+        if (a.tone == 'danger' || a.tone == 'warn')
+          AppNotification(
+            id: 'fuel:${a.id}',
+            kind: NotifyKind.fuelLow,
+            severity: a.tone == 'danger'
+                ? NotifySeverity.danger
+                : NotifySeverity.warning,
+            title: a.title,
+            body: a.hint,
+          ),
+    ];
+  }
 
   Future<Set<String>> _readIds() async {
     final prefs = await SharedPreferences.getInstance();

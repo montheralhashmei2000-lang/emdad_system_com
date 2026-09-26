@@ -505,6 +505,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                 showBurger: !wide,
                 onBurger: () => _scaffoldKey.currentState?.openEndDrawer(),
                 onOpenPage: _go,
+                space: _space ?? '',
               ),
               Expanded(
                 child: Row(
@@ -545,12 +546,16 @@ class _Topbar extends StatelessWidget {
     required this.showBurger,
     required this.onBurger,
     required this.onOpenPage,
+    required this.space,
   });
 
   final String userName;
   final bool showBurger;
   final VoidCallback onBurger;
   final ValueChanged<String> onOpenPage;
+
+  /// القسم الذي يقف فيه المستخدم — الجرس يخصّ ما بين يديه.
+  final String space;
 
   @override
   Widget build(BuildContext context) {
@@ -580,7 +585,7 @@ class _Topbar extends StatelessWidget {
                 fontSize: 15, fontWeight: FontWeight.w600, color: c.text2),
           ),
           const Spacer(),
-          NotificationBell(onOpenPage: onOpenPage),
+          NotificationBell(onOpenPage: onOpenPage, space: space),
           const SizedBox(width: 8),
           Container(
             height: 40,
