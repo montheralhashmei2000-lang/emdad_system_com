@@ -11,7 +11,7 @@ import '../../data/repos/fuel_repo.dart';
 import '../../domain/fuel.dart';
 import '../../domain/fuel_daily_report.dart';
 import '../../domain/fuel_report.dart';
-import 'fuel_daily_pdf.dart';
+import 'fuel_report_docs.dart';
 
 /// تقرير الحركة اليومية للمحروقات — الدفتر اليومي بجميع معسكراته.
 ///
@@ -156,7 +156,8 @@ class _FuelDailyReportScreenState extends State<FuelDailyReportScreen> {
   Future<void> _print() async {
     final settings = _settings;
     if (settings == null) return;
-    await FuelDailyPdf.printReport(_db, report: _report, settings: settings);
+    await FuelReportDocs.printDaily(_db,
+        report: _report, settings: settings);
   }
 
   @override

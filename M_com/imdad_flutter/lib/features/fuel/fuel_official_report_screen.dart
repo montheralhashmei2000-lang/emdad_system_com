@@ -10,7 +10,7 @@ import '../../data/db/app_database.dart';
 import '../../data/repos/fuel_repo.dart';
 import '../../domain/fuel.dart';
 import '../../domain/fuel_report.dart';
-import 'fuel_official_pdf.dart';
+import 'fuel_report_docs.dart';
 
 /// التقارير الرسمية — البرقية اليومية والأسبوعية والشهرية.
 ///
@@ -126,7 +126,7 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
   Future<void> _print() async {
     final settings = _settings;
     if (settings == null) return;
-    await FuelOfficialPdf.printReport(_db,
+    await FuelReportDocs.printOfficial(_db,
         report: _report, settings: settings);
   }
 
@@ -278,7 +278,7 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
       columns: const [
         ImdCol('م', center: true),
         ImdCol('جهة التوريد / المصدر'),
-        ImdCol('الباب'),
+        ImdCol('نوع الحركة'),
         ImdCol('الوسيلة'),
         ImdCol('الصنف'),
         ImdCol('الكمية', numeric: true),
@@ -290,7 +290,7 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
                 textAlign: TextAlign.center, style: TextStyle(color: c.muted)),
             Text(r.supplier,
                 style: const TextStyle(fontWeight: FontWeight.w600)),
-            // **الوارد بابان**: توريدٌ يزيد وقود الفرقة، وتحويلٌ ينقله فحسب.
+            // **الوارد نوعان**: توريدٌ يزيد وقود الفرقة، وتحويلٌ ينقله فحسب.
             r.isTransfer
                 ? const ImdChip('تحويل داخلي', tone: ImdTone.info)
                 : const ImdChip('توريد', tone: ImdTone.ok),

@@ -11,7 +11,8 @@ import '../../data/db/app_database.dart';
 import '../../data/repos/fuel_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/fuel.dart';
-import 'fuel_official_pdf.dart';
+import 'fuel_plan_row.dart';
+import 'fuel_report_docs.dart';
 
 /// تفريدة المحروقات: خطة توزيع الاستحقاق الأسبوعي والشهري لكل وحدة.
 ///
@@ -228,7 +229,7 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
       showImdToast(context, '✖ لا تفريدات لطباعتها');
       return;
     }
-    await FuelOfficialPdf.printPlan(
+    await FuelReportDocs.printPlan(
       _db,
       settings: settings,
       petrol: _planRows(_of(FuelType.petrol)),

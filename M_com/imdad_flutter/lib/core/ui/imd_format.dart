@@ -1,6 +1,9 @@
 /// تنسيق الأرقام والتواريخ كما في نسخة الويب:
-/// `nf = n => (n||0).toLocaleString('ar-EG')` ⇒ أرقام هندية، فاصل آلاف «٬»، فاصلة عشرية «٫»،
-/// وثلاث خانات عشرية كحد أقصى.
+/// أرقامٌ هندية بثلاث خانات عشرية كحد أقصى.
+///
+/// وفاصلُ الآلاف فاصلةٌ عادية «,» والعشريّ نقطة «.» لا علامتا `ar-EG`
+/// المرتفعتان «٬ ٫»: الأخيرتان تُطبعان شرطةً معلّقة فوق السطر يظنها القارئ
+/// غبارًا على الورقة، وفي بعض الخطوط لا تظهران أصلًا.
 library;
 
 const _arDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
@@ -29,11 +32,11 @@ String nf(num? n) {
   final frac = fixed.split('.')[1].replaceFirst(RegExp(r'0+$'), '');
   final grouped = StringBuffer();
   for (var i = 0; i < intPart.length; i++) {
-    if (i > 0 && (intPart.length - i) % 3 == 0) grouped.write('٬');
+    if (i > 0 && (intPart.length - i) % 3 == 0) grouped.write(',');
     grouped.write(intPart[i]);
   }
   var out = grouped.toString();
-  if (frac.isNotEmpty) out = '$out٫$frac';
+  if (frac.isNotEmpty) out = '$out.$frac';
   if (neg && out != '0') out = '؜-$out';
   return arDigits(out);
 }

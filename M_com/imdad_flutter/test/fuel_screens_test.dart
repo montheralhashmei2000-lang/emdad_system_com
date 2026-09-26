@@ -143,7 +143,7 @@ void main() {
     await show(tester, const FuelDashboardScreen());
     expect(tester.takeException(), isNull);
     // ٨٠٠٠ وارد − ٣٠٠ مصروف = ٧٧٠٠
-    expect(find.textContaining('٧٬٧٠٠'), findsWidgets);
+    expect(find.textContaining('٧,٧٠٠'), findsWidgets);
     // البترول لم يُورَّد، فينبّه على نفاده.
     expect(find.textContaining('نفاد بترول'), findsWidgets);
   });

@@ -12,15 +12,50 @@ import '../../domain/print_layout.dart';
 
 /// بناء مستندات PDF عربية (RTL) وفق تخطيط الطباعة القابل للضبط.
 /// يُستخدم لسندات الاستلام والصرف والتحويل والمرتجعات وتقارير المركز.
-class PrintDoc {
-  const PrintDoc({
+/// قسمٌ معنونٌ في مستندٍ متعدد الجداول.
+///
+/// السند جدولٌ واحد، والتقرير أقسام: «الوارد» ثم «المنصرف» ثم «التحويل»،
+/// لكلٍّ عنوانه وأعمدته وإجماليه. وبناؤها هنا لا في كل تقريرٍ على حدة يجعل
+/// أوراق النظام كلها بهيئةٍ واحدة — وبعكس أعمدةٍ صحيحٍ واحد.
+class PrintSection {
+  const PrintSection({
     required this.title,
     required this.headers,
     required this.rows,
+    this.columnFlex = const [],
+    this.totalRow,
+    this.note = '',
+    this.emptyText = '',
+  });
+
+  final String title;
+  final List<String> headers;
+  final List<List<String>> rows;
+  final List<int> columnFlex;
+
+  /// سطرٌ أخير بخلفيةٍ مميّزة — إجمالي القسم.
+  final List<String>? totalRow;
+
+  /// سطرٌ صغير تحت العنوان.
+  final String note;
+
+  /// ما يُكتب مكان الجدول إن خلا من سطور.
+  final String emptyText;
+}
+
+class PrintDoc {
+  const PrintDoc({
+    required this.title,
+    this.headers = const [],
+    this.rows = const [],
     this.fieldValues = const {},
     this.leftValues = const {},
     this.footerNote = '',
     this.columnFlex = const [],
+    this.sections = const [],
+    this.headerLines = const [],
+    this.signatureLines = const [],
+    this.landscape = false,
   });
 
   final String title;
@@ -36,6 +71,21 @@ class PrintDoc {
   final Map<String, String> leftValues;
   final String footerNote;
   final List<int> columnFlex;
+
+  /// أقسام التقرير — إن وُجدت حلّت محل الجدول الواحد.
+  final List<PrintSection> sections;
+
+  /// أسطر الجهة أعلى اليمين — تُجاوِز أسطر التخطيط.
+  ///
+  /// يستعملها قسمٌ له ترويسته الخاصة (كالمحروقات)، فتبقى هيئة الورقة واحدة
+  /// ويتبدّل رأسها وحده.
+  final List<String> headerLines;
+
+  /// التواقيع: عملُ كلٍّ في سطرٍ واسمه في الذي يليه («العمل\nالاسم»).
+  final List<String> signatureLines;
+
+  /// ورقةٌ عرضية — للتقارير كثيرة الأعمدة.
+  final bool landscape;
 }
 
 class DocumentPdf {
@@ -101,7 +151,7 @@ class DocumentPdf {
 
     pdf.addPage(
       pw.MultiPage(
-        pageFormat: format,
+        pageFormat: doc.landscape ? format.landscape : format,
         textDirection: pw.TextDirection.rtl,
         margin: const pw.EdgeInsets.fromLTRB(28, 26, 28, 26),
         header: (context) => context.pageNumber == 1
@@ -109,9 +159,12 @@ class DocumentPdf {
             : pw.SizedBox(height: 6),
         footer: (context) => _footer(doc, layout, context),
         build: (context) => [
-          _table(doc, layout),
+          if (doc.sections.isEmpty)
+            _table(doc, layout)
+          else
+            for (final sec in doc.sections) ..._section(sec, layout),
           pw.SizedBox(height: 18),
-          _signatures(layout),
+          _signatures(doc, layout),
         ],
       ),
     );
@@ -146,7 +199,26 @@ class DocumentPdf {
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            // يمين الصفحة: أسطر الجهة
+            // يمين الصفحة: أسطر الجهة — من المستند إن جاء بها، وإلا فمن
+            // التخطيط. قسمٌ له ترويسته الخاصة يبدّل رأس الورقة وحده.
+            if (doc.headerLines.isNotEmpty)
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    for (final l in doc.headerLines)
+                      pw.Container(
+                        width: double.infinity,
+                        padding: const pw.EdgeInsets.only(bottom: 2),
+                        child: pw.Text(l,
+                            style: pw.TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: pw.FontWeight.bold)),
+                      ),
+                  ],
+                ),
+              )
+            else
             pw.Expanded(
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -256,6 +328,107 @@ class DocumentPdf {
 
   /// `pw.Table` لا تعرف اتجاه النص وترسم الأعمدة يسارًا ليمينًا دائمًا، فتُعكس
   /// الأعمدة (ومعها عروضها) ليبدأ العمود الأول من يمين الصفحة كما في المستند العربي.
+  static List<pw.Widget> _section(PrintSection sec, PrintLayout layout) => [
+        if (sec.title.isNotEmpty) ...[
+          pw.SizedBox(height: 10),
+          pw.Text(sec.title,
+              style: pw.TextStyle(
+                  fontSize: layout.table.size + 1.5,
+                  fontWeight: pw.FontWeight.bold)),
+        ],
+        if (sec.note.isNotEmpty)
+          pw.Text(sec.note, style: pw.TextStyle(fontSize: layout.table.size - 1)),
+        pw.SizedBox(height: 4),
+        if (sec.headers.isEmpty)
+          pw.SizedBox()
+        else
+          _grid(
+            headers: sec.headers,
+            rows: sec.rows.isEmpty && sec.emptyText.isNotEmpty
+                ? [
+                    [
+                      for (var i = 0; i < sec.headers.length; i++)
+                        i == 1 ? sec.emptyText : '',
+                    ]
+                  ]
+                : sec.rows,
+            columnFlex: sec.columnFlex,
+            layout: layout,
+            totalRow: sec.totalRow,
+          ),
+      ];
+
+  /// جدولٌ عربيّ: **الأعمدة تُعكس** لأن `pw.Table` يرصّ أبناءه من اليسار
+  /// مهما كان اتجاه الصفحة — ونسيانُ العكس يقلب الورقة كلها.
+  static pw.Widget _grid({
+    required List<String> headers,
+    required List<List<String>> rows,
+    required List<int> columnFlex,
+    required PrintLayout layout,
+    List<String>? totalRow,
+  }) {
+    final t = layout.table;
+    final n = headers.length;
+    final widths = <int, pw.TableColumnWidth>{};
+    if (columnFlex.length == n) {
+      for (var i = 0; i < n; i++) {
+        widths[n - 1 - i] = pw.FlexColumnWidth(columnFlex[i].toDouble());
+      }
+    }
+
+    pw.Widget cell(String v, int i, {bool bold = false}) => pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 3),
+          child: pw.Text(
+            v,
+            textAlign: _align(t.alignFor(i, v)),
+            style: pw.TextStyle(
+                fontSize: t.size,
+                fontWeight:
+                    bold ? pw.FontWeight.bold : pw.FontWeight.normal),
+          ),
+        );
+
+    return pw.Table(
+      border: pw.TableBorder.all(width: 0.6),
+      columnWidths: widths.isEmpty ? null : widths,
+      children: [
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+          children: [
+            for (var i = n - 1; i >= 0; i--)
+              pw.Padding(
+                padding:
+                    const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 3),
+                child: pw.Text(
+                  headers[i],
+                  textAlign: _align(t.headAlign),
+                  style: pw.TextStyle(
+                    fontSize: t.size,
+                    fontWeight: t.headBold
+                        ? pw.FontWeight.bold
+                        : pw.FontWeight.normal,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        for (final r in rows)
+          pw.TableRow(children: [
+            for (var i = n - 1; i >= 0; i--)
+              cell(i < r.length ? r[i] : '', i),
+          ]),
+        if (totalRow != null)
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+            children: [
+              for (var i = n - 1; i >= 0; i--)
+                cell(i < totalRow.length ? totalRow[i] : '', i, bold: true),
+            ],
+          ),
+      ],
+    );
+  }
+
   static pw.Widget _table(PrintDoc doc, PrintLayout layout) {
     final t = layout.table;
     final n = doc.headers.length;
@@ -305,7 +478,34 @@ class DocumentPdf {
     );
   }
 
-  static pw.Widget _signatures(PrintLayout layout) {
+  static pw.Widget _signatures(PrintDoc doc, PrintLayout layout) {
+    if (doc.signatureLines.isNotEmpty) {
+      return pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          for (final line in doc.signatureLines)
+            pw.Expanded(
+              child: pw.Column(children: [
+                for (final part in line.split('\n'))
+                  pw.Text(part,
+                      textAlign: pw.TextAlign.center,
+                      style: pw.TextStyle(
+                          fontSize: 9,
+                          fontWeight: line.split('\n').last == part
+                              ? pw.FontWeight.bold
+                              : pw.FontWeight.normal)),
+                pw.SizedBox(height: 24),
+                pw.Container(
+                  width: 110,
+                  decoration: const pw.BoxDecoration(
+                    border: pw.Border(top: pw.BorderSide(width: 0.8)),
+                  ),
+                ),
+              ]),
+            ),
+        ],
+      );
+    }
     final sigs = layout.signatures.where((s) => s.show).toList();
     if (sigs.isEmpty) return pw.SizedBox();
     return pw.Row(
