@@ -6,8 +6,8 @@ import '../ui/imd_tokens.dart';
 /// سمة التطبيق — نفس لوحة ألوان نسخة الويب (أخضر مؤسسي على خلفية محايدة فاتحة)
 /// مع نسخة داكنة مطابقة لما اعتُمد في النظام الحالي.
 class AppTheme {
-  static const Color accent = Color(0xFF0F766E);
-  static const Color accentHover = Color(0xFF115E59);
+  static const Color accent = Color(0xFF047857);
+  static const Color accentHover = Color(0xFF065F46);
   static const Color bgLight = Color(0xFFF7F7F8);
   static const Color surfaceLight = Color(0xFFFFFFFF);
   static const Color lineLight = Color(0xFFE3E3E8);
@@ -18,7 +18,7 @@ class AppTheme {
   static const Color surfaceDark = Color(0xFF212121);
   static const Color lineDark = Color(0xFF303036);
   static const Color textDark = Color(0xFFECECF1);
-  static const Color accentDark = Color(0xFF2DD4BF);
+  static const Color accentDark = Color(0xFF10B981);
 
   static ThemeData light({String font = ImdFonts.defaultFamily}) => _base(
         font: font,

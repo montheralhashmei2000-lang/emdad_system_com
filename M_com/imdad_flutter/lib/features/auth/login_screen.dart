@@ -292,7 +292,7 @@ class _LgInputState extends State<_LgInput> {
   @override
   Widget build(BuildContext context) {
     final focused = _focus.hasFocus;
-    const accent = Color(0xFF0F766E);
+    final accent = context.imd.accent;
     final border = focused ? accent : (_hover ? const Color(0xFFB9B9C6) : const Color(0xFFD1D1DB));
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
@@ -303,7 +303,7 @@ class _LgInputState extends State<_LgInput> {
           color: Colors.white,
           border: Border.all(color: border),
           borderRadius: BorderRadius.circular(12),
-          boxShadow: focused ? const [BoxShadow(color: Color(0x2E0F766E), spreadRadius: 3)] : null,
+          boxShadow: focused ? [BoxShadow(color: accent.withValues(alpha: .18), spreadRadius: 3)] : null,
         ),
         child: Row(
           children: [
@@ -381,7 +381,7 @@ class _EyeBtnState extends State<_EyeBtn> {
               'eye',
               size: 18,
               color: widget.on
-                  ? const Color(0xFF0F766E)
+                  ? context.imd.accent
                   : (_hover ? const Color(0xFF202123) : const Color(0xFF5B5E6B)),
             ),
           ),
@@ -430,7 +430,7 @@ class _PrimaryBtnState extends State<_PrimaryBtn> {
             duration: const Duration(milliseconds: 150),
             height: widget.height,
             decoration: BoxDecoration(
-              color: (_hover && !widget.busy ? const Color(0xFF115E59) : const Color(0xFF0F766E))
+              color: (_hover && !widget.busy ? context.imd.accentHover : context.imd.accent)
                   .withValues(alpha: widget.busy ? .85 : 1),
               borderRadius: BorderRadius.circular(12),
             ),

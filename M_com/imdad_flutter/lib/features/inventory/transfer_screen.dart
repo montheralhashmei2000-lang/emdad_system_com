@@ -784,7 +784,7 @@ class _TransferScreenState extends State<TransferScreen> {
   Widget _rowView(BuildContext context, int index, _Row r) {
     final it = _item(r.itemId);
     final units = it == null ? const <ItemUnit>[] : _catalog.unitsOf(it);
-    final narrow = MediaQuery.sizeOf(context).width <= 768;
+    final narrow = ImdBp.of(context).mobile;
     final meta = it == null
         ? ''
         : () {

@@ -483,7 +483,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
   Widget _rowView(BuildContext context, int index, List<_Row> rows, _Row r, String metaLabel) {
     final it = _item(r.itemId);
     final units = it == null ? const <ItemUnit>[] : _catalog.unitsOf(it);
-    final narrow = MediaQuery.sizeOf(context).width <= 768;
+    final narrow = ImdBp.of(context).mobile;
     final wh = _tab == 'unit' ? _uWh : _sWh;
     final meta = it == null
         ? ''

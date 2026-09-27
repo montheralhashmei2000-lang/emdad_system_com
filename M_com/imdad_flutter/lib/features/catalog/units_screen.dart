@@ -326,7 +326,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
             Expanded(
               child: Row(children: [
               Text(u.code,
-                  style: TextStyle(fontWeight: FontWeight.w900, color: isCamp ? const Color(0xFF5EEAD4) : fg)),
+                  style: TextStyle(fontWeight: FontWeight.w900, color: isCamp ? ImdColors.dark.accentHover : fg)),
               const SizedBox(width: 8),
               Flexible(child: Text(u.name, overflow: TextOverflow.ellipsis)),
               if (u.category.isNotEmpty) ...[

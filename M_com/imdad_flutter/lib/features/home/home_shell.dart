@@ -719,7 +719,7 @@ class _Avatar extends StatelessWidget {
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-          color: c.isDark ? c.accent : const Color(0xFF0F766E),
+          color: c.accent,
           shape: BoxShape.circle),
       child: Text(
         name.isEmpty ? '؟' : name.characters.first.toUpperCase(),
@@ -800,13 +800,11 @@ class _Sidebar extends StatelessWidget {
         border: BorderDirectional(start: BorderSide(color: c.sideLine)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-      child: LayoutBuilder(
-        builder: (context, cons) => SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: cons.maxHeight),
-            child: IntrinsicHeight(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+      // الرأس والتذييل ثابتان، والقائمة بينهما تتمرّر. لا `IntrinsicHeight` هنا:
+      // `AnimatedSize` تُرجع ارتفاع الطفل الهدف لا المتحرّك، فيفيض العمود
+      // مؤقتًا عند طيّ قسمٍ أو التبديل بين قسمين.
+      child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Container(
                     padding: const EdgeInsets.only(top: 6, bottom: 12),
@@ -866,6 +864,12 @@ class _Sidebar extends StatelessWidget {
                       ),
                     ]),
                   ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const ClampingScrollPhysics(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
                   // زر الرئيسية العام لا يظهر في المحروقات: قائمته تبدأ به
                   // أصلًا، فزرّان لشاشةٍ واحدة يربكان لا يُيسّران.
                   if (space != AppSpace.fuel)
@@ -936,7 +940,10 @@ class _Sidebar extends StatelessWidget {
                       onTap: () => onGo('usersAccess'),
                     ),
                   ],
-                  const Spacer(),
+                        ],
+                      ),
+                    ),
+                  ),
                   Container(
                     margin: const EdgeInsets.only(top: 14),
                     padding: const EdgeInsets.only(top: 14),
@@ -991,10 +998,6 @@ class _Sidebar extends StatelessWidget {
                     ),
                   ),
                 ],
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -1295,7 +1298,7 @@ class _SideTileState extends State<_SideTile> {
         fg = (widget.on || _hover)
             ? Colors.white
             : c.sideText.withValues(alpha: .86);
-        iconColor = widget.on ? const Color(0xFF5EEAD4) : null;
+        iconColor = widget.on ? ImdColors.dark.accentHover : null;
         pad = const EdgeInsetsDirectional.fromSTEB(14, 11, 10, 11)
             .resolve(TextDirection.rtl);
         margin = const EdgeInsets.only(left: 4, top: 1, bottom: 1);
@@ -1328,9 +1331,9 @@ class _SideTileState extends State<_SideTile> {
             border: isItem ? null : border,
           ),
           foregroundDecoration: isItem && widget.on
-              ? const BoxDecoration(
+              ? BoxDecoration(
                   border: Border(
-                      right: BorderSide(color: Color(0xFF2DD4BF), width: 2)),
+                      right: BorderSide(color: ImdColors.dark.accentHover, width: 2)),
                 )
               : null,
           padding: pad,

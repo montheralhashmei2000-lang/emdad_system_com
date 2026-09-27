@@ -158,9 +158,17 @@ class ImdFld extends StatelessWidget {
     this.maxLines = 1,
     this.obscure = false,
     this.suggestions = const [],
+    this.errorText,
+    this.suffix,
   });
   final TextEditingController controller;
   final String? hint;
+
+  /// رسالة خطأ تظهر تحت الحقل بلون `colorScheme.error`.
+  final String? errorText;
+
+  /// عنصر عند نهاية الحقل (يسار الحقل في RTL).
+  final Widget? suffix;
   final bool readOnly;
   final bool number;
   final bool dense;
@@ -191,7 +199,11 @@ class ImdFld extends StatelessWidget {
           fontSize: ImdCompact.of(context) ? 13 : 14,
           color: enabled ? c.text : c.muted),
       decoration: imdFieldDecoration(context,
-          hint: hint, readOnly: readOnly || !enabled, dense: dense),
+          hint: hint,
+          readOnly: readOnly || !enabled,
+          dense: dense,
+          suffix: suffix,
+          errorText: errorText),
     );
     return ConstrainedBox(
       constraints: BoxConstraints(

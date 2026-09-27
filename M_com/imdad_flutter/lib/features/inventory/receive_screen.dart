@@ -605,7 +605,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
   Widget _rowView(BuildContext context, int index, _Row r) {
     final it = _item(r.itemId);
     final units = it == null ? const <ItemUnit>[] : _catalog.unitsOf(it);
-    final mobile = MediaQuery.sizeOf(context).width <= 768;
+    final mobile = ImdBp.of(context).mobile;
     final meta = it == null
         ? ''
         : (_wh.isNotEmpty

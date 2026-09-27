@@ -397,7 +397,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     final q = _search.text.trim();
-    final narrow = MediaQuery.sizeOf(context).width < 900;
+    final narrow = ImdBp.of(context).mobile;
     final panels = _panels();
     final visible = q.isEmpty
         ? panels.where((p) => p.$1 == _section).toList()

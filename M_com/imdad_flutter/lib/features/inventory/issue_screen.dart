@@ -898,7 +898,7 @@ class _IssueScreenState extends State<IssueScreen> {
     final it = _item(r.itemId);
     final units = it == null ? const <ItemUnit>[] : _catalog.unitsOf(it);
     final multi = _type == 3;
-    final narrow = MediaQuery.sizeOf(context).width <= 768;
+    final narrow = ImdBp.of(context).mobile;
     // الرصيد يُعرض بوحدة العرض المختارة في بطاقة الصنف لا بالأساسية دائمًا.
     final shown = it == null
         ? null

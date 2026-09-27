@@ -266,10 +266,9 @@ class _OpeningScreenState extends State<OpeningScreen> {
                   },
                 ),
               ),
-              ImdButton(
+              ImdButton.outline(
                 label: 'طباعة كشف الأرصدة الافتتاحية',
                 icon: 'printer',
-                kind: ImdBtnKind.purple,
                 small: true,
                 onPressed: _print,
               ),

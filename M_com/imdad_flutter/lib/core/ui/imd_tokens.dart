@@ -65,10 +65,10 @@ class ImdColors extends ThemeExtension<ImdColors> {
     text2: Color(0xFF343541),
     muted: Color(0xFF5B5E6B),
     faint: Color(0xFF8E8EA0),
-    accent: Color(0xFF0F766E),
-    accentHover: Color(0xFF115E59),
-    accentSoft: Color(0xFFE6F4F2),
-    ring: Color(0x380F766E),
+    accent: Color(0xFF047857),
+    accentHover: Color(0xFF065F46),
+    accentSoft: Color(0xFFECFDF5),
+    ring: Color(0x38047857),
     onAccent: Color(0xFFFFFFFF),
     success: Color(0xFF067647),
     successSoft: Color(0xFFDCFAE6),
@@ -79,7 +79,7 @@ class ImdColors extends ThemeExtension<ImdColors> {
     info: Color(0xFF175CD3),
     infoSoft: Color(0xFFEFF4FF),
     // الشريط الجانبي في السمة الفاتحة: أخضر مزرق داكن من عائلة لون التمييز
-    // (0F766E) بدل الأسود — يبقى النص الأبيض مقروءًا ويتّسق مع أزرار النظام.
+    // (047857) بدل الأسود — يبقى النص الأبيض مقروءًا ويتّسق مع أزرار النظام.
     side: Color(0xFF0B3D3A),
     side2: Color(0xFF104A46),
     sideHover: Color(0xFF155A55),
@@ -107,10 +107,10 @@ class ImdColors extends ThemeExtension<ImdColors> {
     text2: Color(0xFFD4D4D8),
     muted: Color(0xFFA1A1AA),
     faint: Color(0xFF8B8B96),
-    accent: Color(0xFF2DD4BF),
-    accentHover: Color(0xFF5EEAD4),
-    accentSoft: Color(0x242DD4BF),
-    ring: Color(0x522DD4BF),
+    accent: Color(0xFF10B981),
+    accentHover: Color(0xFF34D399),
+    accentSoft: Color(0x2410B981),
+    ring: Color(0x5210B981),
     onAccent: Color(0xFF0B1F1C),
     success: Color(0xFF4ADE80),
     successSoft: Color(0x244ADE80),
@@ -224,15 +224,21 @@ class ImdSizes {
   static const String font = 'IBMPlexSansArabic';
 }
 
-/// نقاط التكيّف في CSS الويب: ≥1200 واسع، 921–1199 متوسط، ≤920 لوحي، ≤680 جوال، ≤420 جوال صغير.
+/// نقاط التكيّف: ≥1200 واسع، 901–1199 متوسط (لا جوال ولا واسع)، ≤900 جوال، ≤420 جوال صغير.
+///
+/// 900 نقطة التحوّل الوحيدة بين نمط الجوال (Drawer/بطاقات) ونمط سطح المكتب.
 class ImdBp {
   ImdBp(this.width);
   factory ImdBp.of(BuildContext context) => ImdBp(MediaQuery.sizeOf(context).width);
 
+  static const double mobileMax = 900;
+
   final double width;
   bool get wide => width >= 1200;
-  bool get tablet => width <= 920;
-  bool get mobile => width <= 680;
+  bool get mobile => width <= mobileMax;
+
+  /// اسمٌ بديل لـ[mobile] للتوافق الرجعي: اللوحي والجوال نمطٌ واحد.
+  bool get tablet => mobile;
   bool get tiny => width <= 420;
 
   /// `@media (hover:none) and (pointer:coarse)` ⇒ أهداف لمس 46.

@@ -278,7 +278,7 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
   // ───────── الواجهة ─────────
   @override
   Widget build(BuildContext context) {
-    final narrow = MediaQuery.sizeOf(context).width < 900;
+    final narrow = ImdBp.of(context).mobile;
     return ImdPage(children: [
       ImdPageTitle(
         title: 'مركز التقارير',

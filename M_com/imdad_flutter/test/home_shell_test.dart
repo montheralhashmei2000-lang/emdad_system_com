@@ -1,4 +1,5 @@
 import 'package:drift/native.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/core/security/auth_service.dart';
@@ -145,6 +146,72 @@ void main() {
       expect(find.text('المزيد'), findsWidgets);
       expect(find.text('الرئيسية'), findsWidgets);
     });
+  });
+
+  /// عطلٌ ظهر في نافذة ويندوز ارتفاعها ٦٩٧: `AnimatedSize` تُرجع ارتفاع الطفل
+  /// الهدف لا المتحرّك، فيفيض العمود مؤقتًا (٩٢ بكسلًا) عند طيّ قسمٍ أو التبديل
+  /// بين قسمين. وهو لا يظهر إلا أثناء الحركة، فيُضخّ الوقت خطوةً خطوة.
+  testWidgets('الشريط الجانبي لا يفيض أثناء طيّ الأقسام وفتحها', (tester) async {
+    tester.view.physicalSize = const Size(1600, 697);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await enterSupply(tester);
+    expect(tester.takeException(), isNull);
+
+    Future<void> tapSection(String name) async {
+      await tester.tap(find.text(name).first, warnIfMissed: false);
+      // الحركة ٢٥٠ مللي: نلتقط الفيض في أي إطارٍ منها.
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 40));
+        final error = tester.takeException();
+        expect(error, isNull, reason: 'بعد نقر «$name»: $error');
+      }
+    }
+
+    await tapSection('العمليات المخزنية');
+    await tapSection('التقارير والرقابة'); // تبديلٌ: أحدهما يُطوى والآخر يُفتح.
+    await tapSection('العمليات المخزنية');
+    await tapSection('العمليات المخزنية'); // طيٌّ بلا فتح.
+  });
+
+  /// شاشة اختيار القسم في نافذةٍ عريضة: `Row` بـ`stretch` داخل تمريرٍ يُعطي
+  /// ارتفاعًا لا نهائيًا فيفشل التخطيط. وبعدها تفشل كل حركة فأرة في
+  /// `MouseTracker` (`!_debugDuringDeviceUpdate`) فيتجمّد التطبيق في وضع التطوير.
+  /// لا يظهر إلا بمؤشر فأرة حقيقي، ولا يظهر بنقر اللمس الذي تستعمله بقية الاختبارات.
+  testWidgets('التبديل إلى شاشة اختيار القسم بالفأرة لا ينهار في نافذة عريضة',
+      (tester) async {
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await enterSupply(tester);
+    expect(tester.takeException(), isNull);
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+
+    Future<void> click(Finder target) async {
+      final at = tester.getCenter(target.first);
+      await mouse.moveTo(at);
+      await tester.pump();
+      await mouse.down(at);
+      await mouse.up();
+      await pump(tester);
+    }
+
+    await click(find.text('تبديل القسم'));
+    final error = tester.takeException();
+    expect(error, isNull, reason: '$error');
+    // بطاقتا القسمين معروضتان.
+    expect(find.text('ادخل'), findsNWidgets(2));
+
+    // والدخول إلى المحروقات من البطاقة الثانية يفتح القشرة بلا خطأ.
+    await click(find.text('ادخل').last);
+    final error2 = tester.takeException();
+    expect(error2, isNull, reason: '$error2');
+    expect(find.text('ادخل'), findsNothing);
   });
 
   testWidgets('كل صلاحية معرَّفة لها تسمية', (tester) async {

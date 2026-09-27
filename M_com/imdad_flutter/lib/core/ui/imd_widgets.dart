@@ -9,17 +9,33 @@ import 'imd_tokens.dart';
 
 /// `.page-title` + `.page-sub`
 class ImdPageTitle extends StatelessWidget {
-  const ImdPageTitle({super.key, required this.title, this.icon, this.subtitle, this.trailing});
+  const ImdPageTitle({super.key, required this.title, this.icon, this.subtitle, this.trailing, this.actions});
 
   final String title;
   final String? icon;
   final String? subtitle;
+
+  /// عنصر واحد عند نهاية سطر العنوان في كل العروض (شارة، عدّاد…).
   final Widget? trailing;
+
+  /// أزرار الإجراءات: عند نهاية سطر العنوان قبل [trailing] على العرض الواسع،
+  /// وتنزل تحت العنوان في صفٍّ يلتفّ (`Wrap`) على الجوال. [trailing] يبقى مكانه.
+  final List<Widget>? actions;
 
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
-    final mobile = ImdBp.of(context).mobile;
+    final bp = ImdBp.of(context);
+    final mobile = bp.mobile;
+    final acts = actions ?? const <Widget>[];
+    final inline = acts.isNotEmpty && !mobile;
+    final below = acts.isNotEmpty && mobile;
+    final titleText = Text(title,
+        style: TextStyle(
+            fontSize: mobile ? 19 : 22,
+            fontWeight: FontWeight.w700,
+            color: c.text,
+            height: mobile ? 1.5 : 1.4));
     return Padding(
       padding: EdgeInsets.only(bottom: mobile ? 14 : 18),
       child: Column(
@@ -31,21 +47,39 @@ class ImdPageTitle extends StatelessWidget {
                 ImdIcon(icon!, size: (mobile ? 19 : 22) * 1.15, color: c.accent),
                 const SizedBox(width: 8),
               ],
-              Flexible(
-                child: Text(title,
-                    style: TextStyle(
-                        fontSize: mobile ? 19 : 22,
-                        fontWeight: FontWeight.w700,
-                        color: c.text,
-                        height: mobile ? 1.5 : 1.4)),
-              ),
-              if (trailing != null) ...[const Spacer(), trailing!],
+              // مع الإجراءات يأخذ العنوان كل المتبقي فتُدفع الأزرار إلى النهاية.
+              if (inline) Expanded(child: titleText) else Flexible(child: titleText),
+              if (inline) ...[
+                const SizedBox(width: 12),
+                // سقف العرض يمنع الأزرار الكثيرة من ابتلاع العنوان: تلتف بدل أن تفيض.
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: bp.width * .6),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.end,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: acts,
+                  ),
+                ),
+                if (trailing != null) ...[const SizedBox(width: 8), trailing!],
+              ] else if (trailing != null) ...[const Spacer(), trailing!],
             ],
           ),
           if (subtitle != null)
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(subtitle!, style: TextStyle(fontSize: mobile ? 12 : 13.5, color: c.muted, height: 1.6)),
+            ),
+          if (below)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: acts,
+              ),
             ),
         ],
       ),
@@ -416,12 +450,17 @@ enum ImdTone { ok, off, pend, code, err, info }
 
 /// `.chip` بأنواعه.
 class ImdChip extends StatelessWidget {
-  const ImdChip(this.label, {super.key, this.tone = ImdTone.off, this.icon, this.onTap});
+  const ImdChip(this.label,
+      {super.key, this.tone = ImdTone.off, this.icon, this.onTap, this.deriveBackgroundFromText = false});
 
   final String label;
   final ImdTone tone;
   final String? icon;
   final VoidCallback? onTap;
+
+  /// الخلفية = لون النص بشفافية 0.15 بدل لون `*Soft` من القالب.
+  /// تضمن تطابق الخلفية مع النص في أي سمة (فاتحة أو داكنة أو وقود).
+  final bool deriveBackgroundFromText;
 
   static (Color, Color) colors(ImdColors c, ImdTone tone) {
     switch (tone) {
@@ -441,7 +480,8 @@ class ImdChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (bg, fg) = colors(context.imd, tone);
+    final (soft, fg) = colors(context.imd, tone);
+    final bg = deriveBackgroundFromText ? fg.withValues(alpha: .15) : soft;
     // `.chip{white-space:nowrap}` — أصغر عرض للشريحة هو عرض نصها كاملًا،
     // فلا يضغطها عمود الجدول إلى ما دونه (IntrinsicWidth يجعل الأصغر = الأكبر).
     final chip = IntrinsicWidth(
@@ -471,6 +511,10 @@ class ImdChip extends StatelessWidget {
     return MouseRegion(cursor: SystemMouseCursors.click, child: GestureDetector(onTap: onTap, child: chip));
   }
 }
+
+/// اسمٌ بديل لـ[ImdChip] لعرض الحالات: `ImdTone.pend` «لم يُضبط بعد» برتقالي،
+/// `ok` «مضبوط» أخضر، `off` «قيد الانتظار» رمادي، `err` أحمر، `info` أزرق.
+typedef StatusBadge = ImdChip;
 
 /// `.note-box` — صندوق ملاحظة أصفر.
 class ImdNote extends StatelessWidget {
@@ -542,9 +586,13 @@ InputDecoration imdFieldDecoration(
   Widget? suffix,
   bool dense = false,
   bool readOnly = false,
+  String? errorText,
 }) {
   final c = context.imd;
   final compact = ImdCompact.of(context);
+  final hasError = errorText != null && errorText.isNotEmpty;
+  // رسالة الخطأ من `colorScheme.error`، وحدّ الحقل يوافقها فلا يختلف لونان.
+  final err = Theme.of(context).colorScheme.error;
   OutlineInputBorder b(Color col, [double w = 1]) => OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: BorderSide(color: col, width: w),
@@ -552,6 +600,9 @@ InputDecoration imdFieldDecoration(
   return InputDecoration(
     isDense: true,
     hintText: hint,
+    errorText: hasError ? errorText : null,
+    errorStyle: TextStyle(fontSize: 12, height: 1.4, color: err),
+    errorMaxLines: 2,
     hintStyle: TextStyle(color: c.faint, fontSize: compact ? 12.5 : 14),
     filled: true,
     fillColor: readOnly ? c.bg : c.surface,
@@ -566,13 +617,17 @@ InputDecoration imdFieldDecoration(
             child: ImdIcon(prefixIcon, size: 16, color: c.faint),
           ),
     prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-    suffixIcon: suffix,
+    // `suffix` يقع عند نهاية الحقل: يسار الحقل في RTL ويمينه في LTR.
+    suffixIcon: suffix == null
+        ? null
+        : Padding(padding: const EdgeInsetsDirectional.only(end: 10), child: suffix),
+    suffixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
     border: b(c.lineStrong),
     enabledBorder: b(c.lineStrong),
     disabledBorder: b(c.lineStrong),
     focusedBorder: b(c.accent, 1),
-    errorBorder: b(c.danger),
-    focusedErrorBorder: b(c.danger),
+    errorBorder: b(hasError ? err : c.danger),
+    focusedErrorBorder: b(hasError ? err : c.danger),
   );
 }
 
@@ -596,11 +651,19 @@ class ImdField extends StatelessWidget {
     this.prefixIcon,
     this.focusNode,
     this.autofocus = false,
+    this.errorText,
+    this.suffix,
   });
 
   final String label;
   final TextEditingController? controller;
   final String? hint;
+
+  /// رسالة خطأ تظهر تحت الحقل بلون `colorScheme.error`.
+  final String? errorText;
+
+  /// عنصر عند نهاية الحقل (يسار الحقل في RTL). لا يُطبَّق مع [child] المخصص.
+  final Widget? suffix;
   final Widget? child;
   final bool required;
   final bool readOnly;
@@ -649,8 +712,20 @@ class ImdField extends StatelessWidget {
                 inputFormatters: inputFormatters,
                 textAlign: textAlign,
                 style: TextStyle(fontSize: 14, color: readOnly ? c.muted : c.text),
-                decoration: imdFieldDecoration(context, hint: hint, readOnly: readOnly, prefixIcon: prefixIcon),
+                decoration: imdFieldDecoration(context,
+                    hint: hint,
+                    readOnly: readOnly,
+                    prefixIcon: prefixIcon,
+                    suffix: suffix,
+                    errorText: errorText),
               ),
+          // الحقل المخصص يرسم ديكوره بنفسه، فتُعرض رسالة الخطأ تحته هنا.
+          if (child != null && errorText != null && errorText!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(errorText!,
+                  style: TextStyle(fontSize: 12, height: 1.4, color: Theme.of(context).colorScheme.error)),
+            ),
         ],
       ),
     );

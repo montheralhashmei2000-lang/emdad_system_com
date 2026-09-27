@@ -72,14 +72,18 @@ class SpaceChooserScreen extends StatelessWidget {
                       ],
                     )
                   else
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (var i = 0; i < spaces.length; i++) ...[
-                          if (i > 0) const SizedBox(width: 16),
-                          Expanded(child: _card(context, spaces[i])),
+                    // `stretch` يحتاج ارتفاعًا محدودًا والتمرير يعطي ما لا نهاية،
+                    // فيُحدَّد الارتفاع بأطول بطاقة.
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (var i = 0; i < spaces.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 16),
+                            Expanded(child: _card(context, spaces[i])),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                 ],
               ),

@@ -57,3 +57,11 @@ owner-private-key.txt
 .gradle_cache/
 .cxx/
 *.hprof
+_analyze_out.txt
+_analyze.py
+_smoke_test.py
+# ملفات غريبة من الأوامر
+h origin main
+_analyze.py
+_analyze_out.txt
+_smoke_test.py
