@@ -47,6 +47,7 @@ def apply_card_shadow(widget, color="#00000030", blur=50, offset=18):
     s.setOffset(0, offset)
     widget.setGraphicsEffect(s)
 
+QSS = """
 QTableWidget, QTableView {
     background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px;
     gridline-color: #ECF0F1; font-family: 'Cairo', sans-serif; font-size: 13px;
@@ -168,6 +169,18 @@ QComboBox::drop-down { border: none; width: 30px; }
 QComboBox::down-arrow { image: none; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid #7F8C8D; margin-right: 8px; }
 QComboBox QAbstractItemView { background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 4px; selection-background-color: #ECFDF5; }
 """
+def setup_theme(app=None):
+    """تطبيق أنماط النظام على تطبيق Qt. يقبل QApplication أو يُنشئ واحدًا عند الحاجة."""
+    from PyQt6.QtWidgets import QApplication
+
+    app = app or QApplication.instance()
+    if app is None:
+        app = QApplication([])
+
+    app.setStyleSheet(QSS + "\n" + CSS)
+    return app
+
+
 # ================ التوافق ================
 apply_theme = setup_theme
 COLORS = {
@@ -222,11 +235,11 @@ def make_header_label(text: str):
     lbl.setStyleSheet("font-size: 22px; font-weight: bold; color: #1B5E20; padding: 10px 0;")
     return lbl
 
-def make_card(title: str, value_text: str, color: str = PRIMARY_COLOR):
+def make_card(title: str, value_text: str, color: str = PRIMARY):
     from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QFrame
     card = QFrame()
     card.setObjectName("card")
-    card.setStyleSheet(f"QFrame#card {{ background-color: {CARD_BG}; border: 1px solid {BORDER_COLOR}; border-radius: 8px; padding: 15px; }} QLabel {{ font-size: 14px; color: {TEXT_PRIMARY}; }}")
+    card.setStyleSheet(f"QFrame#card {{ background-color: {BG_CARD}; border: 1px solid {BORDER}; border-radius: 8px; padding: 15px; }} QLabel {{ font-size: 14px; color: {TEXT}; }}")
     layout = QVBoxLayout(card)
     layout.setContentsMargins(10, 10, 10, 10)
     lbl_title = QLabel(title)

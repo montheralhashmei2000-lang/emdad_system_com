@@ -88,19 +88,66 @@ class BaseSQLiteRepository(BaseRepository[T]):
         query = query.limit(limit).offset(offset)
         return [self._orm_to_pydantic(obj) for obj in query.all()]
 
+    def _orm_column_names(self) -> set:
+        """أسماء أعمدة جدول ORM الفعلية للنموذج الحالي."""
+        table = getattr(self.orm_class, "__table__", None)
+
+        if table is not None:
+            return {col.name for col in table.columns}
+
+        return set()
+
+    def _entity_data_for_orm(self, entity: T) -> dict:
+        """
+        تحويل بيانات الكيان إلى حقول يقبلها نموذج ORM فقط.
+
+        نموذج BaseSchema يحمل حقولًا للقراءة/التتبع لا وجود لها كأعمدة في
+        الجداول (مثل created_by و updated_by و version). تمريرها إلى المُنشئ
+        كان يُسقط التطبيق بـ:
+            TypeError: 'created_by' is an invalid keyword argument
+
+        الحل هو اعتماد أعمدة الجدول الفعلية كمرجع وحيد بدل قائمة ثابتة من
+        الأسماء. تحذير: لا يجوز استبعاد الحقول التي تنتهي بـ _name بهذه
+        الطريقة، فـ full_name و warehouse_name أعمدة وحقول شرعية، وكان
+        استبعادها يُسقط عمود full_name الواجب (NOT NULL).
+        """
+        data = entity.model_dump()
+        columns = self._orm_column_names()
+
+        if not columns:
+            # لا معلومات عن الجدول: نستخدم قائمة الحقول المشتقة القديمة
+            return {
+                key: value
+                for key, value in data.items()
+                if key != "id"
+                and not key.endswith("_name")
+                and key not in ("item_count", "total_qty", "remaining_qty")
+            }
+
+        result = {key: value for key, value in data.items() if key in columns}
+        result.pop("id", None)  # يُمرَّر صراحةً إلى المُنشئ
+        return result
+
+    def _commit(self) -> None:
+        """
+        تثبيت التغييرات في قاعدة البيانات.
+
+        كانت دوال الكتابة تستدعي flush() فقط، ومع أن flush يرسل التغييرات
+        إلى الاتصال، فإنها تبقى داخل معاملة غير محفوظة (transaction). وبما
+        أن get_session() تُنشئ جلسة جديدة في كل استدعاء دون إغلاق، فإن
+        البيانات كانت تُفقد بصمت (مثل بيانات المستخدم الأولي).
+        """
+        self.session.commit()
+
     def create(self, entity: T | dict) -> T:
         if isinstance(entity, dict):
             entity = self.pydantic_class(**entity)
-        data = entity.model_dump()
-        data.pop("id", None)  # سيتم توليده من النموذج
-        # إزالة الحقول المشتقة (للقراءة فقط)
-        for field in list(data.keys()):
-            if field.endswith("_name") or field in ("item_count", "total_qty", "remaining_qty"):
-                data.pop(field, None)
 
+        data = self._entity_data_for_orm(entity)
         orm_obj = self.orm_class(id=entity.id, **data)
         self.session.add(orm_obj)
         self.session.flush()
+        self._commit()
         return self._orm_to_pydantic(orm_obj)
 
     def update(self, entity: T | dict) -> T:
@@ -113,17 +160,14 @@ class BaseSQLiteRepository(BaseRepository[T]):
         if orm_obj is None:
             raise ValueError(f"الكيان {entity.id} غير موجود.")
 
-        data = entity.model_dump()
-        # إزالة الحقول المشتقة
-        for field in list(data.keys()):
-            if field.endswith("_name") or field in ("item_count", "total_qty", "remaining_qty"):
-                data.pop(field, None)
+        data = self._entity_data_for_orm(entity)
 
         for key, value in data.items():
             if hasattr(orm_obj, key):
                 setattr(orm_obj, key, value)
 
         self.session.flush()
+        self._commit()
         return self._orm_to_pydantic(orm_obj)
 
     def delete(self, entity_id: str, soft: bool = True) -> bool:
@@ -138,6 +182,7 @@ class BaseSQLiteRepository(BaseRepository[T]):
         else:
             self.session.delete(orm_obj)
         self.session.flush()
+        self._commit()
         return True
 
     def count(self, camp_id: Optional[str] = None, **filters) -> int:
@@ -167,6 +212,7 @@ class BaseSQLiteRepository(BaseRepository[T]):
             __import__("datetime").timezone.utc
         ).isoformat()
         self.session.flush()
+        self._commit()
         return True
 
     def mark_failed(self, entity_id: str, error: Optional[str] = None) -> bool:
@@ -180,6 +226,7 @@ class BaseSQLiteRepository(BaseRepository[T]):
             __import__("datetime").timezone.utc
         ).isoformat()
         self.session.flush()
+        self._commit()
         return True
 
     def add_to_sync_outbox(self, entity_id: str, operation: str = "upsert") -> None:
@@ -219,3 +266,4 @@ class BaseSQLiteRepository(BaseRepository[T]):
         orm_obj.sync_status = SyncStatus.PENDING.value
         self.session.add(outbox)
         self.session.flush()
+        self._commit()

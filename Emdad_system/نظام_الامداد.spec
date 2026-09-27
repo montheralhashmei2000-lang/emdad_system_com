@@ -20,6 +20,26 @@ try:
 except Exception:
     pass
 
+# ملفات تُحمَّل وقت التشغيل عبر المسار (Path(__file__)) داخل حزمة ui،
+# ويجب أن تكون موجودة بجوار التطبيق بعد البناء.
+#   print_helper.py            -> ui/print_helper.py (شيم الطباعة)
+#   views/transfer_view.py     -> ui/views/transfer_view.py (شيم التحويل)
+# إضافةً إلى theme.py و api_service.py اللذين تستوردهما شاشات الجذر.
+_RUNTIME_FILES = [
+    ('print_helper.py', '.'),
+    ('theme.py', '.'),
+    ('api_service.py', '.'),
+    ('views/transfer_view.py', 'views'),
+]
+
+for _src, _dst in _RUNTIME_FILES:
+    import os as _os
+
+    if _os.path.exists(_src):
+        datas.append((_src, _dst))
+    else:
+        print(f'[spec] تحذير: ملف وقت التشغيل مفقود: {_src}')
+
 # Hidden imports for dynamic modules
 for mod in ['ui.views', 'ui.widgets', 'ui.screens',
             'core.models', 'core.services', 'core.security',
@@ -41,6 +61,13 @@ hiddenimports += [
     'httpx',
     'PIL',
 ]
+
+# qtawesome و pyqtgraph يعتمدان على ملفات خطوط/بيانات وقت التشغيل
+for _pkg in ('qtawesome', 'pyqtgraph'):
+    try:
+        datas += collect_data_files(_pkg)
+    except Exception:
+        print(f'[spec] تحذير: تعذر جمع بيانات {_pkg}')
 
 a = Analysis(
     ['main.py'],

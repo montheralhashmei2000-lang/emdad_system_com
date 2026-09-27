@@ -51,17 +51,20 @@ def initialize_database() -> None:
     # تشغيل الترقيات
     run_migrations()
 
-    # إضافة البيانات الابتدائية إذا كانت قاعدة البيانات فارغة
+    # إضافة البيانات الابتدائية إذا لم تكن موجودة بعد
     try:
         from data.database import get_session
-        from data.orm_models import UnitOfMeasureModel
+        from data.orm_models import UserModel
 
         session = get_session()
-        count = session.query(UnitOfMeasureModel).count()
+        # الفحص على المستخدمين لأن init_sample_data هي ما ينشئه فعليًا.
+        # كان الفحص على UnitOfMeasureModel فيبقى صفرًا دائمًا (لا توجد
+        # دالة تبذر وحدات القياس)، فتُنفَّذ البذور في كل تشغيل.
+        count = session.query(UserModel).count()
         session.close()
 
         if count == 0:
-            logging.info("قاعدة البيانات فارغة - جاري إضافة البيانات الابتدائية...")
+            logging.info("لا يوجد مستخدمون - جاري إضافة البيانات الابتدائية...")
             seed_all()
     except Exception as e:
         logging.error(f"خطأ في تهيئة قاعدة البيانات: {e}")

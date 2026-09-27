@@ -1,7 +1,59 @@
-build/
-.dart_tool/
-.idea/
+# ========== Python (Emdad_system) ==========
 __pycache__/
-*.pyc
-.env
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.spec
+logs/
+*.log
+.venv/
+venv/
+ENV/
+*.egg-info/
+
+# ========== Flutter/Dart (imdad_flutter) ==========
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+*.apk
+*.aab
+*.exe
+*.msix
+windows/flutter/ephemeral/
+android/.gradle/
+android/app/build/
+android/key.properties
+*.jks
+*.keystore
+ios/Pods/
+ios/.symlinks/
+flutter_install.log
+
+# ========== Web (source_web_*) ==========
+node_modules/
+*.log
+
+# ========== IDE & Environment ==========
+.idea/
+*.iml
 .vscode/
+.env
+
+# ========== Secrets & Keys (حرج) ==========
+imdad_flutter/lib/core/security/owner_key.dart
+*.key
+imdad_keystore/
+*.p12
+*.jks
+*.keystore
+owner-private-key.txt
+*-private-key.txt
+# ========== Gradle Cache (ضخم جداً) ==========
+.gradle/
+.gradle_cache/
+.cxx/
+*.hprof
