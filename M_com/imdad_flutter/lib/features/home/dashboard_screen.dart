@@ -318,11 +318,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
+                    // العنوان يتقلّص ولا يفيض: الصف بجوار الحلقة يضيق على
+                    // الشاشات المتوسطة، ونصٌّ بلا `Flexible` يرسم شريطًا أصفر.
                     child: Row(children: [
                       ImdIcon('target', size: 17, color: c.accent),
                       const SizedBox(width: 6),
-                      Text('مؤشر الصحة التشغيلية',
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: c.text)),
+                      Flexible(
+                        child: Text('مؤشر الصحة التشغيلية',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: c.text)),
+                      ),
                     ]),
                   ),
                   Padding(

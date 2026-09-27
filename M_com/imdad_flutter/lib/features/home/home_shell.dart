@@ -78,6 +78,22 @@ class _MenuSection {
   final List<_MenuItem> items;
 }
 
+/// عتبات القشرة الثلاث.
+///
+/// **الشاشة الواحدة تعمل على شاشتين مختلفتين تمامًا**: حاسبُ الشعبة وجهازُ
+/// أمين المستودع في يده. والفرق ليس في الحجم وحده — على الحاسب فأرةٌ ووقت،
+/// وفي اليد إبهامٌ وعجلة.
+class _Shell {
+  const _Shell._();
+
+  /// فوقها شريطٌ جانبيّ كامل بأقسامه وأسمائه.
+  static const double wide = 1150;
+
+  /// بينها و[wide] شريطٌ ضيّق بالأيقونات وحدها: ٢٩٠ بكسل تأكل ثلث لوحيّ
+  /// عرضه ألف، وسبعون منها تكفي للتنقّل.
+  static const double rail = 900;
+}
+
 const _menu = <_MenuSection>[
   // قسم الإمداد: تسعةُ أبوابٍ لا ستةٌ وعشرون بندًا.
   //
@@ -392,10 +408,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      // **القياس على المساحة المتاحة لا على النافذة**: القشرة قد تُعرض داخل
+      // لوحٍ مقسوم أو نافذةٍ فرعية، وقياسُ النافذة يعدها عريضةً وهي ضيقة.
+      LayoutBuilder(builder: (context, cons) => _build(context, cons.maxWidth));
+
+  Widget _build(BuildContext context, double width) {
     final auth = context.read<AuthService>();
     final c = context.imd;
-    final wide = MediaQuery.sizeOf(context).width > 920;
+    final wide = width > _Shell.wide;
+    final rail = !wide && width > _Shell.rail;
+    final handheld = width <= _Shell.rail;
 
     // قبل أن تُقرأ المساحة المحفوظة لا تُرسم قائمةٌ قد تتبدّل بعد لحظة.
     if (!_spaceReady) {
@@ -425,6 +448,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final side = _Sidebar(
       page: _page,
       space: space,
+      rail: rail,
       canSwitch: available.length > 1,
       onSwitchSpace: _switchSpace,
       openSec: _openSec,
@@ -465,17 +489,45 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         child: Scaffold(
           key: _scaffoldKey,
           backgroundColor: c.bg,
-          endDrawer: wide
-              ? null
-              : Drawer(
+          // الدرج يحمل القائمة كاملةً في اليد: الشريط السفليّ لأشهر الأبواب،
+          // وما وراءها يُفتح منه.
+          endDrawer: handheld
+              ? Drawer(
                   width: ImdSizes.sideWidth,
                   backgroundColor: c.side,
-                  child: side),
+                  child: _Sidebar(
+                    page: _page,
+                    space: space,
+                    canSwitch: available.length > 1,
+                    onSwitchSpace: _switchSpace,
+                    openSec: _openSec,
+                    isAdmin: _isAdmin(auth),
+                    hasPerm: (p) => _hasPerm(auth, p),
+                    userName: side.userName,
+                    onGo: (id) {
+                      Navigator.of(context).maybePop();
+                      _go(id);
+                    },
+                    onToggle: (sec) => setState(
+                        () => _openSec = _openSec == sec ? null : sec),
+                    onLogout: widget.onSignOut,
+                  ),
+                )
+              : null,
+          bottomNavigationBar: handheld
+              ? _BottomNav(
+                  space: space,
+                  page: _page,
+                  hasPerm: (p) => _hasPerm(auth, p),
+                  onGo: _go,
+                  onMore: () => _scaffoldKey.currentState?.openEndDrawer(),
+                )
+              : null,
           body: Column(
             children: [
               _Topbar(
                 userName: side.userName,
-                showBurger: !wide,
+                showBurger: handheld,
                 onBurger: () => _scaffoldKey.currentState?.openEndDrawer(),
                 onOpenPage: _go,
                 space: _space ?? '',
@@ -484,7 +536,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (wide) side,
+                    if (!handheld) side,
                     Expanded(
                       child: KeyedSubtree(key: ValueKey(_page), child: body),
                     ),
@@ -533,60 +585,87 @@ class _Topbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
-    return Container(
-      height: ImdSizes.topbarHeight,
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-      decoration: BoxDecoration(
-        color: c.isDark ? const Color(0xEB171717) : const Color(0xEBFFFFFF),
-        border: Border(bottom: BorderSide(color: c.line)),
-      ),
-      child: Row(
-        children: [
-          if (showBurger) ...[
-            ImdIconButton(icon: 'menu', onPressed: onBurger),
-            const SizedBox(width: 12),
-          ],
-          Text.rich(
-            TextSpan(children: [
-              const TextSpan(text: 'نظام '),
-              TextSpan(
-                  text: 'الإمداد والتموين',
-                  style:
-                      TextStyle(color: c.accent, fontWeight: FontWeight.w700)),
-            ]),
-            style: TextStyle(
-                fontSize: 15, fontWeight: FontWeight.w600, color: c.text2),
-          ),
-          const Spacer(),
-          NotificationBell(onOpenPage: onOpenPage, space: space),
-          const SizedBox(width: 8),
-          Container(
-            height: 40,
-            padding: const EdgeInsetsDirectional.fromSTEB(6, 4, 10, 4),
-            decoration: BoxDecoration(
-                color: c.subtle, borderRadius: BorderRadius.circular(99)),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _Avatar(name: userName, size: 32, fontSize: 14),
-                const SizedBox(width: 10),
-                Text(userName,
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: c.text)),
-                const SizedBox(width: 10),
-                const _StatusPill(label: 'IAM محمي'),
-                if (MediaQuery.sizeOf(context).width > 560) ...[
-                  const SizedBox(width: 10),
-                  const _StatusPill(label: 'متصل — متزامن'),
+    // **الشريط العلويّ نظيفٌ على الجهازين.** ما يُزاح أولًا شاراتُ الحالة،
+    // ثم اسم المستخدم، ثم اسم النظام — وتبقى الصورة والجرس والقائمة، وهي
+    // ما يُنقر. وبلا هذا التدرّج يفيض الصف ويُرسم شريطًا أصفر.
+    return LayoutBuilder(builder: (context, cons) {
+      final w = cons.maxWidth;
+      final showSync = w > 900;
+      final showIam = w > 720;
+      final showName = w > 560;
+      final showTitle = w > 430;
+
+      return Container(
+        height: ImdSizes.topbarHeight,
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+        decoration: BoxDecoration(
+          color: c.isDark ? const Color(0xEB171717) : const Color(0xEBFFFFFF),
+          border: Border(bottom: BorderSide(color: c.line)),
+        ),
+        child: Row(
+          children: [
+            if (showBurger) ...[
+              ImdIconButton(icon: 'menu', onPressed: onBurger),
+              const SizedBox(width: 8),
+            ],
+            if (showTitle)
+              Flexible(
+                child: Text.rich(
+                  TextSpan(children: [
+                    const TextSpan(text: 'نظام '),
+                    TextSpan(
+                        text: 'الإمداد والتموين',
+                        style: TextStyle(
+                            color: c.accent, fontWeight: FontWeight.w700)),
+                  ]),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: c.text2),
+                ),
+              ),
+            const Spacer(),
+            NotificationBell(onOpenPage: onOpenPage, space: space),
+            const SizedBox(width: 8),
+            Container(
+              height: 40,
+              padding: EdgeInsetsDirectional.fromSTEB(6, 4, showName ? 10 : 6, 4),
+              decoration: BoxDecoration(
+                  color: c.subtle, borderRadius: BorderRadius.circular(99)),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _Avatar(name: userName, size: 32, fontSize: 14),
+                  if (showName) ...[
+                    const SizedBox(width: 10),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 140),
+                      child: Text(userName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: c.text)),
+                    ),
+                  ],
+                  if (showIam) ...[
+                    const SizedBox(width: 10),
+                    const _StatusPill(label: 'IAM محمي'),
+                  ],
+                  if (showSync) ...[
+                    const SizedBox(width: 10),
+                    const _StatusPill(label: 'متصل — متزامن'),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-        ],
-      ),
-    );
+          ],
+        ),
+      );
+    });
   }
 }
 
@@ -667,7 +746,18 @@ class _Sidebar extends StatelessWidget {
     required this.onGo,
     required this.onToggle,
     required this.onLogout,
+    this.rail = false,
   });
+
+  /// أيقوناتٌ بلا أسماء — لشاشةٍ لا تتسع لـ٢٩٠ بكسل من قائمة.
+  final bool rail;
+
+  /// بنود المساحة التي يملكها المستخدم، مسطَّحةً — وهي ما يُرسم في القضيب.
+  List<_MenuItem> _items() => [
+        for (final sec in _menu)
+          for (final i in sec.items)
+            if (AppSpace.shows(i.space, space) && hasPerm(i.id)) i,
+      ];
 
   /// هل للمساحة قسمٌ واحد فيُعرض مسطّحًا بلا رأس؟
   static bool _flat(String space, bool Function(String) hasPerm) =>
@@ -695,6 +785,7 @@ class _Sidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (rail) return _rail(context);
     final c = context.imd;
     final mobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
     return Container(
@@ -903,6 +994,238 @@ class _Sidebar extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+  /// شريطٌ ضيّق: أيقونةٌ لكل باب واسمُه في تلميحها.
+  ///
+  /// **الأيقونة تكفي لمن يعرف طريقه.** من يفتح الشاشة كل يوم لا يقرأ اسم
+  /// البند، بل يقصد موضعه؛ والاسم يبقى في التلميح لمن يبحث.
+  Widget _rail(BuildContext context) {
+    final c = context.imd;
+    final items = _items();
+    return Container(
+      width: 68,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [c.side, Color.lerp(c.side, Colors.black, .22)!],
+        ),
+        border: BorderDirectional(start: BorderSide(color: c.sideLine)),
+      ),
+      child: Column(children: [
+        const SizedBox(height: 10),
+        if (space != AppSpace.fuel)
+          _RailTile(
+            icon: 'home',
+            label: 'الرئيسية',
+            on: page == 'dash',
+            onTap: () => onGo('dash'),
+          ),
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(children: [
+              for (final i in items)
+                _RailTile(
+                  icon: i.icon,
+                  label: i.name,
+                  on: page == i.id ||
+                      (i.id == 'fuelDashboard' && page == 'dash'),
+                  onTap: () => onGo(i.id),
+                ),
+            ]),
+          ),
+        ),
+        if (isAdmin && space != AppSpace.fuel)
+          _RailTile(
+            icon: 'users',
+            label: 'مركز الصلاحيات والوصول',
+            on: page == 'usersAccess',
+            onTap: () => onGo('usersAccess'),
+          ),
+        if (canSwitch)
+          _RailTile(
+            icon: 'swap',
+            label: 'تبديل القسم',
+            on: false,
+            onTap: onSwitchSpace,
+          ),
+        _RailTile(
+          icon: 'log-out',
+          label: 'تسجيل الخروج',
+          on: false,
+          danger: true,
+          onTap: onLogout,
+        ),
+        const SizedBox(height: 10),
+      ]),
+    );
+  }
+}
+
+/// أيقونةُ بابٍ في الشريط الضيّق، واسمُه في تلميحها.
+class _RailTile extends StatelessWidget {
+  const _RailTile({
+    required this.icon,
+    required this.label,
+    required this.on,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  final String icon;
+  final String label;
+  final bool on;
+  final VoidCallback onTap;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.imd;
+    final fg = danger ? c.danger : (on ? c.sideText : c.sideMuted);
+    return Tooltip(
+      message: label,
+      waitDuration: const Duration(milliseconds: 300),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          width: 48,
+          height: 44,
+          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: on ? c.sideActive : null,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: ImdIcon(icon, size: 19, color: fg),
+        ),
+      ),
+    );
+  }
+}
+
+/// شريطٌ سفليّ لأشهر أبواب القسم — وما وراءها في الدرج.
+///
+/// **الإبهام لا يبلغ أعلى الشاشة.** الدرج وحده يكلّف نقرتين لكل تنقّل، وأمينُ
+/// المستودع ينتقل بين الصرف والاستلام عشرات المرات في الساعة.
+class _BottomNav extends StatelessWidget {
+  const _BottomNav({
+    required this.space,
+    required this.page,
+    required this.hasPerm,
+    required this.onGo,
+    required this.onMore,
+  });
+
+  final String space;
+  final String page;
+  final bool Function(String) hasPerm;
+  final ValueChanged<String> onGo;
+  final VoidCallback onMore;
+
+  /// أبوابٌ ثلاثة بعد الرئيسية — والرابع «المزيد» يفتح القائمة كاملة.
+  static const Map<String, List<String>> _main = {
+    AppSpace.supply: ['supplyMoves', 'supplyOrders', 'supplyReports'],
+    AppSpace.fuel: ['fuelMoves', 'fuelAllocations', 'fuelReports'],
+  };
+
+  static _MenuItem? _itemOf(String id) {
+    for (final sec in _menu) {
+      for (final i in sec.items) {
+        if (i.id == id) return i;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.imd;
+    final ids = [
+      for (final id in _main[space] ?? const <String>[])
+        if (hasPerm(id)) id,
+    ];
+    final items = [
+      for (final id in ids)
+        if (_itemOf(id) != null) _itemOf(id)!,
+    ];
+    final home = space == AppSpace.fuel ? 'fuelDashboard' : 'dash';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: c.side,
+        border: Border(top: BorderSide(color: c.sideLine)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 58,
+          child: Row(children: [
+            _BottomTile(
+              icon: 'home',
+              label: 'الرئيسية',
+              on: page == 'dash' || page == home,
+              onTap: () => onGo(home),
+            ),
+            for (final i in items)
+              _BottomTile(
+                icon: i.icon,
+                label: i.name,
+                on: page == i.id,
+                onTap: () => onGo(i.id),
+              ),
+            _BottomTile(
+              icon: 'menu',
+              label: 'المزيد',
+              on: false,
+              onTap: onMore,
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class _BottomTile extends StatelessWidget {
+  const _BottomTile({
+    required this.icon,
+    required this.label,
+    required this.on,
+    required this.onTap,
+  });
+
+  final String icon;
+  final String label;
+  final bool on;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.imd;
+    final fg = on ? c.accent : c.sideMuted;
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ImdIcon(icon, size: 19, color: fg),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+                  color: fg),
+            ),
+          ],
         ),
       ),
     );

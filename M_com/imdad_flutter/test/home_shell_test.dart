@@ -55,13 +55,15 @@ void main() {
 
   /// القشرة تحمل مؤقّتًا دوريًّا لفحص الجلسة، فلا تسكن أبدًا ولا يصحّ فيها
   /// `pumpAndSettle`. والضخّ المعدود يكفي: العطل يقع في أول بناء.
-  /// الشريط الجانبي لا يُرسم تحت ٩٢٠ بكسل منطقي، وحجم الاختبار الافتراضي
-  /// دونها — فتُضبط النافذة قبل البناء وإلا اختُبر الدرج لا الشريط.
-  void wideWindow(WidgetTester tester) {
-    tester.view.physicalSize = const Size(1600, 1000);
+  /// الشريط الجانبي لا يُرسم تحت عتبته، وحجم الاختبار الافتراضي دونها —
+  /// فتُضبط النافذة قبل البناء وإلا اختُبر الدرج لا الشريط.
+  void window(WidgetTester tester, double width) {
+    tester.view.physicalSize = Size(width, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
   }
+
+  void wideWindow(WidgetTester tester) => window(tester, 1600);
 
   Future<void> pump(WidgetTester tester) async {
     await tester.pumpWidget(host());
@@ -110,6 +112,39 @@ void main() {
     final error = tester.takeException();
     expect(error, isNull, reason: '$error');
     expect(find.byType(HomeShell), findsOneWidget);
+  });
+
+  group('القشرة تتبع عرضها', () {
+    testWidgets('العريضة: شريطٌ كامل بأسماء أقسامه', (tester) async {
+      window(tester, 1600);
+      await enterSupply(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.text('العمليات المخزنية'), findsWidgets);
+      expect(find.byType(BottomNavigationBar), findsNothing);
+    });
+
+    testWidgets('المتوسطة: قضيبٌ بالأيقونات بلا أسماء', (tester) async {
+      // ٢٩٠ بكسل من قائمة تأكل ثلث لوحيّ عرضه ألف.
+      window(tester, 1000);
+      await enterSupply(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.text('العمليات المخزنية'), findsNothing,
+          reason: 'القضيب أيقوناتٌ لا أسماء');
+      // والاسم يبقى في التلميح لمن يبحث.
+      expect(
+          find.byWidgetPredicate(
+              (w) => w is Tooltip && w.message == 'حركة المخزون'),
+          findsWidgets);
+    });
+
+    testWidgets('اليدوية: شريطٌ سفليّ ودرج', (tester) async {
+      window(tester, 700);
+      await enterSupply(tester);
+      expect(tester.takeException(), isNull);
+      // الإبهام لا يبلغ أعلى الشاشة، فأشهر الأبواب أسفلها.
+      expect(find.text('المزيد'), findsWidgets);
+      expect(find.text('الرئيسية'), findsWidgets);
+    });
   });
 
   testWidgets('كل صلاحية معرَّفة لها تسمية', (tester) async {
