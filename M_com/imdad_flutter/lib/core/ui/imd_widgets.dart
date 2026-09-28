@@ -843,6 +843,7 @@ class ImdTable extends StatefulWidget {
     this.zebra = false,
     this.pageSize,
     this.onPageChanged,
+    this.cards = false,
   });
 
   final List<ImdCol> columns;
@@ -871,6 +872,16 @@ class ImdTable extends StatefulWidget {
 
   /// إشعارٌ اختياري بفهرس الصفحة الحالية (من صفر) بعد أي تنقّل.
   final ValueChanged<int>? onPageChanged;
+
+  /// `false` (الافتراضي) ⇒ السلوك الحالي دومًا (جدولٌ، وتمريرٌ أفقيٌّ إن
+  /// ضاق `minWidth` عنه). `true` ⇒ كل صفٍّ يصير بطاقةً بدل صفّ جدول، لكن
+  /// فقط عند `ImdBp.of(context).mobile` — عرضٌ أوسع من 900 يبقى جدولًا
+  /// كالمعتاد بصرف النظر عن هذا المعامل، ونقطة التحوّل ثابتةٌ لا تُضبط هنا.
+  ///
+  /// عمودٌ بعنوانٍ فارغ (`ImdCol('')`، كما تفعل كل أعمدة الإجراءات في
+  /// الشاشات القائمة) لا يُعنوَن في البطاقة، بل يُجمَع مع أمثاله في صفّ
+  /// إجراءاتٍ أسفلها.
+  final bool cards;
 
   @override
   State<ImdTable> createState() => _ImdTableState();
@@ -939,6 +950,96 @@ class _ImdTableState extends State<ImdTable> {
   /// فلا يُقسَّم على صفر ولا تُعرض «صفحة صفر من صفر».
   int _pageCount(int totalRows, int pageSize) => totalRows == 0 ? 1 : (totalRows / pageSize).ceil();
 
+  /// عنوانٌ صغيرٌ فوق خليته — بنفس أسلوب `ImdLabeled` في `imd_form.dart` حرفيًّا
+  /// (لا استيراد منه: هذا الملف أساسٌ لا يعتمد على ملفاتٍ فوقه).
+  Widget _labeledCell(BuildContext context, String label, Widget cell, {Color? labelColor}) {
+    final c = context.imd;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: labelColor ?? c.text2, height: 1.6)),
+        const SizedBox(height: 2),
+        cell,
+      ],
+    );
+  }
+
+  /// بطاقة صفٍّ واحد على الشاشات الضيّقة (`cards: true`) — بديل صف الجدول.
+  /// أعمدة `label` غير الفارغة تُكدَّس معنونةً، وأعمدة `label` الفارغة
+  /// (أزرار الإجراءات دومًا في الشاشات القائمة) تُجمَع في صفٍّ أسفل البطاقة.
+  Widget _card(BuildContext context, int i) {
+    final c = context.imd;
+    final cols = widget.columns;
+    final row = i < widget.rows.length ? widget.rows[i] : const <Widget>[];
+    final fields = <Widget>[];
+    final actions = <Widget>[];
+    for (var j = 0; j < cols.length; j++) {
+      final cell = j < row.length ? row[j] : const SizedBox.shrink();
+      if (cols[j].label.isEmpty) {
+        actions.add(cell);
+      } else {
+        if (fields.isNotEmpty) fields.add(const SizedBox(height: 8));
+        fields.add(_labeledCell(context, cols[j].label, cell));
+      }
+    }
+    final bg = widget.rowColor?.call(i) ?? (widget.zebra && i.isOdd ? _zebraColor(context) : c.surface);
+    final card = Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: c.line),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: DefaultTextStyle.merge(
+        style: TextStyle(fontSize: 13.5, color: c.text, height: 1.5),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ...fields,
+            if (actions.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(alignment: WrapAlignment.end, spacing: 8, runSpacing: 8, children: actions),
+            ],
+          ],
+        ),
+      ),
+    );
+    if (widget.onRowTap == null) return card;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => widget.onRowTap!(i),
+        child: card,
+      ),
+    );
+  }
+
+  /// بطاقة الإجماليات — نظير صفّ [ImdTable.footer] في وضع البطاقات، بنفس
+  /// ألوان صفّه في الجدول (`accentSoft`/`accent`) لتمييزها عن بطاقات البيانات.
+  Widget _footerCard(BuildContext context) {
+    final c = context.imd;
+    final cols = widget.columns;
+    final footer = widget.footer!;
+    final fields = <Widget>[];
+    for (var j = 0; j < cols.length; j++) {
+      if (cols[j].label.isEmpty) continue;
+      if (fields.isNotEmpty) fields.add(const SizedBox(height: 8));
+      final cell = j < footer.length ? footer[j] : const SizedBox.shrink();
+      fields.add(_labeledCell(context, cols[j].label, cell, labelColor: c.accent));
+    }
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: c.accentSoft, borderRadius: BorderRadius.circular(10)),
+      child: DefaultTextStyle.merge(
+        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: c.accent, height: 1.5),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: fields),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
@@ -954,6 +1055,30 @@ class _ImdTableState extends State<ImdTable> {
     final int page = _page.clamp(0, pageCount - 1).toInt();
     final int pageStart = pageSize == null ? 0 : page * pageSize;
     final int pageEnd = pageSize == null ? rows.length : (pageStart + pageSize).clamp(0, rows.length).toInt();
+
+    if (widget.cards && ImdBp.of(context).mobile && rows.isNotEmpty && cols.isNotEmpty) {
+      final cardsArea = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = pageStart; i < pageEnd; i++) ...[
+            _card(context, i),
+            if (i != pageEnd - 1 || widget.footer != null) const SizedBox(height: 10),
+          ],
+          if (widget.footer != null) _footerCard(context),
+        ],
+      );
+      if (pageSize == null) return cardsArea;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          cardsArea,
+          _pager(context, page: page, pageCount: pageCount, pageStart: pageStart, pageEnd: pageEnd, total: rows.length),
+        ],
+      );
+    }
+
     final Widget body;
     if (rows.isEmpty || cols.isEmpty) {
       body = Padding(

@@ -292,8 +292,9 @@ class _OpeningScreenState extends State<OpeningScreen> {
           const ImdCol('الحالة'),
           const ImdCol('وحدة الصنف', auto: false, width: 132),
           const ImdCol('الرصيد الافتتاحي', auto: false, width: 132),
-          if (w) const ImdCol('إجراء'),
+          if (w) const ImdCol(''),
         ],
+        cards: true,
         empty: 'لا أصناف مطابقة',
         rows: [
           for (final x in rows)
