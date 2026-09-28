@@ -65,3 +65,11 @@ h origin main
 _analyze.py
 _analyze_out.txt
 _smoke_test.py
+# SQLite WAL files
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Profile reports
+*_profile_report.txt
+profile_*.py
