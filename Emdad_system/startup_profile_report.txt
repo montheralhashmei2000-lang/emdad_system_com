@@ -1,0 +1,28 @@
+         831836 function calls (812625 primitive calls) in 4.369 seconds
+
+   Ordered by: internal time
+   List reduced from 5155 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+      391    0.613    0.002    0.613    0.002 {built-in method _io.open_code}
+      391    0.195    0.000    0.195    0.000 {built-in method marshal.loads}
+2001/1898    0.149    0.000    1.805    0.001 {built-in method builtins.__build_class__}
+   697/20    0.149    0.000    3.946    0.197 {built-in method builtins.exec}
+        2    0.119    0.060    0.119    0.060 {built-in method _wmi.exec_query}
+     1809    0.109    0.000    0.109    0.000 {built-in method nt.stat}
+      162    0.097    0.001    0.100    0.001 C:\Users\DAR AL WEFAQ\AppData\Local\Programs\Python\Python314\Lib\re\_compiler.py:248(_optimize_charset)
+     3604    0.073    0.000    0.106    0.000 <frozen importlib._bootstrap_external>:101(_path_join)
+     1129    0.065    0.000    0.065    0.000 {built-in method builtins.compile}
+    93255    0.064    0.000    0.081    0.000 {built-in method builtins.isinstance}
+      391    0.064    0.000    0.064    0.000 {method 'read' of '_io.BufferedReader' objects}
+      391    0.055    0.000    0.254    0.001 <frozen importlib._bootstrap_external>:509(_compile_bytecode)
+49369/48491    0.054    0.000    0.113    0.000 {built-in method builtins.getattr}
+       23    0.045    0.002    0.045    0.002 {built-in method _imp.create_dynamic}
+5378/5087    0.037    0.000    0.062    0.000 {built-in method __new__ of type object at 0x00007FFC8E58CD90}
+      176    0.035    0.000    0.042    0.000 C:\Users\DAR AL WEFAQ\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\sql\annotation.py:535(_new_annotation_type)
+18044/13928    0.034    0.000    0.382    0.000 {built-in method builtins.hasattr}
+        7    0.027    0.004    0.027    0.004 {method 'execute' of 'sqlite3.Cursor' objects}
+      445    0.023    0.000    0.042    0.000 C:\Users\DAR AL WEFAQ\AppData\Local\Programs\Python\Python314\Lib\site-packages\pydantic\fields.py:228(__init__)
+      716    0.022    0.000    0.225    0.000 <frozen importlib._bootstrap_external>:1357(find_spec)
+
+

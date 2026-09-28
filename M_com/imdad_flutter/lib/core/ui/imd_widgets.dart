@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'imd_format.dart';
 import 'imd_icon.dart';
 import 'imd_tokens.dart';
 
@@ -839,6 +840,9 @@ class ImdTable extends StatefulWidget {
     this.footer,
     this.minWidth,
     this.onHeaderTap,
+    this.zebra = false,
+    this.pageSize,
+    this.onPageChanged,
   });
 
   final List<ImdCol> columns;
@@ -848,11 +852,25 @@ class ImdTable extends StatefulWidget {
   final Color? Function(int index)? rowColor;
   final List<Widget>? footer;
 
+  /// تلوين الصفوف الفردية بلونٍ خفيف جدًّا لتسهيل تتبّع السطر في جدولٍ كثيف.
+  /// يخسر أمام [rowColor] عند كليهما، ولا يمسّ الصف عند المرور (hover) ولا صفّ [footer].
+  final bool zebra;
+
   /// `style="min-width:…"` — تمرير أفقي إذا ضاقت المساحة عنه.
   final double? minWidth;
 
   /// ضغط رأس العمود (`th[data-k]{cursor:pointer}`) — يُستخدم للفرز.
   final ValueChanged<int>? onHeaderTap;
+
+  /// `null` (الافتراضي) ⇒ كل الصفوف كما هي اليوم. عدد صحيح ⇒ ترقيم صفحات
+  /// داخلي بهذا الحجم، مع شريطٍ تحت الجدول. الفرز خارج مسؤولية هذه الودجة
+  /// تمامًا (كما هو الحال دائمًا هنا) — فمن أراد إعادة الصفحة إلى الأولى عند
+  /// تغيّر الفرز يُمرِّر `key` يتغيّر معه (كما في `reports_center_screen.dart`)
+  /// فتُعاد الودجة بحالةٍ جديدة بدل تمرير حالة فرزٍ إلى مكوّنٍ لا يعرفها.
+  final int? pageSize;
+
+  /// إشعارٌ اختياري بفهرس الصفحة الحالية (من صفر) بعد أي تنقّل.
+  final ValueChanged<int>? onPageChanged;
 
   @override
   State<ImdTable> createState() => _ImdTableState();
@@ -860,12 +878,20 @@ class ImdTable extends StatefulWidget {
 
 class _ImdTableState extends State<ImdTable> {
   int _hover = -1;
+  int _page = 0;
   final _hScroll = ScrollController();
 
   @override
   void dispose() {
     _hScroll.dispose();
     super.dispose();
+  }
+
+  /// لونٌ محايد خفيف جدًّا فوق سطح الجدول — يعمل في كل سمة (فاتحة/داكنة/محروقات)
+  /// لأنه مشتقٌّ من ألوان السمة الحالية لا لونًا ثابتًا.
+  Color _zebraColor(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Color.alphaBlend(scheme.onSurface.withValues(alpha: .035), scheme.surface);
   }
 
   Widget _cell(ImdCol col, Widget child, {required int row, EdgeInsets? pad}) {
@@ -909,11 +935,25 @@ class _ImdTableState extends State<ImdTable> {
     );
   }
 
+  /// عدد الصفحات لحجمٍ معطًى — صفحة واحدة على الأقل حتى لو كانت القائمة فارغة،
+  /// فلا يُقسَّم على صفر ولا تُعرض «صفحة صفر من صفر».
+  int _pageCount(int totalRows, int pageSize) => totalRows == 0 ? 1 : (totalRows / pageSize).ceil();
+
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
     final cols = widget.columns;
     final rows = widget.rows;
+    final pageSize = widget.pageSize;
+    // مُشتقّةٌ من `_page` لا مُساويةٌ له: لو ضاقت `rows` (تصفيةٌ جديدة) دون
+    // أن يتغيّر `key` الودجة، تبقى `_page` القديمة صالحةً هنا للعرض فورًا بدل
+    // صفحةٍ فارغة، وتُصحَّح القيمة المخزَّنة عند أول تنقّل.
+    final pageCount = pageSize == null ? 1 : _pageCount(rows.length, pageSize);
+    // `int.clamp` يُعيد `num` لا `int` (موروثةٌ من `num`)، فـ`.toInt()` هنا
+    // ضرورةٌ لا زخرفة — بدونها لا تُقبل `page`/`pageEnd` فهارس مباشرةً.
+    final int page = _page.clamp(0, pageCount - 1).toInt();
+    final int pageStart = pageSize == null ? 0 : page * pageSize;
+    final int pageEnd = pageSize == null ? rows.length : (pageStart + pageSize).clamp(0, rows.length).toInt();
     final Widget body;
     if (rows.isEmpty || cols.isEmpty) {
       body = Padding(
@@ -944,11 +984,18 @@ class _ImdTableState extends State<ImdTable> {
                 ),
             ],
           ),
-          for (var i = 0; i < rows.length; i++)
+          // فهرس `i` مطلَقٌ على كامل `rows` لا محليٌّ للصفحة: `zebra` و`rowColor`
+          // و`onRowTap` تبقى كما لو لم يُفعَّل ترقيمٌ أصلًا — تمريرها فهرسًا محليًّا
+          // كان يكسر أيّ استخدامٍ حاليٍّ يعتمد على فهرس القائمة الكاملة.
+          for (var i = pageStart; i < pageEnd; i++)
             TableRow(
               decoration: BoxDecoration(
-                color: _hover == i ? (c.isDark ? const Color(0xFF26262A) : c.tableHead) : widget.rowColor?.call(i),
-                border: (i == rows.length - 1 && widget.footer == null)
+                color: _hover == i
+                    ? (c.isDark ? const Color(0xFF26262A) : c.tableHead)
+                    : (widget.rowColor?.call(i) ?? (widget.zebra && i.isOdd ? _zebraColor(context) : null)),
+                // آخر صفٍّ من الصفحة **المعروضة** لا آخر صفٍّ في القائمة كلها،
+                // وإلا بقي خط الفاصل تحت كل الصفحات إلا الأخيرة.
+                border: (i == pageEnd - 1 && widget.footer == null)
                     ? null
                     : Border(bottom: BorderSide(color: c.tableRowLine)),
               ),
@@ -992,24 +1039,87 @@ class _ImdTableState extends State<ImdTable> {
       child: body,
     );
     final minW = widget.minWidth;
-    if (minW == null || rows.isEmpty) return table;
-    return LayoutBuilder(builder: (context, cons) {
-      if (cons.maxWidth >= minW) return table;
-      // شريط تمرير ظاهر كما في `.twrap{overflow:auto}` بالويب، وإلا لم يعرف
-      // المستخدم أن هناك أعمدة خارج الشاشة (لا تمرير أفقي بعجلة الفأرة).
-      return Scrollbar(
-        controller: _hScroll,
-        thumbVisibility: true,
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: SingleChildScrollView(
-            controller: _hScroll,
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(width: minW, child: table),
+    Widget tableArea;
+    if (minW == null || rows.isEmpty) {
+      tableArea = table;
+    } else {
+      tableArea = LayoutBuilder(builder: (context, cons) {
+        if (cons.maxWidth >= minW) return table;
+        // شريط تمرير ظاهر كما في `.twrap{overflow:auto}` بالويب، وإلا لم يعرف
+        // المستخدم أن هناك أعمدة خارج الشاشة (لا تمرير أفقي بعجلة الفأرة).
+        return Scrollbar(
+          controller: _hScroll,
+          thumbVisibility: true,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: SingleChildScrollView(
+              controller: _hScroll,
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(width: minW, child: table),
+            ),
           ),
-        ),
-      );
-    });
+        );
+      });
+    }
+    if (pageSize == null || rows.isEmpty) return tableArea;
+    // شريط الترقيم تحت الجدول وخارج تمريره الأفقي: هو معلومةٌ عن كامل
+    // البيانات لا عمودٍ من أعمدته، فيبقى ظاهرًا مهما مُرِّر الجدول أفقيًّا.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        tableArea,
+        _pager(context, page: page, pageCount: pageCount, pageStart: pageStart, pageEnd: pageEnd, total: rows.length),
+      ],
+    );
+  }
+
+  void _goToPage(int target, int pageCount) {
+    final int next = target.clamp(0, pageCount - 1).toInt();
+    setState(() => _page = next);
+    widget.onPageChanged?.call(next);
+  }
+
+  Widget _pager(
+    BuildContext context, {
+    required int page,
+    required int pageCount,
+    required int pageStart,
+    required int pageEnd,
+    required int total,
+  }) {
+    final c = context.imd;
+    final textStyle = TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: c.muted);
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 8,
+        children: [
+          Text('عرض ${nf(pageStart + 1)}–${nf(pageEnd)} من ${nf(total)}', style: textStyle),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            // «السابق» نحو بداية القائمة، و«التالي» نحو تاليها — بلا فرقٍ يدويٍّ
+            // بين فاتح/داكن ولا بين نظام تشغيل، فالأيقونتان مسارا SVG ثابتان.
+            ImdIconButton(
+              icon: 'chevron-right',
+              tooltip: 'الصفحة السابقة',
+              onPressed: page > 0 ? () => _goToPage(page - 1, pageCount) : null,
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Text('صفحة ${nf(page + 1)} من ${nf(pageCount)}', style: textStyle),
+            ),
+            ImdIconButton(
+              icon: 'chevron-left',
+              tooltip: 'الصفحة التالية',
+              onPressed: page < pageCount - 1 ? () => _goToPage(page + 1, pageCount) : null,
+            ),
+          ]),
+        ],
+      ),
+    );
   }
 }
 
