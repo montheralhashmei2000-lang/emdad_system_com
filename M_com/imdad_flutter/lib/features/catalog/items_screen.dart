@@ -235,8 +235,9 @@ class _ItemsScreenState extends State<ItemsScreen> {
             const ImdCol('حد ⚠'),
             const ImdCol('الرصيد'),
             const ImdCol('الوحدات', flex: 2),
-            if (w) const ImdCol('إجراءات', width: 110),
+            if (w) const ImdCol('', width: 110),
           ],
+          cards: true,
           rows: [
             for (final x in rows)
               [
@@ -454,8 +455,9 @@ class _ItemsScreenState extends State<ItemsScreen> {
               const ImdCol('م', width: 60),
               const ImdCol('الاسم', flex: 2),
               const ImdCol('الوصف', flex: 3),
-              if (w) const ImdCol('إجراء', width: 110),
+              if (w) const ImdCol('', width: 110),
             ],
+            cards: true,
             rows: [
               for (var i = 0; i < _cats.length; i++)
                 [
@@ -938,6 +940,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
           ImdCol('مرجع'),
           ImdCol('ملاحظات', flex: 2),
         ],
+        cards: true,
         rows: [
           for (final m in movs.take(100))
             [

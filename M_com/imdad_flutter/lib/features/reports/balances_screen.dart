@@ -224,6 +224,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
             ImdCol('الوحدة'),
             ImdCol('الحالة'),
           ],
+          cards: true,
           empty: 'لا أصناف مطابقة',
           rows: [
             for (final x in rows)

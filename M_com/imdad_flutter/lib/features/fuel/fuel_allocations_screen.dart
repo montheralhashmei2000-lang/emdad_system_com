@@ -440,6 +440,7 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
             ImdCol('ملاحظات'),
             ImdCol('', center: true),
           ],
+          cards: true,
           rows: [
             for (final r in list)
               [

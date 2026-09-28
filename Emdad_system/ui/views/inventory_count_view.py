@@ -39,7 +39,7 @@ class InventoryCountView(QWidget):
         root.addWidget(make_header_label("📦 جرد المخزون"))
 
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet(_tab_style())
+        self.tabs.setStyleSheet(self._tab_style())
         root.addWidget(self.tabs)
 
         self._tab_create = QWidget()

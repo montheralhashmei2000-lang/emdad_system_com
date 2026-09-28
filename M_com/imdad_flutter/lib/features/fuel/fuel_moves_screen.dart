@@ -797,6 +797,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
               ImdCol('الكمية', numeric: true),
               ImdCol('', center: true),
             ],
+            cards: true,
             rows: [
               for (final i in rows)
                 [
@@ -914,6 +915,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
               ImdCol('الكمية', numeric: true),
               ImdCol('', center: true),
             ],
+            cards: true,
             rows: [
               for (final s in rows)
                 [
@@ -1017,6 +1019,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
             ImdCol('الحالة'),
             ImdCol('', center: true),
           ],
+          cards: true,
           rows: [
             for (final t in _transfers)
               [
@@ -1106,6 +1109,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
             ImdCol('ملاحظة'),
             ImdCol('', center: true),
           ],
+          cards: true,
           rows: [
             for (final o in _openings)
               [

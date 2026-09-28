@@ -245,8 +245,9 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
             const ImdCol('الاستخدام', flex: 2),
             const ImdCol('آخر استخدام'),
             const ImdCol('ملاحظات'),
-            if (can) const ImdCol('إجراء', width: 110),
+            if (can) const ImdCol('', width: 110),
           ],
+          cards: true,
           rows: [
             for (final x in rows)
               () {

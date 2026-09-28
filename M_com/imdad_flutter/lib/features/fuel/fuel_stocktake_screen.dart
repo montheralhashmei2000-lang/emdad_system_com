@@ -308,6 +308,7 @@ class _FuelStocktakeScreenState extends State<FuelStocktakeScreen> {
           ImdCol('الفرق', numeric: true),
           ImdCol('الحالة'),
         ],
+        cards: true,
         rows: [
           for (final l in _lines)
             [
@@ -401,6 +402,7 @@ class _FuelStocktakeScreenState extends State<FuelStocktakeScreen> {
           ImdCol('المرحلة'),
           ImdCol('', center: true),
         ],
+        cards: true,
         rows: [
           for (final t in _takes)
             [

@@ -815,8 +815,9 @@ class _AssetsScreenState extends State<AssetsScreen> {
           ImdCol('الموضع'),
           ImdCol('الحالة'),
           ImdCol('العمر'),
-          ImdCol('إجراءات', center: true),
+          ImdCol('', center: true),
         ],
+        cards: true,
         rows: [
           for (final a in rows)
             [

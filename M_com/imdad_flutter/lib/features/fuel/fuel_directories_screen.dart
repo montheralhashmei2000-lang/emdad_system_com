@@ -236,6 +236,7 @@ class _FuelWarehousesScreenState extends State<FuelWarehousesScreen> {
         ImdCol('الحالة'),
         ImdCol('', center: true),
       ],
+      cards: true,
       rows: [
         for (final w in _items)
           [
@@ -499,6 +500,7 @@ class _FuelUnitsScreenState extends State<FuelUnitsScreen> {
             ImdCol('الحالة'),
             ImdCol('', center: true),
           ],
+          cards: true,
           rows: [
             for (final u in _items)
               [

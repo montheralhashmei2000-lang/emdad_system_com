@@ -519,8 +519,9 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
           ImdCol('المدى'),
           ImdCol('المطبخ'),
           ImdCol('الحالة'),
-          ImdCol('إجراءات', center: true),
+          ImdCol('', center: true),
         ],
+        cards: true,
         rows: [
           for (final p in _plans)
             [
@@ -607,6 +608,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
             ImdCol('الإجمالي بوحدة الأساس', numeric: true),
             ImdCol('الوحدة'),
           ],
+          cards: true,
           rows: [
             for (final r in _needs)
               [
@@ -765,6 +767,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
               ImdCol('الفرق', numeric: true),
               ImdCol('التغير'),
             ],
+            cards: true,
             rows: [
               for (final d in _diffs)
                 [

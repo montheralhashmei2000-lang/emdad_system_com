@@ -31,6 +31,42 @@ COLORS = {
     "border_dark": "#3E5E3E",
 }
 
+# ===== مفاتيح aliases للتوافق مع شاشات حزمة ui =====
+# شاشات الجذر تستعملNamingConvention أعلاه، بينما بعض الشاشات
+# (inventory_view / login_dialog / inventory_count_view ...) تشير
+# إلى مفاتيح بأسماء أخرى. نوفّرها هنا حتى يبقى theme.py المصدر
+# الوحيد لنظام التصميم دون تعديل الشاشات.
+COLORS.update({
+    "primary": COLORS["green_primary"],
+    "PRIMARY": COLORS["green_primary"],
+    "DANGER": COLORS["danger"],
+    "SUCCESS": COLORS["ok"],
+    "WARNING": COLORS["warning"],
+    "INFO": COLORS["info"],
+    "GOLD": COLORS["gold"],
+    "text": COLORS["text_dark"],
+    "text_secondary": COLORS["text_medium"],
+    "bg": COLORS["bg_content"],
+    "card": COLORS["bg_card"],
+    "green_light": COLORS["green_hover"],
+    "blue_primary": COLORS["info"],
+    "orange": COLORS["warning"],
+    "purple_light": COLORS["purple_light"],
+})
+
+# أسماء ثابتة متوافقة مع ui.theme
+PRIMARY = COLORS["green_primary"]
+PRIMARY_LIGHT = COLORS["green_hover"]
+ACCENT = COLORS["gold"]
+DANGER = COLORS["danger"]
+SUCCESS = COLORS["ok"]
+WARNING = COLORS["warning"]
+INFO = COLORS["info"]
+BG = COLORS["bg_content"]
+BG_CARD = COLORS["bg_card"]
+TEXT = COLORS["text_dark"]
+TEXT_SEC = COLORS["text_medium"]
+
 FONT_FAMILY = "Cairo, Tajawal, Arial"
 FONT_SIZE_SMALL = "11px"
 FONT_SIZE_NORMAL = "13px"

@@ -209,6 +209,7 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
         ImdCol('الكمية', numeric: true),
         ImdCol('', center: true),
       ],
+      cards: true,
       rows: [
         for (final i in rows)
           [
@@ -356,6 +357,7 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
         ImdCol('التسويات', numeric: true),
         ImdCol('الرصيد', numeric: true),
       ],
+      cards: true,
       rows: [
         for (final s in _stocks)
           [

@@ -281,6 +281,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(4)
 
         SCREEN_PERM_MAP = {
+            'الرئيسية': 'dashboard',
             'لوحة القيادة': 'dashboard',
             'إدارة الأصناف': 'items_management',
             'الموردون': 'suppliers',
@@ -332,7 +333,7 @@ class MainWindow(QMainWindow):
                 break
 
             allowed_items = []
-            for label, icon_name in items[:2]:
+            for label, icon_name in items:
                 p_key = SCREEN_PERM_MAP.get(label)
                 # تفعيل فحص الصلاحيات مع السماح للبيانات الأساسية والادارة
                 has_perm = False
@@ -464,7 +465,10 @@ class MainWindow(QMainWindow):
             'إدارة القوة البشرية': self._safe_create(PersonnelView),
         }
 
-        self.routes = {'لوحة القيادة': self.pnl_dashboard}
+        self.routes = {
+            'الرئيسية': self.pnl_dashboard,
+            'لوحة القيادة': self.pnl_dashboard,
+        }
 
         self._navigate('لوحة القيادة')
 
@@ -730,4 +734,3 @@ def run():
 
 if __name__ == '__main__':
     run()
-

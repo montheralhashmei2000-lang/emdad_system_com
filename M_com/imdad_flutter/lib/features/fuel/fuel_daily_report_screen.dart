@@ -298,6 +298,7 @@ class _FuelDailyReportScreenState extends State<FuelDailyReportScreen> {
           if (adj) const ImdCol('تسوية جرد', numeric: true),
           const ImdCol('المتبقي', numeric: true),
         ],
+        cards: true,
         rows: [
           for (final day in r.days)
             for (final b in day.balances)
@@ -441,6 +442,7 @@ class _FuelDailyReportScreenState extends State<FuelDailyReportScreen> {
         ImdCol('ملاحظة'),
         ImdCol('الكمية', numeric: true),
       ],
+      cards: true,
       rows: [
         for (var i = 0; i < c.incoming.length; i++)
           [
@@ -495,6 +497,7 @@ class _FuelDailyReportScreenState extends State<FuelDailyReportScreen> {
         ImdCol('ملاحظة'),
         ImdCol('الكمية', numeric: true),
       ],
+      cards: true,
       rows: [
         for (var i = 0; i < c.issued.length; i++)
           [
@@ -551,6 +554,7 @@ class _FuelDailyReportScreenState extends State<FuelDailyReportScreen> {
         ImdCol('الصنف'),
         ImdCol('الكمية', numeric: true),
       ],
+      cards: true,
       rows: [
         for (var i = 0; i < c.transfers.length; i++)
           [

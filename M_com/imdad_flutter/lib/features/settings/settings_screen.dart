@@ -1017,6 +1017,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 10),
               ImdTable(
                 columns: const [ImdCol('الفحص'), ImdCol('الحالة'), ImdCol('التفاصيل')],
+                cards: true,
                 rows: [
                   for (final r in _checks!)
                     [

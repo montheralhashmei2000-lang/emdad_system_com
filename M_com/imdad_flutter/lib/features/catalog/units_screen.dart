@@ -488,6 +488,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
         ImdTable(
           minWidth: 560,
           columns: const [ImdCol('التاريخ'), ImdCol('الصنف', flex: 2), ImdCol('الكمية'), ImdCol('المرجع'), ImdCol('ملاحظات', flex: 2)],
+          cards: true,
           rows: [
             for (final r in rows)
               [

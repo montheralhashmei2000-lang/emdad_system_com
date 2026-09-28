@@ -333,6 +333,7 @@ class _RatiosScreenState extends State<RatiosScreen> {
             ImdCol('المعدل اليومي للفرد', auto: false, width: 140),
             ImdCol('ملاحظات', auto: false, width: 200),
           ],
+          cards: true,
           empty: 'لا توجد أصناف بعد — أضفها من شاشة «إدارة الأصناف»',
           rowColor: (i) => i < visible.length && visible[i].dirty
               ? context.imd.warnSoft.withValues(alpha: .5)

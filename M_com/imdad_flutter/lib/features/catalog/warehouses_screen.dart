@@ -351,8 +351,9 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
             const ImdCol('الاستخدام', flex: 2),
             const ImdCol('آخر حركة'),
             const ImdCol('ملاحظات'),
-            if (can) const ImdCol('إجراء', width: 110),
+            if (can) const ImdCol('', width: 110),
           ],
+          cards: true,
           rows: [
             for (final x in rows)
               () {

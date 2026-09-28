@@ -325,6 +325,7 @@ class _FuelConsumptionScreenState extends State<FuelConsumptionScreen> {
         ImdCol('الكمية', numeric: true),
         ImdCol('', center: true),
       ],
+      cards: true,
       rows: [
         for (final i in rows)
           [
@@ -367,6 +368,7 @@ class _FuelConsumptionScreenState extends State<FuelConsumptionScreen> {
         ImdCol('الإجمالي', numeric: true),
         ImdCol('النسبة'),
       ],
+      cards: true,
       rows: [
         for (final r in rows)
           [

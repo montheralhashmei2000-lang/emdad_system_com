@@ -332,6 +332,7 @@ class _CampLedgerScreenState extends State<CampLedgerScreen> {
           ImdCol('رصيد المخزون', numeric: true),
           ImdCol('', center: true),
         ],
+        cards: true,
         rows: [
           for (final r in _rows)
             [
@@ -408,6 +409,7 @@ class _CampLedgerScreenState extends State<CampLedgerScreen> {
           ImdCol('الانحراف', numeric: true),
           ImdCol('التراكمي', numeric: true),
         ],
+        cards: true,
         rows: [
           for (final d in _variance)
             [

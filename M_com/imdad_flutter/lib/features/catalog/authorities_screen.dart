@@ -251,8 +251,9 @@ class _AuthoritiesScreenState extends State<AuthoritiesScreen> {
             ImdCol('الحالة'),
             ImdCol('طلبياتها', numeric: true),
             ImdCol('ملاحظات'),
-            ImdCol('إجراءات', center: true),
+            ImdCol('', center: true),
           ],
+          cards: true,
           rows: [
             for (final a in _items)
               [

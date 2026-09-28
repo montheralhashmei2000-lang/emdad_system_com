@@ -486,6 +486,7 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
                 numeric: c.numeric,
               ),
           ],
+          cards: true,
           empty: 'لا توجد بيانات مطابقة للفلاتر الحالية',
           onHeaderTap: (i) {
             if (i == 0) return;
