@@ -6,6 +6,7 @@ import '../../core/ui/imd_charts.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_layout.dart';
+import '../../core/ui/imd_shimmer.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
@@ -295,17 +296,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
           subtitle:
               'رؤية تشغيلية موحدة للمدير: المخزون، الإجراءات المعلقة، الجاهزية، والتنبيهات الحرجة — من شاشة واحدة بشكل production فعلي',
         ),
-        ImdKpis(children: [
-          ImdKpi(label: 'إجمالي الأصناف', value: v((d) => d.items)),
-          ImdKpi(label: 'المستودعات الفعالة', value: v((d) => d.warehouses), color: c.accent),
-          ImdKpi(label: 'حركات اليوم', value: v((d) => d.todayOps)),
-          ImdKpi(label: 'إجراءات تحتاج تدخل', value: v((d) => d.interventions), color: c.danger),
-          ImdKpi(
-              label: 'أصناف تحت الحد / صفرية',
-              value: d == null ? '…' : '${nf(d.low)} / ${nf(d.zero)}',
-              color: c.danger),
-          ImdKpi(label: 'جلسات جرد مفتوحة', value: v((d) => d.openStk), color: c.accent),
-        ]),
+        if (d == null)
+          const ImdShimmerKpis(count: 6)
+        else
+          ImdKpis(children: [
+            ImdKpi(label: 'إجمالي الأصناف', value: v((d) => d.items)),
+            ImdKpi(label: 'المستودعات الفعالة', value: v((d) => d.warehouses), color: c.accent),
+            ImdKpi(label: 'حركات اليوم', value: v((d) => d.todayOps)),
+            ImdKpi(label: 'إجراءات تحتاج تدخل', value: v((d) => d.interventions), color: c.danger),
+            ImdKpi(
+                label: 'أصناف تحت الحد / صفرية',
+                value: '${nf(d.low)} / ${nf(d.zero)}',
+                color: c.danger),
+            ImdKpi(label: 'جلسات جرد مفتوحة', value: v((d) => d.openStk), color: c.accent),
+          ]),
         const SizedBox(height: 16),
         ImdGrid2(children: [
           ImdPanel(
@@ -435,34 +439,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ImdChip('معروضة الآن: ${nf(d?.urgent.length ?? 0)}', tone: ImdTone.off),
                   ]),
                 ),
-                ImdTable(
-                  columns: const [
-                    ImdCol('الكود'),
-                    ImdCol('الصنف', flex: 2),
-                    ImdCol('الرصيد'),
-                    ImdCol('الحد'),
-                    ImdCol('الحالة'),
-                  ],
-                  cards: true,
-                  empty: 'لا توجد تنبيهات مخزون حرجة الآن 👌',
-                  rows: [
-                    for (final (i, bal) in d?.urgent ?? const <(Item, double)>[])
-                      [
-                        Text(_or(i.code), style: const TextStyle(fontWeight: FontWeight.w600)),
-                        Text(_or(i.name)),
-                        Text(nf(bal),
-                            style: TextStyle(
-                                fontWeight: FontWeight.w900,
-                                color: bal <= 0 ? c.danger : const Color(0xFF915E06))),
-                        Text(i.minQty > 0 ? nf(i.minQty) : '—'),
-                        bal <= 0
-                            ? const ImdChip('صفرية', tone: ImdTone.err)
-                            : (StockAlerts.isLow(bal, i.minQty)
-                                ? const ImdChip('تحت الحد', tone: ImdTone.pend)
-                                : const ImdChip('مستقرة', tone: ImdTone.ok)),
-                      ],
-                  ],
-                ),
+                if (d == null)
+                  const ImdShimmerTable(rows: 5, columns: 5)
+                else
+                  ImdTable(
+                    columns: const [
+                      ImdCol('الكود'),
+                      ImdCol('الصنف', flex: 2),
+                      ImdCol('الرصيد'),
+                      ImdCol('الحد'),
+                      ImdCol('الحالة'),
+                    ],
+                    cards: true,
+                    empty: 'لا توجد تنبيهات مخزون حرجة الآن 👌',
+                    rows: [
+                      for (final (i, bal) in d.urgent)
+                        [
+                          Text(_or(i.code), style: const TextStyle(fontWeight: FontWeight.w600)),
+                          Text(_or(i.name)),
+                          Text(nf(bal),
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  color: bal <= 0 ? c.danger : const Color(0xFF915E06))),
+                          Text(i.minQty > 0 ? nf(i.minQty) : '—'),
+                          bal <= 0
+                              ? const ImdChip('صفرية', tone: ImdTone.err)
+                              : (StockAlerts.isLow(bal, i.minQty)
+                                  ? const ImdChip('تحت الحد', tone: ImdTone.pend)
+                                  : const ImdChip('مستقرة', tone: ImdTone.ok)),
+                        ],
+                    ],
+                  ),
               ],
             ),
           ),
@@ -478,26 +485,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
             margin: EdgeInsets.zero,
             title: 'آخر الأحداث المهمة',
             icon: 'clock',
-            child: ImdTable(
-              columns: const [ImdCol('النوع'), ImdCol('المرجع'), ImdCol('الجهة', flex: 2), ImdCol('التاريخ'), ImdCol('الحالة')],
-              cards: true,
-              empty: 'لا توجد حركة حديثة بعد',
-              rows: [
-                for (final r in d?.feed ?? const <_Feed>[])
-                  [
-                    Text(r.label, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    Text(r.ref),
-                    Text(r.party),
-                    Text(r.date.isEmpty ? '—' : r.date),
-                    ImdChip(
-                      r.status.isEmpty ? 'ACTIVE' : r.status,
-                      tone: const ['ORDER', 'DRAFT', 'PENDING'].contains(r.status)
-                          ? ImdTone.pend
-                          : (r.status == 'REJECTED' ? ImdTone.err : ImdTone.ok),
-                    ),
-                  ],
-              ],
-            ),
+            child: d == null
+                ? const ImdShimmerTable(rows: 5, columns: 5)
+                : ImdTable(
+                    columns: const [
+                      ImdCol('النوع'),
+                      ImdCol('المرجع'),
+                      ImdCol('الجهة', flex: 2),
+                      ImdCol('التاريخ'),
+                      ImdCol('الحالة'),
+                    ],
+                    cards: true,
+                    empty: 'لا توجد حركة حديثة بعد',
+                    rows: [
+                      for (final r in d.feed)
+                        [
+                          Text(r.label, style: const TextStyle(fontWeight: FontWeight.w600)),
+                          Text(r.ref),
+                          Text(r.party),
+                          Text(r.date.isEmpty ? '—' : r.date),
+                          ImdChip(
+                            r.status.isEmpty ? 'ACTIVE' : r.status,
+                            tone: const ['ORDER', 'DRAFT', 'PENDING'].contains(r.status)
+                                ? ImdTone.pend
+                                : (r.status == 'REJECTED' ? ImdTone.err : ImdTone.ok),
+                          ),
+                        ],
+                    ],
+                  ),
           ),
         ]),
       ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../security/perm.dart';
+import 'imd_empty_state.dart';
 import 'imd_tokens.dart';
 import 'imd_widgets.dart';
 import '../../domain/access_control.dart';
@@ -71,7 +72,7 @@ class _ImdTabsShellState extends State<ImdTabsShell> {
         if (t.perm == null || perm.has(t.perm!, PermAction.view)) t,
     ];
     if (visible.isEmpty) {
-      return ImdPage(children: [ImdEmptyBox(widget.emptyMessage)]);
+      return ImdPage(children: [ImdEmptyState.noPermission(message: widget.emptyMessage)]);
     }
 
     final wanted = _tab.isEmpty ? widget.initial : _tab;

@@ -7,6 +7,7 @@ import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_scan.dart';
 import '../../core/ui/imd_tokens.dart';
+import '../../core/ui/imd_empty_state.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/fuel_repo.dart';
@@ -411,7 +412,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
     if (_warehouses.isEmpty) {
       return const ImdPage(children: [
         ImdPageTitle(title: 'حركة المحروقات', icon: 'swap'),
-        ImdEmptyBox('عرّف مستودعًا أولًا من شاشة المستودعات'),
+        ImdEmptyState.noData(title: 'عرّف مستودعًا أولًا من شاشة المستودعات'),
       ]);
     }
     final can = Perm.of(context).writable('fuelMoves');
@@ -999,7 +1000,10 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
     final c = context.imd;
     if (_transfers.isEmpty) {
       return const [
-        ImdEmptyBox('لا توجد تحويلات بعد — استخدم النموذج أعلاه لنقل الرصيد'),
+        ImdEmptyState.noData(
+          title: 'لا توجد تحويلات بعد',
+          message: 'استخدم النموذج أعلاه لنقل الرصيد',
+        ),
       ];
     }
     return [

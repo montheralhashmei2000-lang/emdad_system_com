@@ -316,6 +316,9 @@ class MainWindow(QMainWindow):
                 if new_key not in user_perms:
                     user_perms[new_key] = legacy_perms
 
+        # Admin role must not depend on a separately populated permissions map.
+        is_admin_user = self._is_admin or bool(user_perms.get('admin'))
+
         is_offline = self.current_user and self.current_user.get('offline_mode', False)
 
         if is_offline:
@@ -337,7 +340,9 @@ class MainWindow(QMainWindow):
                 p_key = SCREEN_PERM_MAP.get(label)
                 # تفعيل فحص الصلاحيات مع السماح للبيانات الأساسية والادارة
                 has_perm = False
-                if p_key is None:
+                if is_admin_user:
+                    has_perm = True
+                elif p_key is None:
                     has_perm = True
                 elif isinstance(user_perms.get(p_key), bool) and user_perms[p_key]:
                     has_perm = True

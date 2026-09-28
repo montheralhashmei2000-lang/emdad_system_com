@@ -12,6 +12,13 @@ import httpx
 from app.config import settings, APP_VERSION
 
 
+def _normalize_server_route(request: httpx.Request) -> None:
+    """Adapt the desktop client's /api-prefixed paths to the central server routes."""
+    path = request.url.path
+    if path.startswith("/api/"):
+        request.url = request.url.copy_with(path=path[4:])
+
+
 class ApiClient:
     """
     عميل REST API للتواصل مع الخادم المركزي.
@@ -28,6 +35,8 @@ class ApiClient:
             base_url=self.base_url,
             timeout=httpx.Timeout(timeout),
             headers=self._default_headers(),
+            follow_redirects=True,
+            event_hooks={"request": [_normalize_server_route]},
         )
 
     def _default_headers(self) -> dict:
@@ -50,7 +59,7 @@ class ApiClient:
         try:
             if not self.base_url or not self.base_url.startswith(("http://", "https://")):
                 return False
-            response = self._client.get("/api/ping", timeout=5)
+            response = self._client.get("/openapi.json", timeout=5)
             return response.status_code == 200
         except Exception:
             return False
@@ -152,7 +161,7 @@ class ApiClient:
         """مصادقة المستخدم على الخادم المركزي."""
         try:
             response = self._client.post(
-                "/api/auth/login",
+                "/login",
                 json={"username": username, "password": password},
                 timeout=10,
             )

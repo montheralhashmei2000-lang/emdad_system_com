@@ -7,6 +7,7 @@ import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_layout.dart';
 import '../../core/ui/imd_occupancy_bar.dart';
+import '../../core/ui/imd_shimmer.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
@@ -92,7 +93,8 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
     if (_loading) {
       return const ImdPage(children: [
         ImdPageTitle(title: 'قسم المحروقات', icon: 'zap'),
-        ImdLd('⏳ جارٍ الحساب…'),
+        ImdShimmerKpis(count: 6),
+        ImdShimmerTable(rows: 4, columns: 3),
       ]);
     }
     final danger = _alerts.where((a) => a.tone == 'danger').length;

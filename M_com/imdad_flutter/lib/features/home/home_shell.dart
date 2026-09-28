@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/security/auth_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/ui/imd_empty_state.dart';
 import '../../core/ui/imd_fonts.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_tokens.dart';
@@ -1379,9 +1380,8 @@ class _NoAccess extends StatelessWidget {
     return const ImdPage(
       children: [
         ImdPageTitle(title: 'صلاحية غير متاحة', icon: 'lock'),
-        ImdPanel(
-          child: Text(
-              'لا تملك صلاحية الوصول إلى هذه الشاشة. اطلب من مدير النظام منحك الصلاحية المناسبة.'),
+        ImdEmptyState.noPermission(
+          message: 'لا تملك صلاحية الوصول إلى هذه الشاشة. اطلب من مدير النظام منحك الصلاحية المناسبة.',
         ),
       ],
     );

@@ -135,7 +135,33 @@ class _OpeningScreenState extends State<OpeningScreen> {
     });
   }
 
-  Future<void> _save(Item item) async {
+  /// هل كُتب في حقل هذا الصنف نصٌّ لا يُحلَّل رقمًا صحيحًا موجبًا؟
+  /// حقلٌ فارغ ليس خطأً — هو ببساطة صنفٌ لم يُعدَّل.
+  bool _hasInvalidText(Item item) {
+    final txt = _inputs[item.id]?.text.trim() ?? '';
+    if (txt.isEmpty) return false;
+    final typed = double.tryParse(txt);
+    return typed == null || typed < 0;
+  }
+
+  /// التعديل المعلَّق لصنفٍ واحد، أو `null` إن كان حقله فارغًا أو غير صالح
+  /// أو مطابقًا للرصيد الحالي فعلًا (لا شيء تغيّر ليُحفظ).
+  ({double typed, double base, String unit})? _pendingEdit(Item item) {
+    final txt = _inputs[item.id]?.text.trim() ?? '';
+    if (txt.isEmpty) return null;
+    final typed = double.tryParse(txt);
+    if (typed == null || typed < 0) return null;
+    final unit = _unit(item);
+    // ما يُخزَّن أساسيٌّ دائمًا؛ وما كُتب بوحدةٍ أخرى يُحوَّل قبل أن يُقارَن ويُحفظ.
+    final base = convertQty(typed, _catalog.factorOf(item, unit), 1);
+    final current = _balances[item.id] ?? 0;
+    if ((base - current).abs() < 0.0005) return null;
+    return (typed: typed, base: base, unit: unit);
+  }
+
+  /// «حفظ كل التعديلات» — تثبيتٌ جماعيٌّ يشمل الصفوف المعدَّلة فقط، بدل زرٍّ
+  /// لكل صف. من كتب في عشرين حقلًا يعتمدها كلها بتأكيدٍ واحد لا عشرين.
+  Future<void> _saveAll() async {
     if (!_perm.guard(context, 'opening', PermAction.create)) return;
     if (_warehouse.isEmpty) {
       showImdToast(context, '✖ اختر المستودع أولًا', error: true);
@@ -145,59 +171,76 @@ class _OpeningScreenState extends State<OpeningScreen> {
       showImdToast(context, Perm.scopeBlock(_warehouse), error: true);
       return;
     }
-    final typed = double.tryParse(_inputs[item.id]?.text.trim() ?? '');
-    if (typed == null || typed < 0) {
-      showImdToast(context, '✖ أدخل رقمًا صحيحًا', error: true);
+
+    final invalid = _items.where(_hasInvalidText).toList();
+    if (invalid.isNotEmpty) {
+      final names = invalid.take(3).map((i) => i.name).join('، ');
+      showImdToast(
+        context,
+        '✖ رقم غير صالح في: $names'
+        '${invalid.length > 3 ? ' و${nf(invalid.length - 3)} آخر' : ''}',
+        error: true,
+      );
       return;
     }
-    final unit = _unit(item);
-    // ما يُخزَّن أساسيٌّ دائمًا؛ وما كُتب بوحدةٍ أخرى يُحوَّل قبل أن يُحفظ.
-    final qty = convertQty(typed, _catalog.factorOf(item, unit), 1);
-    final base = item.baseUnit.isEmpty ? 'وحدة' : item.baseUnit;
+
+    final edits = <({Item item, double typed, double base, String unit})>[];
+    for (final item in _items) {
+      final e = _pendingEdit(item);
+      if (e != null) edits.add((item: item, typed: e.typed, base: e.base, unit: e.unit));
+    }
+    if (edits.isEmpty) {
+      showImdToast(context, 'لا توجد تعديلات لحفظها');
+      return;
+    }
+
     final ok = await imdConfirm(
       context,
-      'تثبيت الرصيد الافتتاحي لـ «${item.name}» بقيمة ${nf(typed)} $unit'
-      '${unit == base ? '' : ' (= ${nf(qty)} $base)'} في مستودع «$_warehouse»؟\n'
-      'سيُستبدل الرصيد الافتتاحي السابق بهذه القيمة.',
+      'تثبيت الرصيد الافتتاحي لعدد ${nf(edits.length)} صنف في مستودع «$_warehouse»؟\n'
+      'سيُستبدل الرصيد الافتتاحي السابق لكل صنفٍ معدَّل بقيمته الجديدة.',
       ok: 'تثبيت',
     );
     if (!ok) return;
 
     final date = isoDay(DateTime.now());
     await _db.transaction(() async {
-      // تثبيت لا إضافة: يُستبدل الرصيد الافتتاحي السابق لنفس الصنف في نفس المستودع.
-      await (_db.delete(_db.openingBalances)
-            ..where((t) => t.itemId.equals(item.id) & t.warehouse.equals(_warehouse)))
-          .go();
-      await _db.into(_db.openingBalances).insert(OpeningBalancesCompanion.insert(
-            id: Ids.next('opb'),
-            itemId: item.id,
-            itemCode: Value(item.code),
-            itemName: Value(item.name),
-            warehouse: Value(_warehouse),
-            qty: Value(qty),
-            date: Value(date),
-            setBy: Value(_perm.email),
-          ));
+      for (final e in edits) {
+        // تثبيت لا إضافة: يُستبدل الرصيد الافتتاحي السابق لنفس الصنف في نفس المستودع.
+        await (_db.delete(_db.openingBalances)
+              ..where((t) => t.itemId.equals(e.item.id) & t.warehouse.equals(_warehouse)))
+            .go();
+        await _db.into(_db.openingBalances).insert(OpeningBalancesCompanion.insert(
+              id: Ids.next('opb'),
+              itemId: e.item.id,
+              itemCode: Value(e.item.code),
+              itemName: Value(e.item.name),
+              warehouse: Value(_warehouse),
+              qty: Value(e.base),
+              date: Value(date),
+              setBy: Value(_perm.email),
+            ));
+      }
     });
-    await AuditRepo(_db).write(
-      'OPENING_BALANCE_SET',
-      'openingBalance',
-      'تثبيت رصيد افتتاحي لصنف',
-      details: {
-        'refNo': item.code,
-        'qty': qty,
-        'typed': typed,
-        'unit': unit,
-        'target': item.name,
-        'warehouse': _warehouse,
-        'status': 'OPENING_SET',
-        'risk': 'critical',
-      },
-    );
-    _inputs[item.id]?.clear();
+    for (final e in edits) {
+      await AuditRepo(_db).write(
+        'OPENING_BALANCE_SET',
+        'openingBalance',
+        'تثبيت رصيد افتتاحي لصنف',
+        details: {
+          'refNo': e.item.code,
+          'qty': e.base,
+          'typed': e.typed,
+          'unit': e.unit,
+          'target': e.item.name,
+          'warehouse': _warehouse,
+          'status': 'OPENING_SET',
+          'risk': 'critical',
+        },
+      );
+      _inputs[e.item.id]?.clear();
+    }
     if (!mounted) return;
-    showImdToast(context, '✔ تم تثبيت الرصيد الافتتاحي');
+    showImdToast(context, '✔ تم تثبيت ${nf(edits.length)} رصيد افتتاحي');
     await _refresh();
   }
 
@@ -286,13 +329,12 @@ class _OpeningScreenState extends State<OpeningScreen> {
       ),
       const SizedBox(height: 16),
       ImdTable(
-        columns: [
-          const ImdCol('الكود'),
-          const ImdCol('الصنف'),
-          const ImdCol('الحالة'),
-          const ImdCol('وحدة الصنف', auto: false, width: 132),
-          const ImdCol('الرصيد الافتتاحي', auto: false, width: 132),
-          if (w) const ImdCol(''),
+        columns: const [
+          ImdCol('الكود'),
+          ImdCol('الصنف'),
+          ImdCol('الحالة'),
+          ImdCol('وحدة الصنف', auto: false, width: 132),
+          ImdCol('الرصيد الافتتاحي', auto: false, width: 132),
         ],
         cards: true,
         empty: 'لا أصناف مطابقة',
@@ -321,11 +363,20 @@ class _OpeningScreenState extends State<OpeningScreen> {
                 dense: true,
                 enabled: w,
               ),
-              if (w)
-                ImdButton(label: 'حفظ', icon: 'save', small: true, onPressed: () => _save(x)),
             ],
         ],
       ),
+      if (w) ...[
+        const SizedBox(height: 12),
+        Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: ImdButton(
+            label: 'حفظ كل التعديلات',
+            icon: 'save',
+            onPressed: _saveAll,
+          ),
+        ),
+      ],
     ]);
   }
 

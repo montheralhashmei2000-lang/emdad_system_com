@@ -9,6 +9,7 @@ import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_layout.dart';
 import '../../core/ui/imd_tokens.dart';
+import '../../core/ui/imd_empty_state.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/catalog_repo.dart';
@@ -434,7 +435,10 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
             ),
             if (refs.isEmpty) ...[
               const SizedBox(height: 8),
-              const ImdEmptyBox('لا توجد سندات توريد بعد — سجّل الاستلام أولًا'),
+              const ImdEmptyState.noData(
+                title: 'لا توجد سندات توريد بعد',
+                message: 'سجّل الاستلام أولًا',
+              ),
             ],
           ],
         ),
@@ -769,7 +773,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
         ]),
         const SizedBox(height: 8),
         if (_lines.isEmpty)
-          const ImdEmptyBox('لم يُضف صنف بعد')
+          const ImdEmptyState.noData(title: 'لم يُضف صنف بعد')
         else
           for (final (i, l) in _lines.indexed)
             Padding(

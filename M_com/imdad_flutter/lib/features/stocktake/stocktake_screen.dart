@@ -7,6 +7,7 @@ import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_scan.dart';
 import '../../core/ui/imd_tokens.dart';
+import '../../core/ui/imd_empty_state.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/catalog_repo.dart';
@@ -760,7 +761,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
         ]),
       ),
       if (_cur.isEmpty)
-        const ImdEmptyBox('اختر أمر جرد مفتوحًا لبدء العد')
+        const ImdEmptyState.noData(title: 'اختر أمر جرد مفتوحًا لبدء العد')
       else
         ImdTable(
           minWidth: 900,
@@ -996,7 +997,7 @@ class _AnalysisTabState extends State<_AnalysisTab> {
         ]),
       ),
       if (s._cur.isEmpty)
-        const ImdEmptyBox('اختر أمر الجرد لعرض الفروقات')
+        const ImdEmptyState.noData(title: 'اختر أمر الجرد لعرض الفروقات')
       else
         ImdTable(
           minWidth: 1100,
