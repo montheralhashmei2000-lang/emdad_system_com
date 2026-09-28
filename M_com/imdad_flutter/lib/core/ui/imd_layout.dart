@@ -54,7 +54,10 @@ class ImdKpi extends StatelessWidget {
     return Container(
       padding: mobile ? const EdgeInsets.all(12) : const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
-        color: c.surface,
+        // `subtle` لا `surface`: رماديةٌ واضحة التباين عن خلفية الصفحة (`bg`)
+        // في كل سمة — فاتحة في الفاتحة وداكنة في الداكنة والمحروقات، بخلاف
+        // `surface` التي قد تُطابق لون الصفحة في بعض السمات فتذوب البطاقة فيها.
+        color: c.subtle,
         border: Border.all(color: c.line),
         borderRadius: BorderRadius.circular(ImdSizes.radius),
         boxShadow: imdShadow(c),

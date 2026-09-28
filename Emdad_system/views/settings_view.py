@@ -15,6 +15,9 @@ import os
 import hashlib
 import secrets
 import base64
+import json
+from urllib.parse import urlparse
+import requests
 
 
 def _get_db_path():
@@ -599,13 +602,15 @@ class SettingsView(QWidget):
         box.setStyleSheet("QGroupBox { font-weight: bold; padding: 10px; }")
         fl = QFormLayout(box)
         self.le_server_url = QLineEdit()
-        self.le_server_url.setPlaceholderText("http://example.com/api")
+        config = ApiService().BASE_URL
+        self.le_server_url.setText(config)
+        self.le_server_url.setPlaceholderText("http://127.0.0.1:8000")
         self.le_server_url.setMinimumWidth(300)
         fl.addRow("عنوان الخادم:", self.le_server_url)
         self.sp_timeout = QSpinBox()
         self.sp_timeout.setRange(5, 60)
         self.sp_timeout.setSuffix(" ثانية")
-        self.sp_timeout.setValue(15)
+        self.sp_timeout.setValue(int(ApiService()._timeout))
         fl.addRow("مهلة الاتصال:", self.sp_timeout)
         lay.addWidget(box)
         box2 = QGroupBox("إعدادات المعسكر")
@@ -703,14 +708,40 @@ class SettingsView(QWidget):
         return w
 
     def _save_settings(self):
-        QMessageBox.information(self, "حفظ", "تم حفظ الإعدادات بنجاح!")
+        server = self.le_server_url.text().strip().rstrip('/')
+        parsed = urlparse(server)
+        if parsed.scheme not in ('http', 'https') or not parsed.netloc:
+            QMessageBox.warning(self, "عنوان غير صالح", "أدخل عنواناً صحيحاً يبدأ بـ http:// أو https://")
+            return
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if getattr(__import__('sys'), 'frozen', False):
+            base = os.path.dirname(__import__('sys').executable)
+        config_path = os.path.join(base, 'config.json')
+        try:
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump({'server_url': server, 'timeout_seconds': self.sp_timeout.value()}, f, ensure_ascii=False, indent=2)
+            self.api_service.BASE_URL = server
+            self.api_service._timeout = self.sp_timeout.value()
+            self.api_service.session_token = None
+            QMessageBox.information(self, "حفظ", "تم حفظ إعدادات الاتصال بالخادم.")
+        except OSError as e:
+            QMessageBox.critical(self, "تعذر الحفظ", str(e))
 
     def _test_connection(self):
-        server = self.le_server_url.text()
+        server = self.le_server_url.text().strip().rstrip('/')
         if not server:
             QMessageBox.warning(self, "تنبيه", "يرجى إدخال عنوان الخادم أولاً")
             return
-        QMessageBox.information(self, "الاتصال", "جاري الاتصال بـ:\n" + server + "\n\n(غير متوفر في وضع العمل المحلي)")
+        try:
+            response = requests.get(server + '/health', timeout=self.sp_timeout.value())
+            response.raise_for_status()
+            data = response.json()
+            if data.get('status') == 'ok':
+                QMessageBox.information(self, "الاتصال", f"تم الاتصال بالخادم بنجاح.\n{server}\nقاعدة البيانات: {data.get('database', 'جاهزة')}")
+            else:
+                QMessageBox.warning(self, "حالة الخادم", f"استجاب الخادم لكن حالته غير متوقعة:\n{data}")
+        except Exception as e:
+            QMessageBox.critical(self, "فشل الاتصال", f"تعذر الاتصال بالخادم:\n{server}\n\n{e}")
 
     def _sync_now(self):
         self.lbl_sync_status.setText("المزامنة غير متوفرة حالياً في وضع العمل المحلي")

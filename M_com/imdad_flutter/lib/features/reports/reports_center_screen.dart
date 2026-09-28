@@ -21,7 +21,14 @@ import 'camp_settlement_screen.dart';
 /// فلاتر مخصصة لكل تقرير، ملخّص برقائق، جدول قابل للفرز بسطر إجمالي،
 /// وبحث داخل النتائج مع الطباعة والتصدير إلى Excel.
 class ReportsCenterScreen extends StatefulWidget {
-  const ReportsCenterScreen({super.key});
+  const ReportsCenterScreen({super.key, this.initialReport, this.standalone = false});
+
+  /// يُفتح عليه القادم من القائمة؛ `null` يعني الافتراضي (أول تقرير).
+  final ReportId? initialReport;
+
+  /// `true` ⇒ الشاشة فُتحت من بند شجرةٍ مباشر لا من «مركز التقارير» الجامع،
+  /// فتُخفى قائمة التنقّل الجانبية — التقرير الواحد هو الشاشة كلها.
+  final bool standalone;
 
   @override
   State<ReportsCenterScreen> createState() => _ReportsCenterScreenState();
@@ -36,7 +43,13 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
 
   ReportData? _data;
   ReportResult _out = const ReportResult();
-  int _idx = 0;
+  late int _idx = _indexOf(widget.initialReport);
+
+  static int _indexOf(ReportId? id) {
+    if (id == null) return 0;
+    final i = kReports.indexWhere((r) => r.id == id);
+    return i < 0 ? 0 : i;
+  }
   static const _tools = <(String, String, String, String)>[
     (
       'actualEntitlement',
@@ -65,6 +78,20 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant ReportsCenterScreen old) {
+    super.didUpdateWidget(old);
+    // التنقّل بين بنود الشجرة (كلها هذه الشاشة نفسها) يُعيد بناءها بتقريرٍ آخر.
+    if (old.initialReport != widget.initialReport && widget.initialReport != null) {
+      setState(() {
+        _idx = _indexOf(widget.initialReport);
+        _sortCol = null;
+        _q.clear();
+      });
+      _run();
+    }
   }
 
   @override
@@ -279,12 +306,14 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
   @override
   Widget build(BuildContext context) {
     final narrow = ImdBp.of(context).mobile;
+    final standalone = widget.standalone;
     return ImdPage(children: [
       ImdPageTitle(
-        title: 'مركز التقارير',
-        icon: 'chart',
-        subtitle:
-            'تقارير تفصيلية بفلاتر مخصصة لكل تقرير، مع الطباعة والتصدير إلى Excel',
+        title: standalone ? _report.name : 'مركز التقارير',
+        icon: standalone ? _report.icon : 'chart',
+        subtitle: standalone
+            ? _report.desc
+            : 'تقارير تفصيلية بفلاتر مخصصة لكل تقرير، مع الطباعة والتصدير إلى Excel',
         trailing: narrow
             ? null
             : ImdButton.outline(
@@ -296,6 +325,8 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
       ),
       if (_loading)
         const ImdLd('جارٍ تحميل البيانات…')
+      else if (standalone)
+        _body()
       else if (narrow) ...[
         _nav(horizontal: true),
         const SizedBox(height: 12),
@@ -477,6 +508,9 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
         ImdEmptyBox(_out.message)
       else
         ImdTable(
+          // يتغيّر مع الفرز فتُعاد الودجة بحالةٍ جديدة (صفحة ١) بدل تمرير حالة
+          // فرزٍ إلى مكوّنٍ لا يعرفها — كما اتُّفق في تصميم الترقيم (C6.2).
+          key: ValueKey('$_sortCol-$_sortDir'),
           minWidth: _out.columns.length > 7 ? 1000 : null,
           columns: [
             const ImdCol('م', numeric: true),
@@ -487,6 +521,7 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
               ),
           ],
           cards: true,
+          pageSize: 100,
           empty: 'لا توجد بيانات مطابقة للفلاتر الحالية',
           onHeaderTap: (i) {
             if (i == 0) return;
@@ -502,7 +537,7 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
           },
           footer: _totals(rows),
           rows: [
-            for (final (i, r) in rows.take(2000).indexed)
+            for (final (i, r) in rows.indexed)
               [
                 Text(nf(i + 1)),
                 for (final (ci, cell) in r.indexed)

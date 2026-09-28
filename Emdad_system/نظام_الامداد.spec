@@ -11,20 +11,14 @@ block_cipher = None
 datas = []
 hiddenimports = []
 
-# UI assets
-datas += collect_data_files('ui', includes=['*.qss', '*.png', '*.svg', '*.ico'])
-
 # Babel locale data
 try:
     datas += collect_data_files('babel')
 except Exception:
     pass
 
-# ملفات تُحمَّل وقت التشغيل عبر المسار (Path(__file__)) داخل حزمة ui،
+# ملفات تُحمَّل وقت التشغيل عبر المسار (Path(__file__)) داخل حزمة التطبيق،
 # ويجب أن تكون موجودة بجوار التطبيق بعد البناء.
-#   print_helper.py            -> ui/print_helper.py (شيم الطباعة)
-#   views/transfer_view.py     -> ui/views/transfer_view.py (شيم التحويل)
-# إضافةً إلى theme.py و api_service.py اللذين تستوردهما شاشات الجذر.
 _RUNTIME_FILES = [
     ('print_helper.py', '.'),
     ('theme.py', '.'),
@@ -41,7 +35,7 @@ for _src, _dst in _RUNTIME_FILES:
         print(f'[spec] تحذير: ملف وقت التشغيل مفقود: {_src}')
 
 # Hidden imports for dynamic modules
-for mod in ['ui.views', 'ui.widgets', 'ui.screens',
+for mod in ['views',
             'core.models', 'core.services', 'core.security',
             'data.repositories_impl', 'sync']:
     try:
@@ -77,13 +71,21 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=['pyi_rth_qt_path.py'],
     excludes=[],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
     noarchive=False,
 )
+
+# PyInstaller can discover an unrelated ICU DLL from the build machine's
+# Poppler tools. It exports a different ABI and breaks Qt6Core at startup.
+# Qt can use Windows' ICU when available and otherwise falls back normally.
+a.binaries = [
+    entry for entry in a.binaries
+    if entry[0].replace('\\', '/').rsplit('/', 1)[-1].lower() != 'icuuc.dll'
+]
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 

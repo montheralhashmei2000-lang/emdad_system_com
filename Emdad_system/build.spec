@@ -8,7 +8,7 @@ a = Analysis(
     datas=[
         ('app/resources/*', 'app/resources'),
         ('data/*.db', 'data'),
-        ('ui/**/*.py', 'ui')
+        ('views/**/*.py', 'views')
     ],
     hiddenimports=[
         'core.security.authentication',

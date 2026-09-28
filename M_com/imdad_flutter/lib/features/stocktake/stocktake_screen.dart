@@ -22,7 +22,15 @@ import '../inventory/doc_kit.dart';
 /// العد يُدخل بالوحدات (حتى ثلاث) ويُحوَّل لوحدة الأساس، والفرق يُسوَّى في رصيد
 /// المستودع عند الاعتماد، وتجميد المستودع يمنع الحركات حتى الإغلاق أو الإلغاء.
 class StocktakeScreen extends StatefulWidget {
-  const StocktakeScreen({super.key});
+  const StocktakeScreen({super.key, this.initialTab, this.standalone = false});
+
+  /// create | count | analysis | approve | history — يُفتح عليه القادم من
+  /// القائمة؛ `null` يعني الافتراضي («إنشاء أمر جرد»).
+  final String? initialTab;
+
+  /// `true` ⇒ الشاشة فُتحت من بند شجرةٍ مباشر لا من باب «إدارة الجرد»
+  /// الجامع، فيُخفى شريط التبويبات — التبويبة الواحدة هي الشاشة كلها.
+  final bool standalone;
 
   @override
   State<StocktakeScreen> createState() => _StocktakeScreenState();
@@ -93,7 +101,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
   String _addItemId = '';
   bool _onlyVar = false;
 
-  String _tab = 'create';
+  late String _tab = widget.initialTab ?? 'create';
   String _cur = '';
   List<Warehouse> _warehouses = const [];
   List<Category> _categories = const [];
@@ -107,6 +115,19 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant StocktakeScreen old) {
+    super.didUpdateWidget(old);
+    // التنقّل بين بنود الشجرة (كلها هذه الشاشة نفسها) يُعيد بناءها بتبويبٍ
+    // آخر؛ `_tab` مُهيَّأةٌ مرةً واحدة فقط عند الإنشاء فلا تتبع التنقّلات
+    // اللاحقة بلا هذا التحديث الصريح.
+    if (old.initialTab != widget.initialTab && widget.initialTab != null) {
+      final next = widget.initialTab!;
+      setState(() => _tab = next);
+      if (next != 'create' && next != 'history') _loadLines();
+    }
   }
 
   @override
@@ -516,25 +537,40 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
   @override
   Widget build(BuildContext context) {
     return ImdPage(children: [
-      const ImdPageTitle(
-        title: 'إدارة الجرد المخزني',
-        icon: 'clipboard',
-        subtitle: 'أوامر الجرد، العد الفعلي بالوحدات، تحليل الفروقات، واعتماد التسوية',
-      ),
-      ImdItabs(
-        value: _tab,
-        onChanged: (v) async {
-          setState(() => _tab = v);
-          if (v != 'create' && v != 'history') await _loadLines();
+      ImdPageTitle(
+        title: switch (_tab) {
+          'create' => 'إنشاء أمر جرد',
+          'count' => 'العد الفعلي',
+          'analysis' => 'تحليل الفروقات',
+          'approve' => 'التسوية والاعتماد',
+          _ => 'سجل الجرد',
         },
-        tabs: const [
-          ImdTab('create', 'إنشاء أمر جرد', icon: 'plus-square'),
-          ImdTab('count', 'العد الفعلي', icon: 'clipboard'),
-          ImdTab('analysis', 'تحليل الفروقات', icon: 'scale'),
-          ImdTab('approve', 'التسوية والاعتماد', icon: 'check-circle'),
-          ImdTab('history', 'سجل الجرد', icon: 'clock'),
-        ],
+        icon: switch (_tab) {
+          'create' => 'plus-square',
+          'count' => 'clipboard',
+          'analysis' => 'scale',
+          'approve' => 'check-circle',
+          _ => 'clock',
+        },
+        subtitle: widget.standalone
+            ? null
+            : 'أوامر الجرد، العد الفعلي بالوحدات، تحليل الفروقات، واعتماد التسوية',
       ),
+      if (!widget.standalone)
+        ImdItabs(
+          value: _tab,
+          onChanged: (v) async {
+            setState(() => _tab = v);
+            if (v != 'create' && v != 'history') await _loadLines();
+          },
+          tabs: const [
+            ImdTab('create', 'إنشاء أمر جرد', icon: 'plus-square'),
+            ImdTab('count', 'العد الفعلي', icon: 'clipboard'),
+            ImdTab('analysis', 'تحليل الفروقات', icon: 'scale'),
+            ImdTab('approve', 'التسوية والاعتماد', icon: 'check-circle'),
+            ImdTab('history', 'سجل الجرد', icon: 'clock'),
+          ],
+        ),
       const SizedBox(height: 12),
       if (_loading)
         const ImdLd('جارٍ التحميل…')

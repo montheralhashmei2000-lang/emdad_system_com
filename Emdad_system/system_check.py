@@ -77,8 +77,9 @@ def check_imports():
         ("sync.api_client", "عميل API"),
         ("sync.network_monitor", "مراقب الشبكة"),
         ("sync.sync_engine", "محرك المزامنة"),
-        ("ui.main_window", "النافذة الرئيسية"),
-        ("ui.theme", "الثيم"),
+        ("main_window", "النافذة الرئيسية"),
+        ("theme", "الثيم"),
+        ("api_service", "خدمة API"),
     ]
     
     success = 0
@@ -99,46 +100,29 @@ def check_ui_screens():
     """فحص شاشات الواجهة"""
     print("\n=== 3. فحص شاشات الواجهة ===")
     screens = [
-        "ui.views.inventory_view",
-        "ui.views.items_management_view",
-        "ui.views.receive_view",
-        "ui.views.issue_view",
-        "ui.views.transfer_view",
-        "ui.views.warehouses_view",
-        "ui.views.beneficiary_units_view",
-        "ui.views.entitlements_view",
-        "ui.views.daily_strength_view",
-        "ui.views.returns_view",
-        "ui.views.facilities_view",
-        "ui.views.inventory_count_view",
-        "ui.views.suppliers_view",
-        "ui.views.reports_view",
-        "ui.views.logistics_tracker_view",
-        "ui.views.settings_view",
-        "ui.views.transfer_notifications_view",
-        "ui.views.login_dialog",
-        "ui.views.emergency_view",
-        "ui.views.emergency_sync_view",
-        "ui.views.opening_balance_view",
-        "ui.views.notification_view",
-        "ui.views.personnel_view",
-        "ui.views.sync_screen",
-        "ui.views.transactions_screen",
-        "ui.toast_widget",
-        "ui.loading_overlay",
-        "ui.api_service",
-        "ui.screens.dashboard_screen",
-        "ui.screens.items_management_view",
-        "ui.screens.inventory_view",
-        "ui.screens.warehouses_view",
-        "ui.screens.receive_view",
-        "ui.screens.issue_view",
-        "ui.screens.transactions_screen",
-        "ui.screens.custody_screen",
-        "ui.screens.stocktake_screen",
-        "ui.screens.reports_view",
-        "ui.screens.sync_screen",
-        "ui.screens.settings_screen",
+        "views.inventory_view",
+        "views.items_management_view",
+        "views.receive_view",
+        "views.issue_view",
+        "views.transfer_view",
+        "views.warehouses_view",
+        "views.beneficiary_units_view",
+        "views.entitlements_view",
+        "views.daily_strength_view",
+        "views.returns_view",
+        "views.facilities_view",
+        "views.inventory_count_view",
+        "views.suppliers_view",
+        "views.reports_view",
+        "views.settings_view",
+        "views.transfer_notifications_view",
+        "views.login_dialog",
+        "views.emergency_view",
+        "views.opening_balance_view",
+        "views.notification_view",
+        "loading_overlay",
+        "toast_widget",
+        "voucher_dialog",
     ]
     
     success = 0
@@ -159,8 +143,9 @@ def check_widgets():
     """فحص مكونات الواجهة"""
     print("\n=== 4. فحص مكونات الواجهة ===")
     widgets = [
-        "ui.widgets.sidebar",
-        "ui.widgets.header",
+        "toast_widget",
+        "loading_overlay",
+        "voucher_dialog",
     ]
     
     success = 0

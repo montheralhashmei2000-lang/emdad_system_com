@@ -8,7 +8,7 @@ print("="*70)
 # 1. استيراد المكونات
 print("\n1. 🔧 استيراد المكونات:")
 try:
-    from ui.main_window import MainWindow
+    from main_window import MainWindow
     print("   ✅ MainWindow تم استيراده بنجاح")
 except Exception as e:
     print(f"   ❌ خطأ في استيراد MainWindow: {e}")

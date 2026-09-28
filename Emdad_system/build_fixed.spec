@@ -20,7 +20,7 @@ a = Analysis(
         'PySide6.QtWidgets',
         'core',
         'data',
-        'ui',
+        'views',
         'sync',
         'app'
     ],

@@ -27,7 +27,7 @@ a = Analysis(
         'PySide6.QtNetwork',
         'core',
         'data',
-        'ui',
+        'views',
         'sync',
         'app',
         'hashlib',

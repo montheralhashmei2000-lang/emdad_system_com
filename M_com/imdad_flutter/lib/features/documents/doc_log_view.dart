@@ -308,9 +308,10 @@ class _DocLogViewState extends State<DocLogView> {
             ImdCol(''),
           ],
           cards: true,
+          pageSize: 50,
           empty: 'لا توجد مستندات مطابقة',
           rows: [
-            for (final g in rows.take(1500)) _row(g),
+            for (final g in rows) _row(g),
           ],
         ),
     ];

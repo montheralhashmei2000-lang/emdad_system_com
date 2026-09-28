@@ -19,7 +19,7 @@ def profile_gui():
     profiler.enable()
 
     # استيراد وإ создания النافذة الرئيسية
-    from ui.main_window import MainWindow
+    from main_window import MainWindow
     window = MainWindow()
     # لا نحتاج إلى إظهار النافذة؛ يكفي إنشاؤها لتحميل المكونات
 

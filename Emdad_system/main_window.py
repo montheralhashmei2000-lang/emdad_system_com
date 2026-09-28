@@ -74,7 +74,15 @@ class MainWindow(QMainWindow):
         self._setup_activity_poller()
 
     def _require_login(self, is_lock_screen=False):
-        dlg = LoginDialog(self.api_service, self, is_lock_screen=is_lock_screen)
+        # The initial login must be an independent top-level window. If it is
+        # owned by the not-yet-shown main window, Windows can keep it behind
+        # other applications and omit it from the task switcher.
+        dlg = LoginDialog(self.api_service, self if is_lock_screen else None, is_lock_screen=is_lock_screen)
+        # Surface the modal login prompt when the application is launched from a
+        # background process (for example, a development command runner).
+        dlg.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        dlg.raise_()
+        dlg.activateWindow()
 
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self.current_user = dlg.user_data

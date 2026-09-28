@@ -20,7 +20,7 @@ class ImdWindow {
   static bool get supported => !kIsWeb && Platform.isWindows;
 
   /// مقاس نافذة الدخول (منطقي).
-  static const Size loginSize = Size(440, 530);
+  static const Size loginSize = Size(440, 460);
 
   /// نافذة الدخول المدمجة.
   static Future<void> login() => _guard(() async {

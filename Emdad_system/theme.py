@@ -31,11 +31,7 @@ COLORS = {
     "border_dark": "#3E5E3E",
 }
 
-# ===== مفاتيح aliases للتوافق مع شاشات حزمة ui =====
-# شاشات الجذر تستعملNamingConvention أعلاه، بينما بعض الشاشات
-# (inventory_view / login_dialog / inventory_count_view ...) تشير
-# إلى مفاتيح بأسماء أخرى. نوفّرها هنا حتى يبقى theme.py المصدر
-# الوحيد لنظام التصميم دون تعديل الشاشات.
+# مفاتيح aliases تستخدمها شاشات الجذر التي تحمل أسماء تصميم تاريخية مختلفة.
 COLORS.update({
     "primary": COLORS["green_primary"],
     "PRIMARY": COLORS["green_primary"],
@@ -54,7 +50,7 @@ COLORS.update({
     "purple_light": COLORS["purple_light"],
 })
 
-# أسماء ثابتة متوافقة مع ui.theme
+# أسماء ثابتة تستخدمها الشاشات وعناصر الطباعة.
 PRIMARY = COLORS["green_primary"]
 PRIMARY_LIGHT = COLORS["green_hover"]
 ACCENT = COLORS["gold"]

@@ -204,7 +204,7 @@ void main() {
       'حركة المخزون': (() => const SupplyMovesScreen(), 'الاستلام'),
       'الطلبيات': (() => const SupplyOrdersScreen(), 'طلبيات الإعاشة'),
       'الأدلّة': (() => const SupplyDataScreen(), 'الأصناف'),
-      'التشغيل اليومي': (() => const SupplyDailyScreen(), 'التغذية اليومية'),
+      'التشغيل اليومي': (() => const SupplyDailyScreen(), 'التفريدة اليومية'),
       'التقارير': (() => const SupplyReportsScreen(), 'مركز التقارير'),
       'الرقابة': (() => const SupplyAuditScreen(), 'سجل النشاط'),
     };

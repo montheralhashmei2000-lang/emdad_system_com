@@ -8,9 +8,8 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/security/auth_service.dart';
-import '../../core/theme/app_theme.dart';
+import '../../data/repos/reports_repo.dart' show ReportId;
 import '../../core/ui/imd_empty_state.dart';
-import '../../core/ui/imd_fonts.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_window.dart';
@@ -20,7 +19,13 @@ import '../../domain/app_space.dart';
 import '../../domain/menu_doors.dart';
 import 'space_chooser_screen.dart';
 import '../fuel/fuel_allocations_screen.dart';
+import '../fuel/fuel_consumption_screen.dart';
+import '../fuel/fuel_daily_report_screen.dart';
+import '../fuel/fuel_directories_screen.dart';
 import '../fuel/fuel_groups.dart';
+import '../fuel/fuel_ledger_screen.dart';
+import '../fuel/fuel_official_report_screen.dart';
+import '../fuel/fuel_vehicles_screen.dart';
 import 'supply_groups.dart';
 import '../fuel/fuel_settings_screen.dart';
 import '../fuel/fuel_dashboard_screen.dart';
@@ -28,10 +33,28 @@ import '../fuel/fuel_moves_screen.dart';
 import '../fuel/fuel_stocktake_screen.dart';
 import '../daily/meal_plan_screen.dart';
 import '../daily/kitchen_log_screen.dart';
+import '../daily/ratios_screen.dart';
+import '../daily/strength_screen.dart';
 import 'notification_bell.dart';
+import '../alerts/stock_alerts_screen.dart';
+import '../catalog/assets_screen.dart';
+import '../catalog/items_screen.dart';
+import '../catalog/kitchens_screen.dart';
+import '../catalog/suppliers_screen.dart';
+import '../catalog/units_screen.dart';
+import '../catalog/warehouses_screen.dart';
+import '../inventory/issue_screen.dart';
+import '../inventory/opening_screen.dart';
+import '../inventory/pending_screen.dart';
+import '../inventory/ration_order_screen.dart';
+import '../inventory/receive_screen.dart';
+import '../inventory/returns_screen.dart';
+import '../inventory/transfer_screen.dart';
+import '../reports/balances_screen.dart';
 import '../reports/camp_ledger_screen.dart';
 import '../reports/camp_settlement_screen.dart';
 import '../reports/actual_entitlement_screen.dart';
+import '../reports/reports_center_screen.dart';
 import '../settings/branding_screen.dart';
 import '../settings/forms_designer_screen.dart';
 import '../settings/device_activation_screen.dart';
@@ -96,44 +119,111 @@ class _Shell {
 }
 
 const _menu = <_MenuSection>[
-  // قسم الإمداد: تسعةُ أبوابٍ لا ستةٌ وعشرون بندًا.
+  // ═════════ الإمداد: ستّة أقسامٍ قابلة للطي — «الرئيسية» مستقلةٌ خارجها.
   //
-  // **الشريط فهرسٌ لا سجل.** سندات الحركة الخمسة يحرّرها أمينُ مستودعٍ واحد
-  // في جلسةٍ واحدة، والأدلّة الستة تُعرَّف مرةً وتُقرأ دائمًا، والرقابة خمسُ
-  // نظراتٍ على السجل نفسه — فكلُّ مجموعةٍ بابٌ بتبويباته.
-  _MenuSection('stock', 'package', 'العمليات المخزنية', [
-    _MenuItem('supplyMoves', 'swap', 'حركة المخزون'),
-    _MenuItem('supplyOrders', 'clipboard', 'الطلبيات'),
-    _MenuItem('stocktake', 'clipboard', 'جرد المخزون'),
-  ]),
+  // **شجرةٌ لا أبواب.** كل بندٍ هنا يفتح شاشته الخامّة مباشرة، بلا تبويباتٍ
+  // فوقها تُخفي أخواتها — القسم في الشريط هو التصنيف الوحيد، فلا حاجة
+  // لتصنيفٍ ثانٍ داخل الشاشة نفسها.
   _MenuSection('basic', 'database', 'البيانات الأساسية', [
-    _MenuItem('supplyData', 'database', 'الأدلّة الأساسية'),
+    _MenuItem('items', 'package', 'الأصناف'),
+    _MenuItem('stores', 'warehouse', 'المستودعات'),
+    _MenuItem('units', 'users', 'الوحدات المستفيدة'),
+    _MenuItem('suppliers', 'truck', 'الموردون'),
+    _MenuItem('kitchens', 'utensils', 'المطابخ والأفران'),
+    _MenuItem('assets', 'package', 'الأصول الثابتة'),
   ]),
-  // قسم المحروقات: ستّة أبوابٍ لا ثلاثة عشر بندًا.
-  //
-  // **الشريط فهرسٌ لا سجل.** الصرف والتوريد والتحويل والافتتاحي حركةٌ واحدة
-  // يديرها رجلٌ واحد، والمستودعات والوحدات والمركبات أدلّةٌ تُعرَّف مرةً،
-  // والتقارير نظراتٌ على البيانات نفسها — فكلُّ ثلاثةٍ بابٌ بتبويباته.
-  _MenuSection('fuel', 'zap', 'المحروقات', [
-    _MenuItem('fuelDashboard', 'home', 'الرئيسية', space: AppSpace.fuel),
-    _MenuItem('fuelMoves', 'swap', 'حركة المحروقات', space: AppSpace.fuel),
-    _MenuItem('fuelAllocations', 'clipboard', 'التفريدة', space: AppSpace.fuel),
-    _MenuItem('fuelData', 'database', 'البيانات الأساسية',
-        space: AppSpace.fuel),
-    _MenuItem('fuelReports', 'chart', 'التقارير', space: AppSpace.fuel),
-    _MenuItem('fuelStocktake', 'clipboard', 'الجرد المخزني',
-        space: AppSpace.fuel),
-    _MenuItem('fuelSettings', 'settings', 'الإعدادات', space: AppSpace.fuel),
+  _MenuSection('stock', 'package', 'العمليات المخزنية', [
+    _MenuItem('receive', 'download', 'استلام'),
+    _MenuItem('issue', 'upload', 'صرف'),
+    _MenuItem('transfer', 'refresh', 'تحويل'),
+    _MenuItem('returns', 'undo', 'مرتجعات'),
+    _MenuItem('opening', 'clipboard', 'الأرصدة الافتتاحية'),
+    _MenuItem('rationOrders', 'clipboard', 'طلبيات الإعاشة'),
+    _MenuItem('pendingOrders', 'bell', 'أوامر التوريد المعلقة'),
   ]),
   _MenuSection('daily', 'chart', 'التشغيل اليومي', [
-    _MenuItem('supplyDaily', 'calendar', 'التشغيل اليومي'),
+    _MenuItem('feeding', 'calendar', 'التفريدة اليومية'),
+    _MenuItem('mealPlans', 'calendar', 'خطط الوجبات'),
+    _MenuItem('kitchenLog', 'utensils', 'سجل التشغيل والطهي'),
+    _MenuItem('ratios', 'scale', 'نسب الاستحقاق'),
   ]),
-  _MenuSection('reports', 'trending', 'التقارير والرقابة', [
-    _MenuItem('supplyReports', 'chart', 'التقارير'),
+  // «رقابة» وحدها بقيت باباً بتبويباته الخمسة (سجل النشاط، ذكاء النشاط،
+  // التغييرات الحساسة، مركز القيادة، صحة النظام) — خمس نظراتٍ على سجلٍّ
+  // واحد لا خمس شاشاتٍ منفصلة، فتفكيكها يُكرِّر لا يُبسِّط.
+  _MenuSection('reports', 'trending', 'التقارير', [
+    _MenuItem('balances', 'calculator', 'الأرصدة الحالية'),
+    // تقارير «مركز التقارير» التسعة كلها بنودٌ مباشرة الآن (بلا قائمة تنقّل
+    // جانبية) — فلا حاجة لبند «مركز التقارير» نفسه في الشريط؛ الشاشة
+    // (`reports_center_screen.dart`) بقيت بلا حذف، فقط بلا رابطٍ إليها هنا.
+    _MenuItem('reportMoves', 'repeat', 'حركة المخزون اليومية'),
+    _MenuItem('reportUnitAccount', 'file', 'كشف حساب وحدة مستفيدة'),
+    _MenuItem('reportStock', 'package', 'تقرير أرصدة المخزون'),
+    _MenuItem('reportConsumption', 'chart', 'تحليل الاستهلاك'),
+    _MenuItem('reportStrength', 'users', 'تقرير حصر القوة'),
+    _MenuItem('reportKitchen', 'utensils', 'أداء المطابخ والأفران'),
+    _MenuItem('reportSupplier', 'truck', 'ملخص توريدات الموردين'),
+    _MenuItem('reportReturns', 'undo', 'تقرير المرتجعات'),
+    _MenuItem('reportDaily', 'clipboard', 'تقرير العمل اليومي'),
+    _MenuItem('campLedger', 'list', 'سجل حساب المعسكر'),
+    _MenuItem('campSettlement', 'scale', 'تصفية الشهر'),
+    _MenuItem('actualEntitlement', 'calculator', 'حساب الاستحقاق الفعلي'),
+    _MenuItem('stockAlerts', 'alert', 'تنبيهات المخزون'),
     _MenuItem('supplyAudit', 'scan', 'الرقابة والتدقيق'),
   ]),
+  // خمسة بنودٍ لشاشةٍ واحدة (`StocktakeScreen`) بمعامل `standalone` يُخفي
+  // تبويباتها الداخلية — لا خمس شاشاتٍ منفصلة فعلًا.
+  _MenuSection('stocktake', 'clipboard', 'إدارة الجرد', [
+    _MenuItem('stocktakeCreate', 'plus-square', 'إنشاء أمر جرد'),
+    _MenuItem('stocktakeCount', 'clipboard', 'العدّ الفعلي'),
+    _MenuItem('stocktakeAnalysis', 'scale', 'تحليل الفروقات'),
+    _MenuItem('stocktakeSettle', 'check-circle', 'التسوية والاعتماد'),
+    _MenuItem('stocktakeHistory', 'clock', 'سجل الجرد'),
+  ]),
+  // «مركز الصلاحيات» كان بندًا مستقلًّا خارج كل الأقسام يظهر لمدير النظام
+  // فقط؛ انتقل هنا، وبقي مقصورًا على الإمداد (`space` الافتراضي) كما كان —
+  // شأنُ النظام كله وبابه قسم الإمداد، لا يخلطه بالمحروقات.
   _MenuSection('settings', 'wrench', 'الإعدادات', [
-    _MenuItem('settings', 'settings', 'الإعدادات'),
+    _MenuItem('settings', 'settings', 'الإعدادات العامة'),
+    _MenuItem('branding', 'image', 'هوية النظام والشعار'),
+    _MenuItem('formsDesigner', 'file', 'رأس وتذييل النماذج'),
+    _MenuItem('deviceActivation', 'shield', 'تفعيل الأجهزة'),
+    _MenuItem('verifySign', 'check-circle', 'التحقق من التوقيع'),
+    _MenuItem('lanSync', 'refresh', 'مزامنة الأجهزة'),
+    _MenuItem('usersAccess', 'users', 'مركز الصلاحيات والوصول'),
+  ]),
+
+  // ═════════ المحروقات: نفس نمط الإمداد — خمسة أقسامٍ و«رئيسية» مستقلة.
+  // «حركة المحروقات» أربعة بنودٍ لشاشةٍ واحدة (`FuelMovesScreen`) بمعامل
+  // `standalone` يُخفي تبويباتها الداخلية، والتفريدة شاشةٌ مستقلة فعلًا.
+  _MenuSection('fuelMoves', 'swap', 'حركة المحروقات', [
+    _MenuItem('fuelIssue', 'upload', 'صرف', space: AppSpace.fuel),
+    _MenuItem('fuelSupply', 'download', 'توريد', space: AppSpace.fuel),
+    _MenuItem('fuelTransfer', 'refresh', 'تحويل', space: AppSpace.fuel),
+    _MenuItem('fuelOpening', 'compass', 'رصيد افتتاحي', space: AppSpace.fuel),
+    _MenuItem('fuelAllocations', 'clipboard', 'التفريدة', space: AppSpace.fuel),
+  ]),
+  _MenuSection('fuelData', 'database', 'البيانات الأساسية', [
+    _MenuItem('fuelWarehouses', 'warehouse', 'المستودعات', space: AppSpace.fuel),
+    _MenuItem('fuelUnits', 'building', 'الوحدات المستفيدة', space: AppSpace.fuel),
+    _MenuItem('fuelVehicles', 'truck', 'سجل المركبات', space: AppSpace.fuel),
+  ]),
+  _MenuSection('fuelReports', 'chart', 'التقارير', [
+    _MenuItem('fuelDaily', 'calendar', 'الحركة اليومية', space: AppSpace.fuel),
+    _MenuItem('fuelOfficial', 'file', 'التقرير الرسمي', space: AppSpace.fuel),
+    _MenuItem('fuelConsumption', 'trending', 'الاستهلاك', space: AppSpace.fuel),
+    _MenuItem('fuelStocks', 'package', 'أرصدة المستودعات', space: AppSpace.fuel),
+    _MenuItem('fuelLedger', 'list', 'كشف حركة المستودع', space: AppSpace.fuel),
+    _MenuItem('fuelPlanVsIssued', 'scale', 'الاستحقاق مقابل الصرف',
+        space: AppSpace.fuel),
+  ]),
+  // «جرد المحروقات» بلا تبويبات داخلية أصلًا (تدفّق قائمة ← تفاصيل لا
+  // شريط تبويبات)، فبقيت بندًا واحدًا كما كانت.
+  _MenuSection('fuelStocktake', 'clipboard', 'إدارة الجرد', [
+    _MenuItem('fuelStocktake', 'clipboard', 'الجرد المخزني',
+        space: AppSpace.fuel),
+  ]),
+  _MenuSection('fuelSettings', 'wrench', 'الإعدادات', [
+    _MenuItem('fuelSettings', 'settings', 'الإعدادات', space: AppSpace.fuel),
   ]),
 ];
 
@@ -194,7 +284,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     setState(() {
       _space = space;
       _page = 'dash';
-      _openSec = space == AppSpace.fuel ? 'fuel' : 'basic';
+      _openSec = space == AppSpace.fuel ? 'fuelMoves' : 'basic';
     });
   }
 
@@ -239,11 +329,29 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     'fuelSupply': 'fuelMoves',
     'fuelTransfer': 'fuelMoves',
     'fuelOpening': 'fuelMoves',
-    // والتقارير الخمسة تحت صلاحية التقارير، عدا الاستهلاك فله صلاحيته.
+    // والتقارير الستة تحت صلاحية التقارير، عدا الاستهلاك فله صلاحيته.
     'fuelDaily': 'fuelReports',
+    'fuelOfficial': 'fuelReports',
     'fuelStocks': 'fuelReports',
     'fuelLedger': 'fuelReports',
     'fuelPlanVsIssued': 'fuelReports',
+    // بنود إدارة الجرد الخمسة شاشةٌ واحدة بتبويبات داخلية، فصلاحيتها واحدة.
+    'stocktakeCreate': 'stocktake',
+    'stocktakeCount': 'stocktake',
+    'stocktakeAnalysis': 'stocktake',
+    'stocktakeSettle': 'stocktake',
+    'stocktakeHistory': 'stocktake',
+    // أربعة من تقارير «مركز التقارير» فُكِّكت إلى بنودٍ مباشرة؛ صلاحيتها صلاحية
+    // المركز نفسه — الفلترة بين التقارير تنظيمٌ للقائمة لا توسيعٌ للأذونات.
+    'reportMoves': 'reports',
+    'reportUnitAccount': 'reports',
+    'reportStock': 'reports',
+    'reportConsumption': 'reports',
+    'reportStrength': 'reports',
+    'reportKitchen': 'reports',
+    'reportSupplier': 'reports',
+    'reportReturns': 'reports',
+    'reportDaily': 'reports',
   };
 
   bool _hasPerm(AuthService auth, String page,
@@ -276,13 +384,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             ? const FuelDashboardScreen()
             : const DashboardScreen();
       case 'items':
-        return const SupplyDataScreen(initialTab: 'items');
+        return const ItemsScreen();
       case 'suppliers':
-        return const SupplyDataScreen(initialTab: 'suppliers');
+        return const SuppliersScreen();
       case 'kitchens':
-        return const SupplyDataScreen(initialTab: 'kitchens');
+        return const KitchensScreen();
       case 'units':
-        return const SupplyDataScreen(initialTab: 'units');
+        return const UnitsScreen();
       case 'campLedger':
         return const CampLedgerScreen();
       case 'campSettlement':
@@ -294,17 +402,19 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       case 'dailyOperations':
         return const SupplyDailyScreen(initialTab: 'dailyOperations');
       case 'assets':
-        return const SupplyDataScreen(initialTab: 'assets');
+        return const AssetsScreen();
       case 'fuelDashboard':
         return const FuelDashboardScreen();
+      // حركة المحروقات: كل بندٍ يفتح نفس الشاشة، لكن مقفلةً على تبويبته —
+      // `standalone: true` يُخفي شريط التبويبات (انظر fuel_moves_screen.dart).
       case 'fuelIssue':
-        return const FuelMovesScreen(initialTab: 'issue');
+        return const FuelMovesScreen(initialTab: 'issue', standalone: true);
       case 'fuelSupply':
-        return const FuelMovesScreen(initialTab: 'supply');
+        return const FuelMovesScreen(initialTab: 'supply', standalone: true);
       case 'fuelTransfer':
-        return const FuelMovesScreen(initialTab: 'transfer');
+        return const FuelMovesScreen(initialTab: 'transfer', standalone: true);
       case 'fuelOpening':
-        return const FuelMovesScreen(initialTab: 'opening');
+        return const FuelMovesScreen(initialTab: 'opening', standalone: true);
       case 'fuelAllocations':
         return const FuelAllocationsScreen();
       case 'fuelMoves':
@@ -316,21 +426,23 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       case 'fuelData':
         return const FuelDataScreen();
       case 'fuelWarehouses':
-        return const FuelDataScreen(initialTab: 'warehouses');
+        return const FuelWarehousesScreen();
       case 'fuelUnits':
-        return const FuelDataScreen(initialTab: 'units');
+        return const FuelUnitsScreen();
       case 'fuelVehicles':
-        return const FuelDataScreen(initialTab: 'vehicles');
+        return const FuelVehiclesScreen();
       case 'fuelConsumption':
-        return const FuelReportsHubScreen(initialTab: 'consumption');
+        return const FuelConsumptionScreen();
       case 'fuelDaily':
-        return const FuelReportsHubScreen(initialTab: 'daily');
+        return const FuelDailyReportScreen();
+      case 'fuelOfficial':
+        return const FuelOfficialReportScreen();
       case 'fuelStocks':
-        return const FuelReportsHubScreen(initialTab: 'stocks');
+        return const FuelStocksReportScreen();
       case 'fuelLedger':
-        return const FuelReportsHubScreen(initialTab: 'ledger');
+        return const FuelLedgerScreen();
       case 'fuelPlanVsIssued':
-        return const FuelReportsHubScreen(initialTab: 'plan');
+        return const FuelPlanVsIssuedScreen();
       case 'fuelReports':
         return const FuelReportsHubScreen();
       case 'fuelSettings':
@@ -350,35 +462,70 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       case 'supplyAudit':
         return const SupplyAuditScreen();
       case 'rationOrders':
-        return const SupplyOrdersScreen(initialTab: 'rationOrders');
+        return const RationOrderScreen();
       case 'stores':
-        return const SupplyDataScreen(initialTab: 'stores');
+        return const WarehousesScreen();
       case 'pendingOrders':
-        return const SupplyOrdersScreen(initialTab: 'pendingOrders');
+        return const PendingScreen();
       case 'receive':
-        return const SupplyMovesScreen(initialTab: 'receive');
+        return const ReceiveScreen();
       case 'issue':
-        return const SupplyMovesScreen(initialTab: 'issue');
+        return const IssueScreen();
       case 'transfer':
-        return const SupplyMovesScreen(initialTab: 'transfer');
+        return const TransferScreen();
       case 'returns':
-        return const SupplyMovesScreen(initialTab: 'returns');
+        return const ReturnsScreen();
       case 'opening':
-        return const SupplyMovesScreen(initialTab: 'opening');
+        return const OpeningScreen();
       case 'feeding':
-        return const SupplyDailyScreen(initialTab: 'feeding');
+        return const StrengthScreen();
       case 'kitchenLog':
         return const KitchenLogScreen();
       case 'ratios':
-        return const SupplyDailyScreen(initialTab: 'ratios');
+        return const RatiosScreen();
       case 'balances':
-        return const SupplyReportsScreen(initialTab: 'balances');
+        return const BalancesScreen();
       case 'stockAlerts':
-        return const SupplyReportsScreen(initialTab: 'stockAlerts');
+        return const StockAlertsScreen();
+      // إدارة الجرد: نفس معالجة حركة المحروقات — `standalone: true` يُخفي
+      // شريط تبويبات الشاشة الداخلي عند الفتح من بندٍ مباشر.
+      case 'stocktakeCreate':
+        return const StocktakeScreen(initialTab: 'create', standalone: true);
+      case 'stocktakeCount':
+        return const StocktakeScreen(initialTab: 'count', standalone: true);
+      case 'stocktakeAnalysis':
+        return const StocktakeScreen(initialTab: 'analysis', standalone: true);
+      case 'stocktakeSettle':
+        return const StocktakeScreen(initialTab: 'approve', standalone: true);
+      case 'stocktakeHistory':
+        return const StocktakeScreen(initialTab: 'history', standalone: true);
       case 'stocktake':
         return const StocktakeScreen();
       case 'reports':
-        return const SupplyReportsScreen();
+        return const ReportsCenterScreen();
+      // أربعة تقارير من التسعة القائمة داخل «مركز التقارير» فُكِّكت إلى بنودٍ
+      // مباشرة — `standalone: true` يُخفي قائمة التنقّل الجانبية للمركز،
+      // والتقرير الواحد يصير الشاشة كلها (نفس معالجة حركة المحروقات).
+      case 'reportMoves':
+        return const ReportsCenterScreen(initialReport: ReportId.moves, standalone: true);
+      case 'reportUnitAccount':
+        return const ReportsCenterScreen(
+            initialReport: ReportId.unitAccount, standalone: true);
+      case 'reportStock':
+        return const ReportsCenterScreen(initialReport: ReportId.stock, standalone: true);
+      case 'reportConsumption':
+        return const ReportsCenterScreen(
+            initialReport: ReportId.consumption, standalone: true);
+      case 'reportStrength':
+        return const ReportsCenterScreen(initialReport: ReportId.strength, standalone: true);
+      case 'reportKitchen':
+        return const ReportsCenterScreen(initialReport: ReportId.kitchen, standalone: true);
+      case 'reportSupplier':
+        return const ReportsCenterScreen(initialReport: ReportId.supplier, standalone: true);
+      case 'reportReturns':
+        return const ReportsCenterScreen(initialReport: ReportId.returns, standalone: true);
+      case 'reportDaily':
+        return const ReportsCenterScreen(initialReport: ReportId.daily, standalone: true);
       case 'auditTrail':
         return const SupplyAuditScreen(initialTab: 'auditTrail');
       case 'activityIntel':
@@ -439,9 +586,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       );
     }
     final space = _space ?? AppSpace.supply;
-    // سمة القسم تُلفّ القشرة كلها: كل شاشة داخله تأخذ لوحته بلا تعديل فيها،
-    // لأن ألوانها كلها تمرّ بـ`context.imd`.
-    final fuelSpace = space == AppSpace.fuel;
 
     final allowed = _page == 'dash' || _hasPerm(auth, _page);
     final body = allowed ? _pageBody(_page) : const _NoAccess();
@@ -550,18 +694,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       ),
     );
 
-    // سمة القسم تُلفّ كل شيء: الشريط والمحتوى والحوارات تأخذ لوحته، فلا
-    // تُعدَّل شاشة واحدة من شاشاته — ألوانها كلها تمرّ بـ`context.imd`.
-    return fuelSpace
-        ? Theme(
-            data: AppTheme.fuel(
-              // الخط يتبع اختيار المستخدم في السمة العامة.
-              font: Theme.of(context).textTheme.bodyMedium?.fontFamily ??
-                  ImdFonts.defaultFamily,
-            ),
-            child: shell,
-          )
-        : shell;
+    // قسم المحروقات يأخذ السمة العامة نفسها التي يأخذها الإمداد — لا سمةً
+    // داكنةً خاصة به (`AppTheme.fuel` أُزيلت من هنا عمدًا).
+    return shell;
   }
 }
 
@@ -871,16 +1006,16 @@ class _Sidebar extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                  // زر الرئيسية العام لا يظهر في المحروقات: قائمته تبدأ به
-                  // أصلًا، فزرّان لشاشةٍ واحدة يربكان لا يُيسّران.
-                  if (space != AppSpace.fuel)
-                    _SideTile(
-                      icon: 'home',
-                      label: 'الرئيسية',
-                      kind: _SideKind.home,
-                      on: page == 'dash',
-                      onTap: () => onGo('dash'),
-                    ),
+                  // الرئيسية بندٌ مستقلٌّ دائمًا في القسمين — لا قائمة فرعية
+                  // تحته؛ وجهتها تتبع القسم النشط (`dash` أو `fuelDashboard`).
+                  _SideTile(
+                    icon: 'home',
+                    label: 'الرئيسية',
+                    kind: _SideKind.home,
+                    on: page == (space == AppSpace.fuel ? 'fuelDashboard' : 'dash'),
+                    onTap: () =>
+                        onGo(space == AppSpace.fuel ? 'fuelDashboard' : 'dash'),
+                  ),
                   // قسمٌ بقائمةٍ واحدة يُعرض مسطّحًا: رأسُ قسمٍ يُطوى على كل
                   // ما في الشاشة ليس تصنيفًا، بل نقرةٌ تُدفع قبل كل شيء.
                   if (_flat(space, hasPerm))
@@ -890,8 +1025,7 @@ class _Sidebar extends StatelessWidget {
                         icon: i.icon,
                         label: i.name,
                         kind: _SideKind.item,
-                        on: page == i.id ||
-                            (i.id == 'fuelDashboard' && page == 'dash'),
+                        on: page == i.id,
                         onTap: () => onGo(i.id),
                       )
                   else
@@ -929,18 +1063,6 @@ class _Sidebar extends StatelessWidget {
                               : const SizedBox(width: double.infinity),
                         ),
                       ],
-                  // مركز الصلاحيات شأنُ النظام كله، وبابه قسم الإمداد:
-                  // إظهاره في المحروقات يخلط قسمًا بقسم بعد أن فُصلا.
-                  if (isAdmin && space != AppSpace.fuel) ...[
-                    const SizedBox(height: 12),
-                    _SideTile(
-                      icon: 'users',
-                      label: 'مركز الصلاحيات والوصول',
-                      kind: _SideKind.item,
-                      on: page == 'usersAccess',
-                      onTap: () => onGo('usersAccess'),
-                    ),
-                  ],
                         ],
                       ),
                     ),
@@ -1021,13 +1143,12 @@ class _Sidebar extends StatelessWidget {
       ),
       child: Column(children: [
         const SizedBox(height: 10),
-        if (space != AppSpace.fuel)
-          _RailTile(
-            icon: 'home',
-            label: 'الرئيسية',
-            on: page == 'dash',
-            onTap: () => onGo('dash'),
-          ),
+        _RailTile(
+          icon: 'home',
+          label: 'الرئيسية',
+          on: page == (space == AppSpace.fuel ? 'fuelDashboard' : 'dash'),
+          onTap: () => onGo(space == AppSpace.fuel ? 'fuelDashboard' : 'dash'),
+        ),
         Expanded(
           child: SingleChildScrollView(
             child: Column(children: [
@@ -1035,20 +1156,12 @@ class _Sidebar extends StatelessWidget {
                 _RailTile(
                   icon: i.icon,
                   label: i.name,
-                  on: page == i.id ||
-                      (i.id == 'fuelDashboard' && page == 'dash'),
+                  on: page == i.id,
                   onTap: () => onGo(i.id),
                 ),
             ]),
           ),
         ),
-        if (isAdmin && space != AppSpace.fuel)
-          _RailTile(
-            icon: 'users',
-            label: 'مركز الصلاحيات والوصول',
-            on: page == 'usersAccess',
-            onTap: () => onGo('usersAccess'),
-          ),
         if (canSwitch)
           _RailTile(
             icon: 'swap',
@@ -1131,9 +1244,12 @@ class _BottomNav extends StatelessWidget {
   final VoidCallback onMore;
 
   /// أبوابٌ ثلاثة بعد الرئيسية — والرابع «المزيد» يفتح القائمة كاملة.
+  // أُشير بها إلى معرّفات أبوابٍ حذفناها من الشجرة عند تفكيكها إلى بنودٍ
+  // مباشرة؛ استُبدلت ببنودٍ فرديةٍ ما زالت في `_menu` تمثّل نفس الغرض
+  // (أشهر ما يُفتح) بدل أن تختفي صفوف المفضّلة في الشريط السفليّ صامتة.
   static const Map<String, List<String>> _main = {
-    AppSpace.supply: ['supplyMoves', 'supplyOrders', 'supplyReports'],
-    AppSpace.fuel: ['fuelMoves', 'fuelAllocations', 'fuelReports'],
+    AppSpace.supply: ['issue', 'receive', 'balances'],
+    AppSpace.fuel: ['fuelIssue', 'fuelAllocations', 'fuelDaily'],
   };
 
   static _MenuItem? _itemOf(String id) {

@@ -24,10 +24,14 @@ import 'fuel_print.dart';
 /// وعلى أي أساس، ولمن، وبأي مركبة — وخلطُها في شبكةٍ واحدة يجعل الكاتب يقفز
 /// بين المعاني في السطر الواحد.
 class FuelMovesScreen extends StatefulWidget {
-  const FuelMovesScreen({super.key, this.initialTab = 'issue'});
+  const FuelMovesScreen({super.key, this.initialTab = 'issue', this.standalone = false});
 
   /// issue | supply | transfer | opening — يُفتح عليه القادم من القائمة.
   final String initialTab;
+
+  /// `true` ⇒ الشاشة فُتحت من بند شجرةٍ مباشر (لا من باب «حركة المحروقات»
+  /// الجامع)، فيُخفى شريط التبويبات الداخلي — التبويبة الواحدة هي الشاشة كلها.
+  final bool standalone;
 
   @override
   State<FuelMovesScreen> createState() => _FuelMovesScreenState();
@@ -453,20 +457,21 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
               )
             : null,
       ),
-      ImdItabs(
-        value: _tab,
-        onChanged: (v) => setState(() {
-          _tab = v;
-          _savedRef = '';
-          _clearForm();
-        }),
-        tabs: const [
-          ImdTab('issue', 'صرف', icon: 'upload'),
-          ImdTab('supply', 'توريد', icon: 'download'),
-          ImdTab('transfer', 'تحويل', icon: 'swap'),
-          ImdTab('opening', 'رصيد افتتاحي', icon: 'compass'),
-        ],
-      ),
+      if (!widget.standalone)
+        ImdItabs(
+          value: _tab,
+          onChanged: (v) => setState(() {
+            _tab = v;
+            _savedRef = '';
+            _clearForm();
+          }),
+          tabs: const [
+            ImdTab('issue', 'صرف', icon: 'upload'),
+            ImdTab('supply', 'توريد', icon: 'download'),
+            ImdTab('transfer', 'تحويل', icon: 'swap'),
+            ImdTab('opening', 'رصيد افتتاحي', icon: 'compass'),
+          ],
+        ),
       const SizedBox(height: 4),
       if (_savedRef.isNotEmpty) _savedBanner(),
       if (can)
@@ -799,6 +804,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
               ImdCol('', center: true),
             ],
             cards: true,
+            pageSize: 100,
             rows: [
               for (final i in rows)
                 [
@@ -917,6 +923,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
               ImdCol('', center: true),
             ],
             cards: true,
+            pageSize: 100,
             rows: [
               for (final s in rows)
                 [
@@ -1024,6 +1031,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
             ImdCol('', center: true),
           ],
           cards: true,
+          pageSize: 100,
           rows: [
             for (final t in _transfers)
               [
@@ -1114,6 +1122,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
             ImdCol('', center: true),
           ],
           cards: true,
+          pageSize: 100,
           rows: [
             for (final o in _openings)
               [

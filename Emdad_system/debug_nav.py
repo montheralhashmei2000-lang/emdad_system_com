@@ -1,7 +1,7 @@
 import sys
 sys.path.insert(0, r'E:\Emdad_system')
 from PyQt6.QtWidgets import QApplication
-from ui.main_window import MainWindow
+from main_window import MainWindow
 
 app = QApplication([])
 window = MainWindow()

@@ -101,7 +101,7 @@ void main() {
     await enterSupply(tester);
     expect(tester.takeException(), isNull);
     expect(find.text('العمليات المخزنية'), findsWidgets);
-    expect(find.text('التقارير والرقابة'), findsWidgets);
+    expect(find.text('التقارير'), findsWidgets);
   });
 
   testWidgets('فحص الصلاحية لا يتكرر إلى ما لا نهاية', (tester) async {
@@ -134,7 +134,7 @@ void main() {
       // والاسم يبقى في التلميح لمن يبحث.
       expect(
           find.byWidgetPredicate(
-              (w) => w is Tooltip && w.message == 'حركة المخزون'),
+              (w) => w is Tooltip && w.message == 'استلام'),
           findsWidgets);
     });
 
@@ -170,7 +170,7 @@ void main() {
     }
 
     await tapSection('العمليات المخزنية');
-    await tapSection('التقارير والرقابة'); // تبديلٌ: أحدهما يُطوى والآخر يُفتح.
+    await tapSection('التقارير'); // تبديلٌ: أحدهما يُطوى والآخر يُفتح.
     await tapSection('العمليات المخزنية');
     await tapSection('العمليات المخزنية'); // طيٌّ بلا فتح.
   });

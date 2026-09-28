@@ -1,6 +1,5 @@
 import sys
-sys.path.insert(0, r'E:\Emdad_system')
-with open(r'E:\Emdad_system\ui\main_window.py', 'r', encoding='utf-8') as f:
+with open('main_window.py', 'r', encoding='utf-8-sig') as f:
     lines = f.readlines()
 
 # Find _lazy_routes and print it

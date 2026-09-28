@@ -705,7 +705,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       (
         'inventory',
-        'إعدادات المخزون الأرصدة الافتتاحية نسب الاستهلاك المستودعات',
+        'إعدادات المخزون الأرصدة الافتتاحية نسب الاستحقاق المستودعات',
         ImdPanel(
           title: 'إعدادات المخزون',
           icon: 'package',
@@ -723,7 +723,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onPressed: () => _go('stores'),
             ),
             ImdButton.outline(
-              label: 'نسب الاستهلاك',
+              label: 'نسب الاستحقاق',
               icon: 'scale',
               small: true,
               onPressed: () => _go('ratios'),

@@ -41,7 +41,7 @@ const _permCatalog = <String, (String, List<String>)>{
   'documents': ('سجل المستندات', ['view', 'print', 'edit', 'delete']),
   'feeding': ('التغذية / القوة', ['view', 'create', 'edit', 'delete', 'print', 'export']),
   'kitchenLog': ('سجل التشغيل والطهي', ['view', 'create', 'edit', 'delete', 'print', 'export']),
-  'ratios': ('نسب الاستهلاك والاستحقاقات', ['view', 'edit', 'print', 'export']),
+  'ratios': ('نسب الاستحقاق', ['view', 'edit', 'print', 'export']),
   'balances': ('الأرصدة الحالية', ['view', 'export', 'print']),
   'stocktake': ('الجرد', ['view', 'create', 'edit', 'delete', 'approve', 'print', 'export']),
   'reports': ('التقارير', ['view', 'export', 'print']),

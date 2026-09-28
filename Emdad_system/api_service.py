@@ -57,6 +57,7 @@ class ApiService:
         self.BASE_URL = base_url or cfg['server_url']
         self._timeout = cfg.get('timeout_seconds', 15)
         self.current_user_id = None
+        self.session_token = None
         self.is_offline = False
         self.hardware_id = _get_hardware_id()
         self._session = requests.Session()
@@ -71,6 +72,8 @@ class ApiService:
         headers['Device-ID'] = self.hardware_id
         if self.current_user_id:
             headers['X-User-ID'] = str(self.current_user_id)
+        if self.session_token:
+            headers['Authorization'] = f'Bearer {self.session_token}'
 
         try:
             import concurrent.futures
@@ -374,11 +377,14 @@ class ApiService:
         return self._request('PUT', f"/devices/{device_id}/status", json={'status': status})
 
     def login(self, username, password):
-        """تسجيل الدخول - يتحقق من قاعدة البيانات المحلية أولاً ثم يحاول الخادم."""
+        """تسجيل الدخول من الخادم المركزي، مع دعم وضع الطوارئ عند انقطاعه."""
         import os
         import json
         import hashlib
-        import sqlite3
+
+        self.current_user_id = None
+        self.session_token = None
+        self.is_offline = False
 
         if getattr(sys, 'frozen', False):
             base_dir = os.path.dirname(sys.executable)
@@ -388,70 +394,13 @@ class ApiService:
         auth_file = os.path.join(base_dir, 'auth_cache.json')
         pwd_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
 
-        # =============================================
-        # 1) التحقق من قاعدة البيانات المحلية (offline-first)
-        # =============================================
-        db_path = os.path.join(base_dir, 'data', 'logistics.db')
-        if os.path.exists(db_path):
-            try:
-                import bcrypt
-                conn = sqlite3.connect(db_path)
-                conn.row_factory = sqlite3.Row
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT id, username, full_name, role, is_active, password_hash FROM users WHERE username=? AND is_active=1",
-                    (username,)
-                )
-                row = cur.fetchone()
-                conn.close()
-
-                if row:
-                    stored_hash = row['password_hash']
-                    pwd_valid = False
-                    # التحقق: bcrypt (افتراضي) أو SHA256 (cache قديم)
-                    if stored_hash.startswith('$2b$') or stored_hash.startswith('$2a$'):
-                        try:
-                            pwd_valid = bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8'))
-                        except Exception:
-                            pwd_valid = False
-                    elif len(stored_hash) == 64:
-                        pwd_valid = hashlib.sha256(password.encode('utf-8')).hexdigest() == stored_hash
-                    else:
-                        # إذا لم يكن مشفر - قارن مباشرة (للحسابات القديمة)
-                        pwd_valid = (password == stored_hash)
-
-                    if pwd_valid:
-                        self.current_user_id = row['id']
-                        role = row['role'] or 'viewer'
-                        # تحويل الـ role إلى uppercase للتوافق مع كود الـ permissions
-                        role_upper = role.upper()
-                        user_data = {
-                            'id': row['id'],
-                            'username': row['username'],
-                            'full_name': row['full_name'],
-                            'role': role_upper,
-                            'permissions': {},
-                            'offline_mode': False,
-                        }
-                        try:
-                            with open(auth_file, 'w', encoding='utf-8') as f:
-                                json.dump({'username': username, 'pwd_hash': pwd_hash, 'user_data': user_data}, f)
-                        except Exception:
-                            pass
-                        return (True, user_data)
-            except ImportError:
-                pass  # bcrypt غير مثبت - ننتقل للـ fallback
-            except Exception as e:
-                # مشكلة في قاعدة البيانات - ننتقل للـ fallback
-                pass
-
-        # =============================================
-        # 2) محاولة الاتصال بالخادم البعيد (اختياري)
-        # =============================================
+        # يعتمد تسجيل الدخول على الخادم حتى لا يتجاوز العميل تعطيل الحساب أو
+        # صلاحياته، وحتى يحصل على رمز جلسة صالح لبقية طلبات API.
         ok, user = self._request('POST', '/login', json={'username': username, 'password': password})
 
         if ok and isinstance(user, dict):
             self.current_user_id = user.get('id')
+            self.session_token = user.get('session_token')
             if not user.get('permissions') and user.get('role_profile'):
                 user['permissions'] = user['role_profile'].get('permissions')
 
@@ -464,10 +413,12 @@ class ApiService:
             user['offline_mode'] = False
             return (ok, user)
 
-        # =============================================
-        # 3) Fallback: استخدام auth_cache إن وجد
-        # =============================================
-        if not ok:
+        # لا نفعّل تسجيل الدخول المحفوظ بعد رفض بيانات الاعتماد من الخادم؛
+        # يسمح به فقط عند تعذر الاتصال فعليًا.
+        connection_failed = isinstance(user, str) and (
+            'تعذر الاتصال' in user or 'Connection' in user or 'connection' in user
+        )
+        if not ok and connection_failed:
             try:
                 if os.path.exists(auth_file):
                     with open(auth_file, 'r', encoding='utf-8') as f:

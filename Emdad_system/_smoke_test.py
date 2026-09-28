@@ -1,35 +1,29 @@
-"""
-فحص دخان (smoke test) للتطبيق بلا واجهة رسومية.
-يتجاوز شاشة الدخول ويبني النافذة الرئيسية ويثبّت الثيم وقاعدة البيانات،
-ثم يغلق التطبيق بعد لحظات. يُستخدم للتحقق قبل البناء (PyInstaller).
-
-    python _smoke_test.py
-"""
+"""Offscreen startup smoke test for the root desktop application."""
 from __future__ import annotations
 
-import sys
 import os
+import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-# dialects/typing قد تنهار على بعض إصدارات بايثون
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication, QDialog  # noqa: E402
 
-import main as app_main  # noqa: E402
-import ui.main_window as mw  # noqa: E402
+import main_window as mw  # noqa: E402
+from theme import apply_theme  # noqa: E402
+
+
+class _ApiStub:
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: (False, {})
 
 
 class _StubLoginDialog:
-    """شاشة دخول وهمية: تقبل دائمًا حتى نصل إلى بناء الواجهة."""
-
-    def __init__(self, api_service, parent=None, is_lock_screen=False):
+    def __init__(self, *args, **kwargs):
         self.user_data = {
             "id": 1,
             "username": "smoke",
             "full_name": "فحص دخان",
-            "role": "مدير",
+            "role": "ADMIN",
             "permissions": {},
             "offline_mode": False,
         }
@@ -39,32 +33,18 @@ class _StubLoginDialog:
 
 
 def main() -> int:
-    app_main.setup_logging()
-    app_main.initialize_database()
-
-    qt_app = QApplication(sys.argv)
-    qt_app.setApplicationName("نظام الإمداد والتموين")
-
-    from ui.theme import setup_theme
-
-    setup_theme(qt_app)
-
+    app = QApplication(sys.argv)
+    apply_theme(app)
     mw.LoginDialog = _StubLoginDialog
-
-    window = mw.MainWindow()
+    window = mw.MainWindow(api_service=_ApiStub())
     window.show()
-
-    # إغلاق بعد ثوانٍ حتى نتحقق من أن حلقة الأحداث تعمل بلا انهيار
-    from PyQt6.QtCore import QTimer
-
-    QTimer.singleShot(5000, qt_app.quit)
-
-    code = qt_app.exec()
-
-    print("SMOKE OK: MainWindow built, stylesheet applied, event loop ran.")
+    app.processEvents()
+    expected = {label for items in mw.SIDEBAR_GROUPS.values() for label, _ in items}
+    assert expected.issubset(window.sidebar_buttons)
+    print(f"SMOKE OK: root MainWindow started; {len(expected)} sidebar items found.")
     window.close()
-    return code
+    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

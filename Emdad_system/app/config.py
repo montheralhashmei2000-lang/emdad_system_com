@@ -38,7 +38,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 # مسار قاعدة البيانات المحلية SQLite
-DATABASE_PATH = DATA_DIR / "logistics.db"
+DATABASE_PATH = Path(os.environ.get("EMDAD_DB_PATH", DATA_DIR / "logistics.db")).expanduser()
 DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 DATABASE_TIMEOUT = 30  # ثانية
 REQUEST_TIMEOUT = 15   # ثانية

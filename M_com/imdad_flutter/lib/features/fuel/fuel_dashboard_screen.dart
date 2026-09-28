@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_charts.dart';
 import '../../core/ui/imd_format.dart';
-import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_layout.dart';
 import '../../core/ui/imd_occupancy_bar.dart';
 import '../../core/ui/imd_shimmer.dart';
@@ -126,48 +125,73 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
               : const ImdChip('يحتاج إجراء', tone: ImdTone.err),
         ),
       ]),
-      ImdPanel(title: 'إشغال المستودعات', icon: 'package', child: _occupancy()),
-      if (_alerts.isNotEmpty)
+      // نفس إيقاع dashboard_screen.dart: صفوف ImdGrid2 بلوحتين جنبًا إلى جنب،
+      // لا لوحاتٌ مكدَّسة بعرضٍ كامل — الشكل واحد وإن اختلف المحتوى.
+      ImdGrid2(children: [
         ImdPanel(
+          margin: EdgeInsets.zero,
+          title: 'إشغال المستودعات',
+          icon: 'package',
+          child: _occupancy(),
+        ),
+        ImdPanel(
+          margin: EdgeInsets.zero,
+          title: 'شاشات القسم',
+          icon: 'zap',
+          child: _shortcuts(),
+        ),
+      ]),
+      ImdGrid2(children: [
+        ImdPanel(
+          margin: EdgeInsets.zero,
+          title: 'أرصدة الخزّانات',
+          icon: 'trending',
+          child: _chart(),
+        ),
+        ImdPanel(
+          margin: EdgeInsets.zero,
           title: 'تنبيهات تشغيلية',
           icon: 'alert',
-          child: ImdStatusList(items: [
-            for (final a in _alerts)
-              (a.tone == 'danger' ? 'err' : 'warn', a.title, a.hint),
+          child: _alerts.isEmpty
+              ? const ImdLdText('لا توجد تنبيهاتٌ تشغيلية الآن.')
+              : ImdStatusList(items: [
+                  for (final a in _alerts)
+                    (a.tone == 'danger' ? 'err' : 'warn', a.title, a.hint),
+                ]),
+        ),
+      ]),
+      ImdGrid2(children: [
+        ImdPanel(
+          margin: EdgeInsets.zero,
+          title: 'أرصدة المستودعات',
+          icon: 'chart',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Wrap(spacing: 10, runSpacing: 10, children: [
+                ImdButton.outline(
+                    label: 'تحديث',
+                    icon: 'refresh',
+                    small: true,
+                    onPressed: _load),
+                ImdButton.outline(
+                  label: 'طباعة كشف الأرصدة',
+                  icon: 'printer',
+                  small: true,
+                  onPressed: () => FuelPrint.stocksReport(_db, _stocks),
+                ),
+              ]),
+            ),
+            _stockTable(),
           ]),
         ),
-      ImdPanel(title: 'شاشات القسم', icon: 'menu', child: _shortcuts()),
-      ImdPanel(
-        title: 'أرصدة المستودعات',
-        icon: 'chart',
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Wrap(spacing: 10, runSpacing: 10, children: [
-              ImdButton.outline(
-                  label: 'تحديث',
-                  icon: 'refresh',
-                  small: true,
-                  onPressed: _load),
-              ImdButton.outline(
-                label: 'طباعة كشف الأرصدة',
-                icon: 'printer',
-                small: true,
-                onPressed: () => FuelPrint.stocksReport(_db, _stocks),
-              ),
-            ]),
-          ),
-          _chart(),
-          const SizedBox(height: 16),
-          _stockTable(),
-        ]),
-      ),
-      ImdPanel(
-        title: 'آخر حركات الصرف',
-        icon: 'upload',
-        child: _recent(),
-      ),
+        ImdPanel(
+          margin: EdgeInsets.zero,
+          title: 'آخر حركات الصرف',
+          icon: 'upload',
+          child: _recent(),
+        ),
+      ]),
     ]);
   }
 
@@ -268,83 +292,28 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
     ]);
   }
 
-  /// مداخل القسم — ستّة أبوابٍ كما في الشريط، وتحتها أشهرُ ما يُفتح منها.
-  ///
-  /// **البطاقة اختصارٌ لا فهرس.** لوحةٌ بثلاث عشرة بطاقة تُقرأ بالبحث كما
-  /// تُقرأ القائمة الطويلة، فالأبواب أولًا وما يُفتح كل صباح بعدها.
-  Widget _shortcuts() => ImdAutoGrid(
-        minItem: 230,
-        children: [
-          for (final s in const [
-            (
-              'fuelMoves',
-              'swap',
-              'حركة المحروقات',
-              'الصرف والتوريد والتحويل والرصيد الافتتاحي'
-            ),
-            (
-              'fuelAllocations',
-              'clipboard',
-              'تفريدة المحروقات',
-              'خطة الاستحقاق الأسبوعي والشهري لجميع الوحدات'
-            ),
-            (
-              'fuelData',
-              'database',
-              'البيانات الأساسية',
-              'المستودعات والوحدات المستفيدة وسجل المركبات'
-            ),
-            (
-              'fuelReports',
-              'chart',
-              'التقارير',
-              'البرقية الرسمية والاستهلاك والأرصدة وكشف الحركة'
-            ),
-            (
-              'fuelStocktake',
-              'clipboard',
-              'الجرد المخزني',
-              'أمر الجرد والعد الفعلي والتسوية'
-            ),
-            (
-              'fuelSettings',
-              'settings',
-              'الإعدادات',
-              'الترويسة والتواقيع وقواعد الصرف'
-            ),
-            (
-              'fuelIssue',
-              'upload',
-              'صرف محروقات',
-              'سند صرف حسب التفريدة أو أمر استثنائي'
-            ),
-            (
-              'fuelSupply',
-              'download',
-              'توريد محروقات',
-              'تسجيل الكميات الواردة للمستودعات'
-            ),
-            (
-              'fuelDaily',
-              'calendar',
-              'الحركة اليومية',
-              'دفتر اليوم بجميع المعسكرات والمحطات'
-            ),
-            (
-              'fuelLedger',
-              'list',
-              'كشف حركة المستودع',
-              'كل ما دخل وخرج بترتيبه والرصيد يمشي معه'
-            ),
-          ])
-            _ShortcutCard(
-              icon: s.$2,
-              title: s.$3,
-              hint: s.$4,
-              onTap: () => ImdNav.of(context).go(s.$1),
-            ),
-        ],
-      );
+  /// مداخل القسم — نفس نمط «مركز الإجراءات السريعة» في dashboard_screen.dart
+  /// حرفيًّا: شريط أزرارٍ صغيرة بأيقونةٍ وعنوانٍ فقط، لا بطاقاتٍ بوصفٍ تحتها.
+  Widget _shortcuts() => ImdRbar(children: [
+        for (final s in const [
+          ('fuelMoves', 'swap', 'حركة المحروقات'),
+          ('fuelAllocations', 'clipboard', 'تفريدة المحروقات'),
+          ('fuelData', 'database', 'البيانات الأساسية'),
+          ('fuelReports', 'chart', 'التقارير'),
+          ('fuelStocktake', 'clipboard', 'الجرد المخزني'),
+          ('fuelSettings', 'settings', 'الإعدادات'),
+          ('fuelIssue', 'upload', 'صرف محروقات'),
+          ('fuelSupply', 'download', 'توريد محروقات'),
+          ('fuelDaily', 'calendar', 'الحركة اليومية'),
+          ('fuelLedger', 'list', 'كشف حركة المستودع'),
+        ])
+          ImdButton.outline(
+            label: s.$3,
+            icon: s.$2,
+            small: true,
+            onPressed: () => ImdNav.of(context).go(s.$1),
+          ),
+      ]);
 
   Widget _stockTable() {
     final c = context.imd;
@@ -384,67 +353,6 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
                     color: s.empty ? c.danger : c.text)),
           ],
       ],
-    );
-  }
-}
-
-
-class _ShortcutCard extends StatefulWidget {
-  const _ShortcutCard({
-    required this.icon,
-    required this.title,
-    required this.hint,
-    required this.onTap,
-  });
-
-  final String icon;
-  final String title;
-  final String hint;
-  final VoidCallback onTap;
-
-  @override
-  State<_ShortcutCard> createState() => _ShortcutCardState();
-}
-
-class _ShortcutCardState extends State<_ShortcutCard> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.imd;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-          decoration: BoxDecoration(
-            color: _hover ? c.hover : c.subtle,
-            border: Border.all(color: _hover ? c.accent : c.line),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ImdIcon(widget.icon, size: 20, color: c.accent),
-              const SizedBox(height: 12),
-              Text(widget.title,
-                  style: TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w700,
-                      color: c.text)),
-              const SizedBox(height: 4),
-              Text(widget.hint,
-                  style: TextStyle(fontSize: 12, color: c.muted, height: 1.6)),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

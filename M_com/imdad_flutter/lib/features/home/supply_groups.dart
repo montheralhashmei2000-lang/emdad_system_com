@@ -187,7 +187,7 @@ class SupplyDailyScreen extends StatelessWidget {
         tabs: [
           ImdShellTab(
             id: 'feeding',
-            label: 'التغذية اليومية',
+            label: 'التفريدة اليومية',
             icon: 'calendar',
             perm: 'feeding',
             builder: (_) => const StrengthScreen(),
@@ -201,7 +201,7 @@ class SupplyDailyScreen extends StatelessWidget {
           ),
           ImdShellTab(
             id: 'ratios',
-            label: 'نسب الاستهلاك',
+            label: 'نسب الاستحقاق',
             icon: 'scale',
             perm: 'ratios',
             builder: (_) => const RatiosScreen(),

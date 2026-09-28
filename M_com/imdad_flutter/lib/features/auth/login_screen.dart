@@ -4,9 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../core/security/auth_service.dart';
+import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_window.dart';
@@ -39,11 +41,31 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _showPass = false;
   bool _busy = false;
+  bool _remember = false;
   String _error = '';
 
   /// زر «خروج» حيث يمكن للتطبيق أن يغلق نفسه (ويندوز وأندرويد).
   static bool get _canExit =>
       LoginScreen.debugShowExit ?? (!kIsWeb && (Platform.isWindows || Platform.isAndroid));
+
+  static const _rememberedUserKey = 'imdad.login.rememberedUsername';
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreRememberedUser();
+  }
+
+  /// اسم المستخدم المحفوظ من دخولٍ سابق — كلمة المرور لا تُحفظ أبدًا.
+  Future<void> _restoreRememberedUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_rememberedUserKey);
+    if (!mounted || saved == null || saved.isEmpty) return;
+    setState(() {
+      _user.text = saved;
+      _remember = true;
+    });
+  }
 
   @override
   void dispose() {
@@ -69,6 +91,13 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
     setState(() => _busy = false);
     if (res.isOk) {
+      final prefs = await SharedPreferences.getInstance();
+      if (_remember) {
+        await prefs.setString(_rememberedUserKey, _user.text.trim());
+      } else {
+        await prefs.remove(_rememberedUserKey);
+      }
+      if (!mounted) return;
       widget.onSignedIn();
       return;
     }
@@ -86,36 +115,49 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final narrow = MediaQuery.sizeOf(context).width <= 520;
-    // الشاشة فاتحة دائمًا.
+    // الشاشة فاتحة دائمًا، وخطّها ثابتٌ (Cairo) بصرف النظر عن خط الواجهة
+    // المختار في الإعدادات — بطاقة الدخول هويةٌ واحدة لا تتبدّل.
     return Theme(
-      data: Theme.of(context).copyWith(extensions: const [ImdColors.light]),
+      data: Theme.of(context).copyWith(
+        extensions: const [ImdColors.light],
+        textTheme: Theme.of(context).textTheme.apply(fontFamily: 'Cairo'),
+      ),
       child: Scaffold(
         backgroundColor: narrow ? Colors.white : const Color(0xFFF7F7F8),
         body: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: narrow ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: narrow ? double.infinity : 420),
-                child: Container(
-                  padding: narrow
-                      ? const EdgeInsets.fromLTRB(20, 40, 20, 24)
-                      : const EdgeInsets.fromLTRB(32, 36, 32, 24),
-                  decoration: narrow
-                      ? null
-                      : BoxDecoration(
-                          color: Colors.white,
-                          border: Border.all(color: const Color(0xFFE3E3E8)),
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: const [
-                            BoxShadow(color: Color(0x0A101828), blurRadius: 2, offset: Offset(0, 1)),
-                            BoxShadow(color: Color(0x14101828), blurRadius: 40, offset: Offset(0, 16)),
-                          ],
-                        ),
-                  child: _card(narrow),
+          child: Stack(
+            children: [
+              Center(
+                child: SingleChildScrollView(
+                  padding: narrow ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: narrow ? double.infinity : 420),
+                    child: Container(
+                      padding: narrow
+                          ? const EdgeInsets.fromLTRB(20, 22, 20, 18)
+                          : const EdgeInsets.fromLTRB(32, 36, 32, 24),
+                      decoration: narrow
+                          ? null
+                          : BoxDecoration(
+                              color: Colors.white,
+                              border: Border.all(color: const Color(0xFFE3E3E8)),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: const [
+                                BoxShadow(color: Color(0x0A101828), blurRadius: 2, offset: Offset(0, 1)),
+                                BoxShadow(color: Color(0x14101828), blurRadius: 40, offset: Offset(0, 16)),
+                              ],
+                            ),
+                      child: _card(narrow),
+                    ),
+                  ),
                 ),
               ),
-            ),
+              // النافذة بلا شريط عنوان، فلا زرّ إغلاقٍ أصليّ من ويندوز —
+              // هذا بديله: علامة إغلاقٍ نهائي عند الزاوية العليا اليمنى دومًا،
+              // بصرف النظر عن اتجاه النص.
+              if (_canExit)
+                Positioned(top: 10, right: 10, child: _CornerCloseBtn(onTap: _exit)),
+            ],
           ),
         ),
       ),
@@ -123,24 +165,24 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _card(bool narrow) {
-    final inputH = narrow ? 50.0 : 48.0;
-    final inputFs = narrow ? 15.5 : 15.0;
+    final inputH = narrow ? 44.0 : 48.0;
+    final inputFs = narrow ? 15.0 : 15.0;
     final header = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Center(
           child: SizedBox(
-            width: narrow ? 112 : 132,
-            height: narrow ? 96 : 112,
+            width: narrow ? 84 : 132,
+            height: narrow ? 72 : 112,
             child: Image.asset('assets/logo.png', fit: BoxFit.contain),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         Text('نظام الإمداد والتموين',
             textAlign: TextAlign.center,
             style: TextStyle(
-                fontSize: narrow ? 22 : 24, fontWeight: FontWeight.w700, color: _text, height: 1.35)),
-        const SizedBox(height: 22),
+                fontSize: narrow ? 19 : 24, fontWeight: FontWeight.w700, color: _text, height: 1.3)),
+        SizedBox(height: narrow ? 12 : 22),
       ],
     );
     return Column(
@@ -166,16 +208,15 @@ class _LoginScreenState extends State<LoginScreen> {
         _label('اسم المستخدم'),
         _input(
           controller: _user,
-          hint: 'مثال: admin',
           icon: 'user',
           height: inputH,
           fontSize: inputFs,
           onSubmitted: (_) => _login(),
+          bottom: 10,
         ),
         _label('كلمة المرور'),
         _input(
           controller: _pass,
-          hint: '••••••••',
           icon: 'lock',
           height: inputH,
           fontSize: inputFs,
@@ -183,7 +224,15 @@ class _LoginScreenState extends State<LoginScreen> {
           ltr: true,
           onSubmitted: (_) => _login(),
           eye: true,
-          bottom: 22,
+          bottom: 2,
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: ImdCheckbox(
+            value: _remember,
+            label: 'تذكّر اسم المستخدم',
+            onChanged: (v) => setState(() => _remember = v),
+          ),
         ),
         Row(children: [
           Expanded(
@@ -456,6 +505,44 @@ class _PrimaryBtnState extends State<_PrimaryBtn> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// علامة الإغلاق عند الزاوية — دائرةٌ صغيرة تحمرّ عند المرور، بنفس دلالة
+/// «خروج»: تغلق التطبيق نهائيًّا، لا تُخفي النافذة فحسب.
+class _CornerCloseBtn extends StatefulWidget {
+  const _CornerCloseBtn({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  State<_CornerCloseBtn> createState() => _CornerCloseBtnState();
+}
+
+class _CornerCloseBtnState extends State<_CornerCloseBtn> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: _hover ? const Color(0xFFFEE4E2) : Colors.transparent,
+            shape: BoxShape.circle,
+          ),
+          child: ImdIcon('x', size: 15, color: _hover ? const Color(0xFFB42318) : const Color(0xFF343541)),
         ),
       ),
     );
