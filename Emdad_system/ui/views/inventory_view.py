@@ -113,7 +113,7 @@ class InventoryView(QWidget):
 
     def load_data(self):
         if self.cb_warehouse.count() == 1:
-            ok, warehouses = api_service.get_warehouses()
+            ok, warehouses = self.api_service.get_warehouses()
             if ok:
                 allowed = None
                 if hasattr(self.parent(), "current_user"):

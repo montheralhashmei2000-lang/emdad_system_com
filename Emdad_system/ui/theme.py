@@ -204,6 +204,7 @@ COLORS = {
     "DANGER": "#EF4444",
     "green_hover": "#06B6D4",
     "primary": "#10B981",
+    "text_secondary": "#6B7280",
 }
 SIDEBAR_GROUPS = {
     "الرئيسية": [("الرئيسية", "fa5s.home")],

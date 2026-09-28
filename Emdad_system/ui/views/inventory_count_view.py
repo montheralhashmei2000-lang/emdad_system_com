@@ -266,7 +266,10 @@ class InventoryCountView(QWidget):
 
         self.tbl_items = QTableWidget()
         self.tbl_items.setAlternatingRowColors(True)
-        self.tbl_items.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_items.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked
+            | QAbstractItemView.EditTrigger.EditKeyPressed
+        )
         self.tbl_items.setColumnCount(4)
         self.tbl_items.setHorizontalHeaderLabels(["#", "الصنف", "الكمية المسجلة", "الكمية الفعلية"])
         self.tbl_items.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)

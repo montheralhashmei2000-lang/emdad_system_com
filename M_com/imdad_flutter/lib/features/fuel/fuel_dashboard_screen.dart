@@ -6,6 +6,7 @@ import '../../core/ui/imd_charts.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_layout.dart';
+import '../../core/ui/imd_occupancy_bar.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
@@ -255,10 +256,11 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
       ),
       ImdAutoGrid(minItem: 240, children: [
         for (final w in _warehouses)
-          _OccupancyBar(
+          ImdOccupancyBar(
             name: w.name,
-            stock: _stockOf(w.name),
+            used: _stockOf(w.name),
             capacity: w.capacityLiters,
+            unit: Fuel.unit,
           ),
       ]),
     ]);
@@ -384,62 +386,6 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
   }
 }
 
-class _OccupancyBar extends StatelessWidget {
-  const _OccupancyBar({
-    required this.name,
-    required this.stock,
-    required this.capacity,
-  });
-
-  final String name;
-  final double stock;
-  final double capacity;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.imd;
-    final pct = Fuel.occupancy(used: stock, capacity: capacity);
-    final known = capacity > 0;
-    final color = !known
-        ? c.muted
-        : (pct >= FuelAlerts.fullPercent
-            ? c.warn
-            : (pct <= 20 ? c.danger : c.accent));
-
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Row(children: [
-        Expanded(
-          child: Text(name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: 13.5, fontWeight: FontWeight.w700, color: c.text)),
-        ),
-        Text(known ? '${pct.round()}٪' : 'بلا سعة',
-            style: TextStyle(fontSize: 11.5, color: c.muted)),
-      ]),
-      const SizedBox(height: 6),
-      ClipRRect(
-        borderRadius: BorderRadius.circular(999),
-        child: LinearProgressIndicator(
-          value: known ? (pct / 100).clamp(0.0, 1.0) : 0,
-          minHeight: 8,
-          backgroundColor: c.subtle,
-          valueColor: AlwaysStoppedAnimation<Color>(color),
-        ),
-      ),
-      const SizedBox(height: 6),
-      Text(
-        known
-            ? '${nf(stock)} ${Fuel.unit} من ${nf(capacity)}'
-            : '${nf(stock)} ${Fuel.unit}',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontSize: 11.5, color: c.muted),
-      ),
-    ]);
-  }
-}
 
 class _ShortcutCard extends StatefulWidget {
   const _ShortcutCard({

@@ -34,6 +34,14 @@ class ApiService:
             "create_stocktake": ("POST", "/api/stocktakes"),
             "update_stocktake": ("PUT", "/api/stocktakes/{uid}"),
             "delete_stocktake": ("DELETE", "/api/stocktakes/{uid}"),
+            "create_inventory_count": ("POST", "/api/inventory-counts"),
+            "get_inventory_count_detail": ("GET", "/api/inventory-counts/{uid}"),
+            "update_inventory_count_items": ("PUT", "/api/inventory-counts/{uid}/items"),
+            "update_inventory_count_reasons": ("PUT", "/api/inventory-counts/{uid}/reasons"),
+            "approve_inventory_count": ("POST", "/api/inventory-counts/{uid}/approve"),
+            "cancel_inventory_count": ("POST", "/api/inventory-counts/{uid}/cancel"),
+            "upload_inventory_count_attachment": ("POST", "/api/inventory-counts/{uid}/attachment"),
+            "add_item_to_inventory_count": ("POST", "/api/inventory-counts/{uid}/add-item"),
             "sync_emergency_dry_run": ("POST", "/api/sync/emergency/dry-run"),
             "sync_emergency_commit": ("POST", "/api/sync/emergency/commit"),
             "get_sync_status": ("GET", "/api/sync/status"),
@@ -90,6 +98,28 @@ class ApiService:
         if "params" in kwargs:
             request_kwargs["params"] = kwargs.pop("params")
         return self._request(method, path, **request_kwargs)
+
+    def get_inventory_counts(self, warehouse_id=None, status=None):
+        params = {}
+        if warehouse_id:
+            params["warehouse_id"] = warehouse_id
+        if status:
+            params["status"] = status
+        return self._request("GET", "/api/inventory-counts", params=params)
+
+    def upload_inventory_count_attachment(self, count_id, base64_str):
+        return self._request(
+            "POST",
+            f"/api/inventory-counts/{count_id}/attachment",
+            json={"attachment_base64": base64_str},
+        )
+
+    def add_item_to_inventory_count(self, count_id, item_id):
+        return self._request(
+            "POST",
+            f"/api/inventory-counts/{count_id}/add-item",
+            json={"item_id": item_id},
+        )
 
     def _request(self, method: str, path: str, **kwargs) -> Tuple[bool, Any]:
         """Execute an HTTP request via the API client."""

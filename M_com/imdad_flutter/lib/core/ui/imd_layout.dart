@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import 'imd_icon.dart';
 import 'imd_tokens.dart';
 
 /// `.kpis` — شبكة المؤشرات: auto-fit بحد أدنى 210، وأربعة أعمدة عند ≥1200،
@@ -34,13 +35,17 @@ class ImdKpis extends StatelessWidget {
 
 /// `.kpi`
 class ImdKpi extends StatelessWidget {
-  const ImdKpi({super.key, required this.label, required this.value, this.color, this.extra});
+  const ImdKpi({super.key, required this.label, required this.value, this.color, this.extra, this.icon});
   final String label;
   final String value;
   final Color? color;
 
   /// محتوى إضافي أسفل القيمة (مثل شارة الحالة).
   final Widget? extra;
+
+  /// أيقونة اختيارية بجوار العنوان — لا تغيّر شيئًا في الاستخدامات القائمة
+  /// التي لا تمرّرها.
+  final String? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +63,16 @@ class ImdKpi extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: c.muted, height: 1.6)),
+          Row(children: [
+            if (icon != null) ...[
+              ImdIcon(icon!, size: 13, color: color ?? c.muted),
+              const SizedBox(width: 5),
+            ],
+            Flexible(
+              child: Text(label,
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: c.muted, height: 1.6)),
+            ),
+          ]),
           const SizedBox(height: 5),
           Text(value,
               style: TextStyle(

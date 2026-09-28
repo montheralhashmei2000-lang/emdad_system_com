@@ -443,6 +443,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ImdCol('الحد'),
                     ImdCol('الحالة'),
                   ],
+                  cards: true,
                   empty: 'لا توجد تنبيهات مخزون حرجة الآن 👌',
                   rows: [
                     for (final (i, bal) in d?.urgent ?? const <(Item, double)>[])
@@ -479,6 +480,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: 'clock',
             child: ImdTable(
               columns: const [ImdCol('النوع'), ImdCol('المرجع'), ImdCol('الجهة', flex: 2), ImdCol('التاريخ'), ImdCol('الحالة')],
+              cards: true,
               empty: 'لا توجد حركة حديثة بعد',
               rows: [
                 for (final r in d?.feed ?? const <_Feed>[])

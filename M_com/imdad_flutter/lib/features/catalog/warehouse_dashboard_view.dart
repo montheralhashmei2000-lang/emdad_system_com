@@ -466,6 +466,7 @@ class _WarehouseDashboardViewState extends State<WarehouseDashboardView> {
         ImdCol('الإجراء المطلوب'),
         ImdCol('', center: true),
       ],
+      cards: true,
       rows: [
         for (final r in rows)
           [

@@ -455,6 +455,7 @@ class _TransferScreenState extends State<TransferScreen> {
                 ImdCol('المقرر للفرد/شهر', numeric: true),
                 ImdCol('المطابقة'),
               ],
+              cards: true,
               rows: [
                 for (final r in _rows)
                   if (r.itemId.isNotEmpty)

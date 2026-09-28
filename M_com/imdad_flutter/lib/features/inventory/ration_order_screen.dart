@@ -841,8 +841,9 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
           ImdCol('التاريخ'),
           ImdCol('الحالة'),
           ImdCol('المستند المنفِّذ'),
-          ImdCol('إجراءات', center: true),
+          ImdCol('', center: true),
         ],
+        cards: true,
         rows: [
           for (final o in _orders)
             [
@@ -968,6 +969,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
               ImdCol('مستلم', numeric: true),
               ImdCol('الفرق', numeric: true),
             ],
+            cards: true,
             rows: [
               for (final l in full.lines)
                 [
