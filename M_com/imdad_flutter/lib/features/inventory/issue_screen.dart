@@ -228,6 +228,28 @@ class _IssueScreenState extends State<IssueScreen> {
     if (mounted) setState(() => _autosavedAt = DateTime.now());
   }
 
+  /// يكشف [_isPristine] للاختبار — سباق الاستعادة الحقيقي يتوقف على زمن قراءة
+  /// `SharedPreferences` عبر قناة المنصّة، وهذا زمنٌ لا تملك بيئة الاختبار
+  /// (قراءاتها مُموَّهة تُحل فورًا عبر microtasks) أن تحاكيه بدقة. فحارس
+  /// السلامة نفسه هو ما يُختبر مباشرة، لا توقيت السباق حوله.
+  @visibleForTesting
+  bool debugIsPristine() => _isPristine();
+
+  /// النموذج ما يزال على حاله الافتراضية الفارغة تمامًا — لم يكتب المستخدم
+  /// حرفًا ولم يختر شيئًا بعد. هذا هو الشرط الوحيد الآمن لتطبيق استعادة
+  /// المسودة: أي تغييرٍ آخر يعني أن المستخدم بدأ عملًا لا يصحّ إسقاطه.
+  bool _isPristine() {
+    if (_rows.length != 1) return false;
+    final r = _rows.single;
+    if (r.itemId.isNotEmpty || r.unit.isNotEmpty) return false;
+    if (r.qty.text.isNotEmpty || r.notes.text.isNotEmpty) return false;
+    if (r.benUnit.isNotEmpty || r.noAuto) return false;
+    if (_custom.text.isNotEmpty || _notes.text.isNotEmpty) return false;
+    if (_parent.isNotEmpty || _ben.isNotEmpty || _fac.isNotEmpty) return false;
+    if (_days.text.isNotEmpty && _days.text != '1') return false;
+    return true;
+  }
+
   Future<void> _restoreAutosave() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_autosaveKey);
@@ -239,6 +261,13 @@ class _IssueScreenState extends State<IssueScreen> {
       await prefs.remove(_autosaveKey);
       return;
     }
+    // هذه القراءة غير متزامنة (SharedPreferences ثم فكّ JSON)، فقد يبدأ
+    // المستخدم العمل — يختار صنفًا في الصفّ الافتراضي مثلًا — قبل اكتمالها.
+    // استبدال الصفوف حينئذٍ كان يُسقط عمله بلا تنبيه، ويهدم عنصر الصفّ الذي
+    // قد يكون مركَّزًا عليه أثناء تفاعله (متحكّمه وعقدة تركيزه تُتلَفان مع
+    // الصفّ القديم). فلا تُطبَّق الاستعادة إلا والنموذج ما يزال على حاله
+    // الافتراضية الفارغة تمامًا.
+    if (!_isPristine()) return;
     _restoringAutosave = true;
     try {
       setState(() {

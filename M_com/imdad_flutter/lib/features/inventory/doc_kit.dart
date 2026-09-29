@@ -391,6 +391,10 @@ class _ImdItemPickerState extends State<ImdItemPicker> {
   String _haystack(Item i) => '${i.code} ${i.name} ${_label(i)}';
 
   void _open(String q) {
+    // حارسٌ ضد نداءٍ متأخّر يصل بعد تخلّص الودجة من حالتها — مؤقّت مغلق
+    // التركيز (150ms أدناه) قد يستدعي هذا المسار بعد أن يستبدل الشاشةُ الأمّ
+    // الصفّ كلّه (كإعادة تحميل نموذجٍ أو استعادة مسودة) فتتخلّص من هذه الحالة.
+    if (!mounted) return;
     final nq = norm(q);
     _rows = (nq.isEmpty
             ? widget.items
@@ -403,12 +407,14 @@ class _ImdItemPickerState extends State<ImdItemPicker> {
   }
 
   void _close() {
+    if (!mounted) return;
     if (_portal.isShowing) _portal.hide();
     _idx = -1;
-    if (mounted) setState(() {});
+    setState(() {});
   }
 
   void _pick(Item i) {
+    if (!mounted) return;
     widget.onChanged(i.id);
     imdSetText(_ctrl, _label(i));
     _close();
