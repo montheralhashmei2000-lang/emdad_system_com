@@ -616,7 +616,10 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
         icon: 'tag',
         child: ImdBarcodeInput(hint: 'مرّر قارئ الباركود أو اكتب الكود ثم Enter…', onSubmit: _scan),
       ),
-      for (final (i, r) in _rows.indexed) KeyedSubtree(key: r.key, child: _rowView(context, i + 1, r)),
+      if (mobile)
+        for (final (i, r) in _rows.indexed) KeyedSubtree(key: r.key, child: _rowView(context, i + 1, r))
+      else
+        _desktopTable(context),
       ImdValidationBox(title: 'فحص سريع قبل حفظ سند الوارد', items: _validate()),
     ];
   }
@@ -633,10 +636,23 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     return ImdRowMeta('= ${nf((qty * f * 1000).round() / 1000)} ${it.baseUnit}');
   }
 
-  Widget _rowView(BuildContext context, int index, _Row r) {
+  /// الحقول التفاعلية لسطر صنفٍ واحد — بلا عنوانٍ فوقها ولا تخطيط: المصدر
+  /// الوحيد لمنطق الإدخال، يستهلكه عرض الجوال (بطاقةٌ معنونة) وجدول سطح
+  /// المكتب (خليةٌ عاريةٌ تحت رأسٍ مشترك) كلاهما بلا تكرار سطرٍ واحد.
+  ({
+    bool refill,
+    bool hasExpiry,
+    String meta,
+    Widget picker,
+    Widget unit,
+    Widget qty,
+    Widget cy,
+    Widget expiry,
+    Widget copy,
+    Widget delete,
+  }) _rowFields(_Row r) {
     final it = _item(r.itemId);
     final units = it == null ? const <ItemUnit>[] : _catalog.unitsOf(it);
-    final mobile = ImdBp.of(context).mobile;
     final meta = it == null
         ? ''
         : (_wh.isNotEmpty
@@ -649,140 +665,170 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                 return 'الرصيد: ${nf(b.qty)} ${b.unit}'
                     '${it.barcode.isNotEmpty ? ' • باركود: ${it.barcode}' : ''}';
               }());
-    final picker = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const ImdRowLabel('الصنف'),
-      ImdItemPicker(
-        items: _items,
-        value: r.itemId,
-        onChanged: (v) => _onItem(r, v),
-        detailOf: (i) {
-          final b = displayBalance(i, _whBal[i.id] ?? 0);
-          return 'رصيد ${nf(b.qty)} ${b.unit}';
-        },
-      ),
-      ImdRowMeta(meta),
-    ]);
-    final unit = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const ImdRowLabel('الوحدة'),
-      ImdSelect<String>(
-        value: r.unit,
-        items: units.isEmpty ? const [('', '—')] : [for (final u in units) (u.name, u.name)],
-        onChanged: (v) => setState(() {
-          // تغيير الوحدة يعيد احتساب الكمية بثبات الكمية بالوحدة الأساسية:
-          // ١١٠٠ كجم ⇒ ٢٧٫٥ كيسًا، لا ١١٠٠ كيسًا.
-          final next = v ?? '';
-          final item = _item(r.itemId);
-          final qty = double.tryParse(r.qty.text.trim()) ?? 0;
-          if (item != null && qty > 0 && r.unit.isNotEmpty && next.isNotEmpty && next != r.unit) {
-            imdSetText(
-              r.qty,
-              _num(convertQty(
-                qty,
-                _catalog.factorOf(item, r.unit),
-                _catalog.factorOf(item, next),
-              )),
-            );
-          }
-          r.unit = next;
-        }),
-      ),
-    ]);
-    final qty = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const ImdRowLabel('الكمية'),
-      // مغادرة الحقل تجمع الأصناف المكررة تلقائيًا وتعيد توزيع الوحدات.
-      Focus(
-        onFocusChange: (has) {
-          if (!has) _autoConsolidate();
-        },
-        child: ImdFld(controller: r.qty, number: true, onChanged: (_) => setState(() {})),
-      ),
-    ]);
+    final picker = ImdItemPicker(
+      items: _items,
+      value: r.itemId,
+      onChanged: (v) => _onItem(r, v),
+      detailOf: (i) {
+        final b = displayBalance(i, _whBal[i.id] ?? 0);
+        return 'رصيد ${nf(b.qty)} ${b.unit}';
+      },
+    );
+    final unit = ImdSelect<String>(
+      value: r.unit,
+      items: units.isEmpty ? const [('', '—')] : [for (final u in units) (u.name, u.name)],
+      onChanged: (v) => setState(() {
+        // تغيير الوحدة يعيد احتساب الكمية بثبات الكمية بالوحدة الأساسية:
+        // ١١٠٠ كجم ⇒ ٢٧٫٥ كيسًا، لا ١١٠٠ كيسًا.
+        final next = v ?? '';
+        final item = _item(r.itemId);
+        final qty = double.tryParse(r.qty.text.trim()) ?? 0;
+        if (item != null && qty > 0 && r.unit.isNotEmpty && next.isNotEmpty && next != r.unit) {
+          imdSetText(
+            r.qty,
+            _num(convertQty(
+              qty,
+              _catalog.factorOf(item, r.unit),
+              _catalog.factorOf(item, next),
+            )),
+          );
+        }
+        r.unit = next;
+      }),
+    );
+    // مغادرة الحقل تجمع الأصناف المكررة تلقائيًا وتعيد توزيع الوحدات.
+    final qty = Focus(
+      onFocusChange: (has) {
+        if (!has) _autoConsolidate();
+      },
+      child: ImdFld(controller: r.qty, number: true, onChanged: (_) => setState(() {})),
+    );
     // الأسطوانات أصول تُعبّأ لا مواد تنتهي، فلا صلاحية لها. ويُخفى العمود
     // كذلك إن أُطفئ من الإعدادات.
     final hasExpiry = _showExpiry && it != null && !it.isRefillable;
     // **نوع العملية في صفّ الصنف لا تحته.** صندوقٌ مستقل يستقطع سطرًا
     // لكل أسطوانة، ويقطع تسلسل `Tab` من الكمية إلى التاريخ.
     final refill = it != null && it.isRefillable;
-    final cy = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const ImdRowLabel('نوع العملية'),
-      ImdSelect<String>(
-        value: r.cy,
-        items: CylAction.receiveOptions,
-        onChanged: (v) => setState(() => r.cy = v ?? r.cy),
-      ),
+    final cy = ImdSelect<String>(
+      value: r.cy,
+      items: CylAction.receiveOptions,
+      onChanged: (v) => setState(() => r.cy = v ?? r.cy),
+    );
+    final expiry = Row(children: [
+      Expanded(child: ImdDateField(value: r.expiry, onChanged: (v) => setState(() => r.expiry = v))),
+      if (r.expiry.isNotEmpty)
+        ImdIconButton(icon: 'x', tooltip: 'بلا صلاحية', onPressed: () => setState(() => r.expiry = '')),
     ]);
-    final expiry = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const ImdRowLabel('تاريخ الانتهاء'),
-      Row(children: [
-        Expanded(child: ImdDateField(value: r.expiry, onChanged: (v) => setState(() => r.expiry = v))),
-        if (r.expiry.isNotEmpty)
-          ImdIconButton(icon: 'x', tooltip: 'بلا صلاحية', onPressed: () => setState(() => r.expiry = '')),
-      ]),
-    ]);
-    final del = Padding(
-      padding: const EdgeInsets.only(top: 15),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (r.itemId.isNotEmpty)
-          ImdIconButton(
+    final copy = r.itemId.isEmpty
+        ? const SizedBox.shrink()
+        : ImdIconButton(
             icon: 'plus-square',
             tooltip: 'دفعة أخرى من هذا الصنف',
             onPressed: () => _copyRow(r),
-          ),
-        ImdIconButton(
-          icon: 'x',
-          kind: ImdBtnKind.danger,
-          onPressed: () => setState(() {
-            _rows.remove(r);
-            if (_rows.isEmpty) _rows.add(_Row());
-          }),
-        ),
-      ]),
+          );
+    final delete = ImdIconButton(
+      icon: 'x',
+      kind: ImdBtnKind.danger,
+      onPressed: () => setState(() {
+        _rows.remove(r);
+        if (_rows.isEmpty) _rows.add(_Row());
+      }),
     );
+    return (
+      refill: refill,
+      hasExpiry: hasExpiry,
+      meta: meta,
+      picker: picker,
+      unit: unit,
+      qty: qty,
+      cy: cy,
+      expiry: expiry,
+      copy: copy,
+      delete: delete,
+    );
+  }
+
+  /// عرض الجوال: بطاقةٌ معنونة لكل صنف — العناوين فوق حقولها لأن الشاشة
+  /// الضيّقة لا تتّسع لرأس جدولٍ يبقى ذا معنى.
+  Widget _rowView(BuildContext context, int index, _Row r) {
+    final f = _rowFields(r);
+    Widget labeled(String label, Widget field) =>
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [ImdRowLabel(label), field]);
     return ImdRvRow(
       index: index,
       trailing: _baseHint(r),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (mobile) ...[
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: picker),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const ImdRowLabel('الصنف'),
+              f.picker,
+              ImdRowMeta(f.meta),
+            ]),
+          ),
+          const SizedBox(width: ImdSizes.compactGap),
+          SizedBox(width: 104, child: labeled('الوحدة', f.unit)),
+        ]),
+        const SizedBox(height: ImdSizes.compactGap),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(width: 92, child: labeled('الكمية', f.qty)),
+          if (f.refill) ...[
             const SizedBox(width: ImdSizes.compactGap),
-            SizedBox(width: 104, child: unit),
-          ]),
-          const SizedBox(height: ImdSizes.compactGap),
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SizedBox(width: 92, child: qty),
-            if (refill) ...[
-              const SizedBox(width: ImdSizes.compactGap),
-              Expanded(child: cy),
-            ],
-            if (hasExpiry) ...[
-              const SizedBox(width: ImdSizes.compactGap),
-              Expanded(child: expiry),
-            ],
+            Expanded(child: labeled('نوع العملية', f.cy)),
+          ],
+          if (f.hasExpiry) ...[
             const SizedBox(width: ImdSizes.compactGap),
-            del,
-          ]),
-        ] else
-          // العرض يتبع نوع البيانات: الاسم يتمدّد، والوحدة والكمية بقدر
-          // نصّهما — فلا تُهدر مساحةٌ على حقلٍ لا يملؤها.
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: picker),
-            const SizedBox(width: ImdSizes.compactGap),
-            SizedBox(width: 112, child: unit),
-            const SizedBox(width: ImdSizes.compactGap),
-            SizedBox(width: 88, child: qty),
-            if (refill) ...[
-              const SizedBox(width: ImdSizes.compactGap),
-              SizedBox(width: 150, child: cy),
-            ],
-            if (hasExpiry) ...[
-              const SizedBox(width: ImdSizes.compactGap),
-              SizedBox(width: 150, child: expiry),
-            ],
-            const SizedBox(width: ImdSizes.compactGap),
-            del,
-          ]),
+            Expanded(child: labeled('تاريخ الانتهاء', f.expiry)),
+          ],
+          const SizedBox(width: ImdSizes.compactGap),
+          Padding(
+            padding: const EdgeInsets.only(top: 15),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [f.copy, f.delete]),
+          ),
+        ]),
       ]),
+    );
+  }
+
+  /// عرض سطح المكتب: جدولٌ كثيف برأسٍ ثابتٍ بلون التمييز — عمودا «نوع
+  /// العملية» و«تاريخ الانتهاء» شرطيّان على مستوى الجدول كله لا السطر
+  /// الواحد: يظهر العمود إن احتاجه **أي** صفٍّ حاليًّا، وتبقى خليته فارغةً
+  /// فيما عداه من الصفوف — فلا تتغيّر أعمدة الجدول وهي تُقرأ.
+  Widget _desktopTable(BuildContext context) {
+    final c = context.imd;
+    final fields = [for (final r in _rows) _rowFields(r)];
+    final anyRefill = fields.any((f) => f.refill);
+    final anyExpiry = fields.any((f) => f.hasExpiry);
+    Widget cell(Widget child) => SizedBox(height: 40, child: Center(child: child));
+
+    return ImdTable(
+      columns: [
+        const ImdCol('الصنف', flex: 3),
+        const ImdCol('الوحدة', width: 112),
+        const ImdCol('الكمية', width: 88),
+        if (anyRefill) const ImdCol('نوع العملية', width: 150),
+        if (anyExpiry) const ImdCol('تاريخ الانتهاء', width: 150),
+        // زرّا النسخ والحذف معًا (وحدة النسخ لا تظهر إلا بعد اختيار صنف):
+        // ٦٤px محتوًى لا تكفيهما، فطفح تخطيطٌ بـ١٤px عند أول اختبار.
+        const ImdCol('', width: 96),
+      ],
+      rowKeys: [for (final r in _rows) r.key],
+      cards: false,
+      maxHeight: ImdSizes.tableMaxHeight(context),
+      headerBackground: c.accent,
+      headerForeground: c.onAccent,
+      cellPadding: const EdgeInsets.symmetric(horizontal: 6),
+      rows: [
+        for (final f in fields)
+          [
+            cell(f.picker),
+            cell(f.unit),
+            cell(f.qty),
+            if (anyRefill) cell(f.refill ? f.cy : const SizedBox.shrink()),
+            if (anyExpiry) cell(f.hasExpiry ? f.expiry : const SizedBox.shrink()),
+            cell(Row(mainAxisSize: MainAxisSize.min, children: [f.copy, f.delete])),
+          ],
+      ],
     );
   }
 

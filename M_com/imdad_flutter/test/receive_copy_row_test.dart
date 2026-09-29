@@ -68,9 +68,11 @@ void main() {
   Finder rows() => find.byType(ImdItemPicker);
 
   /// حقول السطر الأول نصًّا: الأول حقل المنتقي والثاني الكمية (الوحدة قائمة
-  /// منسدلة لا حقل نص).
+  /// منسدلة لا حقل نص). مُقيَّدٌ بجدول سطح المكتب لا الشجرة كلها — حقول رأس
+  /// النموذج (لجنة الفحص، الملاحظات…) تستخدم TextField أيضًا، وهذا الاختبار
+  /// يعمل بعرض سطح مكتب دومًا (١٥٠٠) فجدول الأصناف هو ImdTable الوحيد.
   Finder fieldInFirstRow(int i) => find
-      .descendant(of: find.byType(ImdRvRow).first, matching: find.byType(TextField))
+      .descendant(of: find.byType(ImdTable), matching: find.byType(TextField))
       .at(i);
 
   /// المنتقي يفتح قائمته بالكتابة، وEnter يختار أول نتيجة.
