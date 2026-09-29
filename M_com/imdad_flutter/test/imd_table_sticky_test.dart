@@ -123,6 +123,38 @@ void main() {
     expect(label.style?.color, Colors.white);
   });
 
+  testWidgets('rowKeys يحافظ على هوية عنصر الصفّ عند إدراج صفٍّ قبله',
+      (tester) async {
+    // Table.children (TableRow) يعتمد على المفتاح لموازنة الصفوف بين
+    // الإعادتين — تمامًا كما توثّقه Flutter لهذا الغرض بالذات.
+    var initCount = 0;
+    final probeKey = UniqueKey();
+
+    Widget probe() => _InitProbe(onInit: () => initCount++);
+    Widget build(List<List<Widget>> rows, List<LocalKey> keys) =>
+        host(ImdTable(columns: cols(), rows: rows, rowKeys: keys, cards: false));
+
+    await tester.pumpWidget(build(
+      [
+        [const Text('كود 0'), probe()],
+      ],
+      [probeKey],
+    ));
+    expect(initCount, 1);
+
+    // إدراج صفٍّ جديد قبله: العنصر القديم ينتقل من الفهرس ٠ إلى ١، لكن
+    // مفتاحه الثابت يمنع إعادة بنائه من الصفر.
+    await tester.pumpWidget(build(
+      [
+        [const Text('كود جديد'), const SizedBox.shrink()],
+        [const Text('كود 0'), probe()],
+      ],
+      [UniqueKey(), probeKey],
+    ));
+
+    expect(initCount, 1, reason: 'rowKeys يحافظ على العنصر فلا يُعاد initState');
+  });
+
   testWidgets('cellPadding مُخصَّصة تُستبدل بها حشوة الجسم الافتراضية',
       (tester) async {
     await tester.pumpWidget(host(ImdTable(
@@ -136,4 +168,25 @@ void main() {
         .first);
     expect(pad.padding, const EdgeInsets.symmetric(horizontal: 6, vertical: 4));
   });
+}
+
+/// يُبلغ [onInit] كل ما بُنيت حالتُه من جديد — يكشف إعادة الإنشاء عبر عدد
+/// النداءات، بدل مراقبة شكلٍ بصري.
+class _InitProbe extends StatefulWidget {
+  const _InitProbe({required this.onInit});
+  final VoidCallback onInit;
+
+  @override
+  State<_InitProbe> createState() => _InitProbeState();
+}
+
+class _InitProbeState extends State<_InitProbe> {
+  @override
+  void initState() {
+    super.initState();
+    widget.onInit();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }

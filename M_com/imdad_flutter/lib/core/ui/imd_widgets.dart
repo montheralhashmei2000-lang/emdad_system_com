@@ -879,6 +879,7 @@ class ImdTable extends StatefulWidget {
     super.key,
     required this.columns,
     required this.rows,
+    this.rowKeys,
     this.empty = 'لا توجد بيانات',
     this.onRowTap,
     this.rowColor,
@@ -896,10 +897,19 @@ class ImdTable extends StatefulWidget {
     this.headerForeground,
     this.headerPadding,
     this.cellPadding,
-  });
+  }) : assert(rowKeys == null || rowKeys.length == rows.length,
+            'rowKeys.length يجب أن يساوي rows.length — مفتاحٌ واحدٌ لكل صفّ');
 
   final List<ImdCol> columns;
   final List<List<Widget>> rows;
+
+  /// مفتاحٌ لكل صفّ، بترتيب [rows] نفسه — يُحافظ على هوية عنصر الصفّ (حالته
+  /// ومتحكّماته الداخلية) عبر إدراج صفٍّ أو حذفه في المنتصف، بدل أن يُعاد
+  /// بناء كل صفٍّ تالٍ من الصفر بفهرسه الجديد. لازمٌ لجداول الإدخال التي
+  /// تحمل حقولًا تفاعلية بحالة (كـImdItemPicker)؛ جداول القراءة (بلا حالةٍ
+  /// في خلاياها) لا تحتاجه فتتركه `null`.
+  final List<LocalKey>? rowKeys;
+
   final String empty;
   final ValueChanged<int>? onRowTap;
   final Color? Function(int index)? rowColor;
@@ -1170,7 +1180,9 @@ class _ImdTableState extends State<ImdTable> {
         mainAxisSize: MainAxisSize.min,
         children: [
           for (var i = pageStart; i < pageEnd; i++) ...[
-            _card(context, i),
+            widget.rowKeys == null
+                ? _card(context, i)
+                : KeyedSubtree(key: widget.rowKeys![i], child: _card(context, i)),
             if (i != pageEnd - 1 || widget.footer != null) const SizedBox(height: 10),
           ],
           if (widget.footer != null) _footerCard(context),
@@ -1237,6 +1249,7 @@ class _ImdTableState extends State<ImdTable> {
         // كان يكسر أيّ استخدامٍ حاليٍّ يعتمد على فهرس القائمة الكاملة.
         for (var i = pageStart; i < pageEnd; i++)
           TableRow(
+            key: widget.rowKeys?[i],
             decoration: BoxDecoration(
               color: _hover == i
                   ? (c.isDark ? const Color(0xFF26262A) : c.tableHead)
