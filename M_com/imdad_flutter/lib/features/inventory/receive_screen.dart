@@ -161,6 +161,19 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     setState(() => _rows.add(pre ?? _Row()));
   }
 
+  /// دفعةٌ أخرى من الصنف نفسه: الصنف ووحدته وإجراء أسطوانته تُنسخ، والكمية
+  /// وتاريخ الصلاحية يُتركان فارغين.
+  ///
+  /// تفريغ الكمية ليس كسلًا: [_autoConsolidate] يدمج السطور المتطابقة في
+  /// المفتاح (صنف|أسطوانة|صلاحية) ويجمع كمياتها، فنسخةٌ كاملةٌ كانت ستُدمج في
+  /// أصلها فورًا وتُضاعف كميته بدل أن تفتح سطرًا. والسطر بكميةٍ صفر يبقى
+  /// «قيد الإكمال» فلا يمسّه الدمج حتى يكتبه المستخدم.
+  void _copyRow(_Row r) {
+    final at = _rows.indexOf(r);
+    if (at < 0) return;
+    setState(() => _rows.insert(at + 1, _Row(itemId: r.itemId, unit: r.unit, cy: r.cy, noAuto: true)));
+  }
+
   void _onItem(_Row r, String id) {
     final it = _item(id);
     setState(() {
@@ -708,14 +721,22 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     ]);
     final del = Padding(
       padding: const EdgeInsets.only(top: 15),
-      child: ImdIconButton(
-        icon: 'x',
-        kind: ImdBtnKind.danger,
-        onPressed: () => setState(() {
-          _rows.remove(r);
-          if (_rows.isEmpty) _rows.add(_Row());
-        }),
-      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (r.itemId.isNotEmpty)
+          ImdIconButton(
+            icon: 'plus-square',
+            tooltip: 'دفعة أخرى من هذا الصنف',
+            onPressed: () => _copyRow(r),
+          ),
+        ImdIconButton(
+          icon: 'x',
+          kind: ImdBtnKind.danger,
+          onPressed: () => setState(() {
+            _rows.remove(r);
+            if (_rows.isEmpty) _rows.add(_Row());
+          }),
+        ),
+      ]),
     );
     return ImdRvRow(
       index: index,
