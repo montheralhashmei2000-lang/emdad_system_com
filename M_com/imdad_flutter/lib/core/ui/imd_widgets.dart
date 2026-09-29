@@ -884,6 +884,7 @@ class ImdTable extends StatefulWidget {
     this.rowColor,
     this.footer,
     this.minWidth,
+    this.maxHeight,
     this.onHeaderTap,
     this.sortIndex,
     this.sortAsc = true,
@@ -904,8 +905,20 @@ class ImdTable extends StatefulWidget {
   /// يخسر أمام [rowColor] عند كليهما، ولا يمسّ الصف عند المرور (hover) ولا صفّ [footer].
   final bool zebra;
 
-  /// `style="min-width:…"` — تمرير أفقي إذا ضاقت المساحة عنه.
+  /// أقل عرضٍ للجدول — تمرير أفقي إذا ضاقت المساحة عنه.
   final double? minWidth;
+
+  /// سقف ارتفاع الجدول ⇒ **رأسٌ ثابت**: تبقى عناوين الأعمدة ظاهرةً ويُمرَّر
+  /// الجسم تحتها، فلا يضيع معنى العمود بعد عشرين سطرًا.
+  ///
+  /// الرأس والجسم جدولان منفصلان ليثبت الأول ويتحرّك الثاني، فلا بدّ أن يكون
+  /// عرض الأعمدة **حتميًّا** حتى يتطابقا: العمود بعرضٍ صريح يبقى عليه، وما
+  /// عداه يصير نسبيًّا بـ[ImdCol.flex]. أي أن [ImdCol.auto] (القياس من
+  /// المحتوى) لا يعمل في هذا الوضع — ولذلك هو اختياريٌّ لا افتراضي: الجداول
+  /// القائمة تبقى على قياسها الذاتي ما لم يُطلب السقف.
+  ///
+  /// يُتجاهل في عرض البطاقات على الجوال، وعند خلوّ الجدول.
+  final double? maxHeight;
 
   /// ضغط رأس العمود (`th[data-k]{cursor:pointer}`) — يُستخدم للفرز.
   final ValueChanged<int>? onHeaderTap;
@@ -946,10 +959,12 @@ class _ImdTableState extends State<ImdTable> {
   int _hover = -1;
   int _page = 0;
   final _hScroll = ScrollController();
+  final _vScroll = ScrollController();
 
   @override
   void dispose() {
     _hScroll.dispose();
+    _vScroll.dispose();
     super.dispose();
   }
 
@@ -1151,6 +1166,8 @@ class _ImdTableState extends State<ImdTable> {
       );
     }
 
+    // جدولٌ فارغ لا رأس له يُثبَّت، ولا جسمٌ يُمرَّر تحته.
+    final sticky = widget.maxHeight != null && rows.isNotEmpty && cols.isNotEmpty;
     final Widget body;
     if (rows.isEmpty || cols.isEmpty) {
       body = Padding(
@@ -1167,74 +1184,96 @@ class _ImdTableState extends State<ImdTable> {
               ]),
       );
     } else {
-      body = Table(
-        columnWidths: {
-          for (var j = 0; j < cols.length; j++)
-            j: cols[j].width != null
-                ? FixedColumnWidth(cols[j].width!)
-                : cols[j].auto
-                    ? const _HtmlColumnWidth()
-                    : FlexColumnWidth(cols[j].flex.toDouble()),
-        },
+      // الرأس الثابت يفصل الجدول جدولين، فعرض العمود لا يصحّ أن يُقاس من
+      // محتواه: لكلٍّ محتواه فيختلفان. الصريح يبقى، وما عداه نسبيٌّ — وكلاهما
+      // يُحسب من عرض الحاوية وحده فيتطابق الجدولان.
+      final widths = <int, TableColumnWidth>{
+        for (var j = 0; j < cols.length; j++)
+          j: cols[j].width != null
+              ? FixedColumnWidth(cols[j].width!)
+              : (cols[j].auto && !sticky)
+                  ? const _HtmlColumnWidth()
+                  : FlexColumnWidth(cols[j].flex.toDouble()),
+      };
+      final headerRow = TableRow(
+        decoration: BoxDecoration(color: c.tableHead, border: Border(bottom: BorderSide(color: c.line))),
         children: [
+          for (var j = 0; j < cols.length; j++)
+            _cell(
+              cols[j],
+              _header(context, cols[j], j),
+              row: -1,
+              pad: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+        ],
+      );
+      final bodyRows = <TableRow>[
+        // فهرس `i` مطلَقٌ على كامل `rows` لا محليٌّ للصفحة: `zebra` و`rowColor`
+        // و`onRowTap` تبقى كما لو لم يُفعَّل ترقيمٌ أصلًا — تمريرها فهرسًا محليًّا
+        // كان يكسر أيّ استخدامٍ حاليٍّ يعتمد على فهرس القائمة الكاملة.
+        for (var i = pageStart; i < pageEnd; i++)
           TableRow(
-            decoration: BoxDecoration(color: c.tableHead, border: Border(bottom: BorderSide(color: c.line))),
+            decoration: BoxDecoration(
+              color: _hover == i
+                  ? (c.isDark ? const Color(0xFF26262A) : c.tableHead)
+                  : (widget.rowColor?.call(i) ?? (widget.zebra && i.isOdd ? _zebraColor(context) : null)),
+              // آخر صفٍّ من الصفحة **المعروضة** لا آخر صفٍّ في القائمة كلها،
+              // وإلا بقي خط الفاصل تحت كل الصفحات إلا الأخيرة.
+              border: (i == pageEnd - 1 && widget.footer == null)
+                  ? null
+                  : Border(bottom: BorderSide(color: c.tableRowLine)),
+            ),
             children: [
               for (var j = 0; j < cols.length; j++)
                 _cell(
                   cols[j],
-                  _header(context, cols[j], j),
-                  row: -1,
-                  pad: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  DefaultTextStyle.merge(
+                    style: TextStyle(fontSize: 13.5, color: c.text, height: 1.5),
+                    child: j < rows[i].length ? rows[i][j] : const SizedBox.shrink(),
+                  ),
+                  row: i,
                 ),
             ],
           ),
-          // فهرس `i` مطلَقٌ على كامل `rows` لا محليٌّ للصفحة: `zebra` و`rowColor`
-          // و`onRowTap` تبقى كما لو لم يُفعَّل ترقيمٌ أصلًا — تمريرها فهرسًا محليًّا
-          // كان يكسر أيّ استخدامٍ حاليٍّ يعتمد على فهرس القائمة الكاملة.
-          for (var i = pageStart; i < pageEnd; i++)
-            TableRow(
-              decoration: BoxDecoration(
-                color: _hover == i
-                    ? (c.isDark ? const Color(0xFF26262A) : c.tableHead)
-                    : (widget.rowColor?.call(i) ?? (widget.zebra && i.isOdd ? _zebraColor(context) : null)),
-                // آخر صفٍّ من الصفحة **المعروضة** لا آخر صفٍّ في القائمة كلها،
-                // وإلا بقي خط الفاصل تحت كل الصفحات إلا الأخيرة.
-                border: (i == pageEnd - 1 && widget.footer == null)
-                    ? null
-                    : Border(bottom: BorderSide(color: c.tableRowLine)),
+        if (widget.footer != null)
+          TableRow(
+            decoration: BoxDecoration(color: c.accentSoft),
+            children: [
+              for (var j = 0; j < cols.length; j++)
+                _cell(
+                  cols[j],
+                  DefaultTextStyle.merge(
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: c.accent, height: 1.5),
+                    child: j < widget.footer!.length ? widget.footer![j] : const SizedBox.shrink(),
+                  ),
+                  row: -1,
+                ),
+            ],
+          ),
+      ];
+      if (!sticky) {
+        body = Table(columnWidths: widths, children: [headerRow, ...bodyRows]);
+      } else {
+        // `Flexible` لا `Expanded`: جدولٌ أقصر من السقف يأخذ ارتفاعه لا السقف،
+        // فلا يبقى تحته فراغٌ أبيض.
+        body = Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Table(columnWidths: widths, children: [headerRow]),
+            Flexible(
+              child: Scrollbar(
+                controller: _vScroll,
+                child: SingleChildScrollView(
+                  controller: _vScroll,
+                  child: Table(columnWidths: widths, children: bodyRows),
+                ),
               ),
-              children: [
-                for (var j = 0; j < cols.length; j++)
-                  _cell(
-                    cols[j],
-                    DefaultTextStyle.merge(
-                      style: TextStyle(fontSize: 13.5, color: c.text, height: 1.5),
-                      child: j < rows[i].length ? rows[i][j] : const SizedBox.shrink(),
-                    ),
-                    row: i,
-                  ),
-              ],
             ),
-          if (widget.footer != null)
-            TableRow(
-              decoration: BoxDecoration(color: c.accentSoft),
-              children: [
-                for (var j = 0; j < cols.length; j++)
-                  _cell(
-                    cols[j],
-                    DefaultTextStyle.merge(
-                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: c.accent, height: 1.5),
-                      child: j < widget.footer!.length ? widget.footer![j] : const SizedBox.shrink(),
-                    ),
-                    row: -1,
-                  ),
-              ],
-            ),
-        ],
-      );
+          ],
+        );
+      }
     }
-    final table = Container(
+    Widget table = Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: c.surface,
@@ -1243,6 +1282,11 @@ class _ImdTableState extends State<ImdTable> {
       ),
       child: body,
     );
+    // السقف على الإطار كلّه (الرأس + الجسم)، وبه يصير للعمود `Flexible` داخله
+    // ارتفاعٌ محدود فيُمرَّر — بلا حدٍّ أعلى لا تمريرَ أصلًا داخل صفحةٍ مُمرَّرة.
+    if (sticky) {
+      table = ConstrainedBox(constraints: BoxConstraints(maxHeight: widget.maxHeight!), child: table);
+    }
     final minW = widget.minWidth;
     Widget tableArea;
     if (minW == null || rows.isEmpty) {
