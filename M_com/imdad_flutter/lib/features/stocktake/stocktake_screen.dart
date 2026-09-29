@@ -811,7 +811,19 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
         ]),
       ),
       if (_cur.isEmpty)
-        const ImdEmptyState.noData(title: 'اختر أمر جرد مفتوحًا لبدء العد')
+        ImdEmptyState.noData(
+          title: 'اختر أمر جرد مفتوحًا لبدء العد',
+          message: 'العدّ يجري داخل أمر جرد: اختر أمرًا مفتوحًا من القائمة أعلاه، '
+              'أو أنشئ أمرًا جديدًا للمستودع الذي تجرده.',
+          // في الوضع المستقل تبويبةٌ واحدة بلا شريط، فلا وجهة ينقل إليها الزر.
+          action: widget.standalone
+              ? null
+              : ImdButton(
+                  label: 'إنشاء أمر جرد',
+                  icon: 'plus',
+                  onPressed: () => setState(() => _tab = 'create'),
+                ),
+        )
       else
         ImdTable(
           minWidth: 900,
@@ -1049,7 +1061,11 @@ class _AnalysisTabState extends State<_AnalysisTab> {
         ]),
       ),
       if (s._cur.isEmpty)
-        const ImdEmptyState.noData(title: 'اختر أمر الجرد لعرض الفروقات')
+        const ImdEmptyState.noData(
+          title: 'اختر أمر الجرد لعرض الفروقات',
+          message: 'الفروقات تُحسب بمقارنة المعدود بالرصيد الدفتري، '
+              'فاختر أمر الجرد من القائمة أعلاه لعرضها.',
+        )
       else
         ImdTable(
           minWidth: 1100,

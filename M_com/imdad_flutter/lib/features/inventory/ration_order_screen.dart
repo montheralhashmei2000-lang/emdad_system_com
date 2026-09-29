@@ -773,7 +773,15 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
         ]),
         const SizedBox(height: 8),
         if (_lines.isEmpty)
-          const ImdEmptyState.noData(title: 'لم يُضف صنف بعد')
+          ImdEmptyState.noData(
+            title: 'لم يُضف صنف بعد',
+            message: 'أضف سطرًا لكل صنف مطلوب في الطلبية، ثم حدد الكمية ووحدتها.',
+            action: ImdButton(
+              label: 'إضافة صنف',
+              icon: 'plus-square',
+              onPressed: () => setState(() => _lines.add(_LineDraft())),
+            ),
+          )
         else
           for (final (i, l) in _lines.indexed)
             Padding(
