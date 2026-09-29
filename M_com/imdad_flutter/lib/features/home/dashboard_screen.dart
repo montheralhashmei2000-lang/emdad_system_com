@@ -446,6 +446,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   static String _or(String s) => s.isEmpty ? '—' : s;
 
+  /// إرشاد أول استخدام: ما الذي ينقص النظام ليصير صالحًا للتشغيل.
+  ///
+  /// يظهر ما دام شيءٌ ناقصًا ويختفي من تلقائه عند اكتمال الأربع — فلا يحتاج
+  /// زرّ «لا تُظهر هذا ثانيةً»، ولا يزاحم من أتمّ التهيئة على مساحة لوحته.
+  ///
+  /// ولا بيانات تجريبية تُزرع هنا: بذرةٌ في قاعدةٍ تشغيلية لا يُعرف بعد شهرٍ
+  /// أصنافُها من أصناف الوحدة الحقيقية، فالإرشاد يدلّ على الشاشة ويترك
+  /// الإدخال لصاحبه.
+  List<Widget> _setupGuide(BuildContext context, _DashData d, ImdNav nav) {
+    final steps = <(bool, String, String, String)>[
+      (d.warehouses > 0, 'عرّف مستودعًا', 'لا حركة بلا مستودعٍ تدخل إليه الكميات وتخرج منه.', 'stores'),
+      (d.items > 0, 'أضف الأصناف', 'الصنف ووحداته أساس كل سند وكل رصيد.', 'items'),
+      (d.units > 0, 'عرّف الوحدات المستفيدة', 'إليها يُصرف، وعليها تُحسب الاستحقاقات.', 'units'),
+      (d.suppliers > 0, 'أضف الموردين', 'منهم يُستلم الوارد ويُربط بسنده.', 'suppliers'),
+    ];
+    final remaining = steps.where((s) => !s.$1).length;
+    if (remaining == 0) return const [];
+
+    final c = context.imd;
+    return [
+      ImdPanel(
+        margin: const EdgeInsets.only(bottom: 16),
+        title: 'خطوات التهيئة',
+        icon: 'compass',
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ImdAlert(
+            'بقي ${nf(remaining)} من ${nf(steps.length)} لتجهيز النظام للتشغيل.',
+            tone: ImdTone.info,
+          ),
+          for (final (done, title, why, page) in steps)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                ImdIcon(done ? 'check' : 'dot', size: 16, color: done ? c.success : c.muted),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(title,
+                        style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: done ? c.muted : c.text,
+                            decoration: done ? TextDecoration.lineThrough : null)),
+                    Text(why, style: TextStyle(fontSize: 12, color: c.muted, height: 1.6)),
+                  ]),
+                ),
+                if (!done) ...[
+                  const SizedBox(width: 8),
+                  ImdButton.outline(label: 'افتح', small: true, onPressed: () => nav.go(page)),
+                ],
+              ]),
+            ),
+        ]),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
@@ -467,6 +524,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
         ),
+        if (d != null) ..._setupGuide(context, d, nav),
         if (d == null)
           const ImdShimmerKpis(count: 6)
         else
