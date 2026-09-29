@@ -420,14 +420,28 @@ class _DocLogViewState extends State<DocLogView> {
             const SizedBox(width: 6),
             Text('سجل التعديلات',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: ctx.imd.text)),
+            const SizedBox(width: 8),
+            ImdChip('${nf(g.editLog.length)} تعديل', tone: ImdTone.info),
           ]),
           const SizedBox(height: 6),
-          for (final e in g.editLog)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 2),
-              child: Text('${arDigits(e.at)} — ${e.by}: ${e.summary}',
-                  style: TextStyle(fontSize: 12.5, color: ctx.imd.muted, height: 1.9)),
-            ),
+          // ثلاثة أعمدة لا سطرٌ متصل: «من غيّر وماذا ومتى» سؤالٌ يُقرأ بالمسح
+          // لا بالقراءة، والسطر المتصل يخفي الثلاثة في بعضها.
+          ImdTable(
+            columns: const [
+              ImdCol('متى', width: 150),
+              ImdCol('مَن', width: 140),
+              ImdCol('ما تغيّر', flex: 3),
+            ],
+            cards: true,
+            rows: [
+              for (final e in g.editLog)
+                [
+                  Text(_stamp(e.at)),
+                  Text(e.by.isEmpty ? '—' : e.by),
+                  Text(e.summary.isEmpty ? '—' : e.summary),
+                ],
+            ],
+          ),
         ],
         if (g.cancelReason.isNotEmpty) ...[
           const SizedBox(height: 10),
@@ -436,6 +450,17 @@ class _DocLogViewState extends State<DocLogView> {
       ]),
       actions: (ctx) => [ImdButton.outline(label: 'إغلاق', onPressed: () => Navigator.of(ctx).pop())],
     );
+  }
+
+  /// طابع التعديل مقروءًا: يُخزَّن ISO كاملًا («2026-09-29T14:33:07.123»)،
+  /// وعرضُه خامًا يُغرق العمود في تفاصيل لا تُقرأ. وما تعذّر تحليله يُعرض كما
+  /// هو: طابعٌ غريبٌ خيرٌ من خانةٍ فارغة عند المراجعة.
+  static String _stamp(String iso) {
+    final t = DateTime.tryParse(iso);
+    if (t == null) return iso.isEmpty ? '—' : arDigits(iso);
+    final hh = t.hour.toString().padLeft(2, '0');
+    final mm = t.minute.toString().padLeft(2, '0');
+    return '${arDate(t)} · ${arDigits('$hh:$mm')}';
   }
 
   Widget _info(String label, String value) => Builder(builder: (ctx) {
