@@ -126,6 +126,7 @@ class _FuelVehiclesScreenState extends State<FuelVehiclesScreen> {
             ImdCol('عدد المرات', numeric: true),
             ImdCol('الإجمالي', numeric: true),
           ],
+          pageSize: 50,
           cards: true,
           rows: [
             for (final v in _visible)
@@ -158,6 +159,7 @@ class _FuelVehiclesScreenState extends State<FuelVehiclesScreen> {
               ImdCol('السائق'),
               ImdCol('الكمية', numeric: true),
             ],
+            pageSize: 50,
             cards: true,
             rows: [
               for (final i in _issues.where((x) => x.chassisNo.trim() == _open))

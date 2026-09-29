@@ -688,6 +688,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
             ImdCol('التاريخ'),
             ImdCol('تجميد'),
           ],
+          pageSize: 50,
           cards: true,
           empty: 'لا توجد أوامر جرد مفتوحة',
           onRowTap: (i) async {
@@ -811,6 +812,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
             ImdCol('الوحدة 3'),
             ImdCol('الفعلي 3', auto: false, width: 110),
           ],
+          pageSize: 50,
           cards: true,
           empty: _lines.isEmpty ? 'لا توجد أصناف في هذا الأمر' : 'لا نتائج مطابقة للبحث',
           rows: [for (final l in rows) _countRow(l, open)],
@@ -956,6 +958,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
           ImdCol('الفروقات', numeric: true),
           ImdCol('الحالة'),
         ],
+        pageSize: 50,
         cards: true,
         empty: 'لا توجد أوامر جرد',
         onRowTap: (i) async {
@@ -1051,6 +1054,7 @@ class _AnalysisTabState extends State<_AnalysisTab> {
             ImdCol('السبب', auto: false, width: 150),
             ImdCol('القرار', auto: false, width: 140),
           ],
+          pageSize: 50,
           cards: true,
           empty: 'لا توجد أصناف للعرض',
           rows: [for (final l in rows) _row(l, open)],

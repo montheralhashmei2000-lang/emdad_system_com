@@ -237,6 +237,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
             const ImdCol('الوحدات', flex: 2),
             if (w) const ImdCol('', width: 110),
           ],
+          pageSize: 50,
           cards: true,
           rows: [
             for (final x in rows)
@@ -940,6 +941,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
           ImdCol('مرجع'),
           ImdCol('ملاحظات', flex: 2),
         ],
+        pageSize: 50,
         cards: true,
         rows: [
           for (final m in movs.take(100))

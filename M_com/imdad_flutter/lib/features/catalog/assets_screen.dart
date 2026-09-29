@@ -817,6 +817,7 @@ class _AssetsScreenState extends State<AssetsScreen> {
           ImdCol('العمر'),
           ImdCol('', center: true),
         ],
+        pageSize: 50,
         cards: true,
         rows: [
           for (final a in rows)

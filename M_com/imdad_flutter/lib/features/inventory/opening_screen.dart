@@ -336,6 +336,7 @@ class _OpeningScreenState extends State<OpeningScreen> {
           ImdCol('وحدة الصنف', auto: false, width: 132),
           ImdCol('الرصيد الافتتاحي', auto: false, width: 132),
         ],
+        pageSize: 50,
         cards: true,
         empty: 'لا أصناف مطابقة',
         rows: [

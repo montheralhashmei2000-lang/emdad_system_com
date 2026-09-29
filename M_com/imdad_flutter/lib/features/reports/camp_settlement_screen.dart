@@ -252,6 +252,7 @@ class _CampSettlementScreenState extends State<CampSettlementScreen> {
           ImdCol('متبقٍ عليهم', numeric: true),
           ImdCol('نُفّذت بواسطة'),
         ],
+        pageSize: 50,
         cards: true,
         rows: [
           for (final h in _history)

@@ -458,6 +458,7 @@ class _FuelLedgerScreenState extends State<FuelLedgerScreen> {
         ImdCol('صادر', numeric: true),
         ImdCol('الرصيد', numeric: true),
       ],
+      pageSize: 50,
       cards: true,
       rows: [
         // السطر الأول رصيدٌ مُرحَّل لا حركة، فيُميَّز ولا يُجمع مع الوارد.
@@ -619,6 +620,7 @@ class _FuelPlanVsIssuedScreenState extends State<FuelPlanVsIssuedScreen> {
         ImdCol('المتبقي', numeric: true),
         ImdCol('الاستهلاك'),
       ],
+      pageSize: 50,
       cards: true,
       rows: [
         for (final r in rows)

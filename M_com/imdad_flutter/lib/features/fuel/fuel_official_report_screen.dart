@@ -283,6 +283,7 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
         ImdCol('الصنف'),
         ImdCol('الكمية', numeric: true),
       ],
+      pageSize: 50,
       cards: true,
       rows: [
         for (final r in s.incoming)
@@ -334,6 +335,7 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
         ImdCol('ملاحظة'),
         ImdCol('الكمية', numeric: true),
       ],
+      pageSize: 50,
       cards: true,
       rows: [
         for (final r in rows)
@@ -382,6 +384,7 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
         ImdCol('ملاحظة'),
         ImdCol('الكمية', numeric: true),
       ],
+      pageSize: 50,
       cards: true,
       rows: [
         for (final r in s.outgoing)

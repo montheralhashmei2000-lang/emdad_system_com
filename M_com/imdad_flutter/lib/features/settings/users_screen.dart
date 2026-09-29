@@ -429,6 +429,7 @@ class _UsersScreenState extends State<UsersScreen> {
             ImdCol('إدارة الوصول'),
             ImdCol(''),
           ],
+          pageSize: 50,
           cards: true,
           empty: 'لا نتائج',
           rows: [for (final u in rows) _row(u)],

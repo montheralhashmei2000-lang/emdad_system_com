@@ -392,6 +392,7 @@ class _ActivityIntelScreenState extends State<ActivityIntelScreen> {
               ImdCol('الضغط الصافي', numeric: true),
               ImdCol('الرصيد/الحد'),
             ],
+            pageSize: 50,
             cards: true,
             empty: 'لا توجد أصناف بسلوك استهلاك مقلق حاليًا',
             rows: [

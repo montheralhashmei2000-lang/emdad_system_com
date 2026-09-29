@@ -530,6 +530,7 @@ class _ActualEntitlementScreenState extends State<ActualEntitlementScreen> {
           ImdCol('الصافي', numeric: true),
           ImdCol('نسبة الاستهلاك'),
         ],
+        pageSize: 50,
         cards: true,
         rows: [
           for (final r in _rows)

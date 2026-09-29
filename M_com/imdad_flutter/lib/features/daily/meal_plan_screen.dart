@@ -521,6 +521,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
           ImdCol('الحالة'),
           ImdCol('', center: true),
         ],
+        pageSize: 50,
         cards: true,
         rows: [
           for (final p in _plans)
@@ -608,6 +609,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
             ImdCol('الإجمالي بوحدة الأساس', numeric: true),
             ImdCol('الوحدة'),
           ],
+          pageSize: 50,
           cards: true,
           rows: [
             for (final r in _needs)
@@ -767,6 +769,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
               ImdCol('الفرق', numeric: true),
               ImdCol('التغير'),
             ],
+            pageSize: 50,
             cards: true,
             rows: [
               for (final d in _diffs)

@@ -396,6 +396,7 @@ class _DocLogViewState extends State<DocLogView> {
             if (g.kind == DocKind.issue) const ImdCol('المستفيد'),
             const ImdCol('ملاحظات'),
           ],
+          pageSize: 50,
           cards: true,
           rows: [
             for (final (i, l) in lines.indexed)
@@ -837,6 +838,7 @@ class _EditFormState extends State<_EditForm> {
           ImdCol('ملاحظات', auto: false, flex: 3),
           ImdCol('', width: 52),
         ],
+        pageSize: 50,
         cards: true,
         rows: [
           for (final (i, r) in _rows.indexed) _lineRow(i, r),

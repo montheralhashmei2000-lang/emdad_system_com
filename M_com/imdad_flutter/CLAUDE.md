@@ -15,7 +15,7 @@
 
 ## 3. UI/UX Design System Rules (CRITICAL)
 - **Theme Awareness:** The app must support Light Mode, Dark Mode, and System Mode. NEVER hardcode colors (e.g., `Colors.black`). ALWAYS use `Theme.of(context).colorScheme.xxx` or the `ImdColors` theme extension (`context.imd.xxx`).
-- **Colors:** Emerald Green (#10B981) is the primary/accent color in BOTH light and dark modes. Dark mode should use deep grays (#121212, #1E1E1E). Light mode should use off-whites. No harsh or neon colors.
+- **Colors:** Emerald Green is the primary/accent color in both modes, in the shade each mode needs for contrast: **#047857 in Light Mode** (hover #065F46) and **#10B981 in Dark Mode** (hover #34D399). Dark mode uses deep grays (#171717 background, #212121 surface). Light mode uses off-whites (#F7F7F8 background, #FFFFFF surface). No harsh or neon colors. These are defined once in `ImdColors.light` / `ImdColors.dark` (`lib/core/ui/imd_tokens.dart`) — read them from `context.imd`, never re-declare a hex.
 - **Typography:** Use the bundled local font `IBMPlexSansArabic` (`ImdSizes.font`) for all text. Do NOT add `google_fonts`.
 - **Spacing & Shapes:** Use consistent padding (8, 16, 24) and rounded corners (`BorderRadius.circular(12)`) for cards, buttons, and input fields.
 - **Data Tables:** Tables must be dense, professional, and use sticky headers. Hover effects on rows are required. Use `StatusBadge` widgets for statuses (e.g., "لم تُضبط بعد" in soft orange, "مضبوط" in soft green).

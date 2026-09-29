@@ -18,7 +18,7 @@ import '../../core/ui/imd_window.dart';
 ///
 /// على ويندوز تُعرض في نافذة صغيرة بمقاس البطاقة بلا شريط عنوان ([ImdWindow.login])،
 /// فتُسحب النافذة من منطقة الشعار، ويغلق «خروج» التطبيق.
-/// الشاشة فاتحة دائمًا في كل الأوضاع كما في الويب.
+/// الشاشة تتبع سمة التطبيق (فاتح/داكن/تلقائي) كبقية الشاشات.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.onSignedIn});
 
@@ -33,9 +33,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  static const _text = Color(0xFF202123);
-  static const _text2 = Color(0xFF343541);
-
   final _user = TextEditingController();
   final _pass = TextEditingController();
 
@@ -115,15 +112,15 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final narrow = MediaQuery.sizeOf(context).width <= 520;
-    // الشاشة فاتحة دائمًا، وخطّها ثابتٌ (Cairo) بصرف النظر عن خط الواجهة
-    // المختار في الإعدادات — بطاقة الدخول هويةٌ واحدة لا تتبدّل.
+    final c = context.imd;
+    // خطّ البطاقة ثابتٌ (Cairo) بصرف النظر عن خط الواجهة المختار في
+    // الإعدادات — أما ألوانها فتتبع سمة التطبيق كبقية الشاشات.
     return Theme(
       data: Theme.of(context).copyWith(
-        extensions: const [ImdColors.light],
         textTheme: Theme.of(context).textTheme.apply(fontFamily: 'Cairo'),
       ),
       child: Scaffold(
-        backgroundColor: narrow ? Colors.white : const Color(0xFFF7F7F8),
+        backgroundColor: narrow ? c.surface : c.bg,
         body: SafeArea(
           child: Stack(
             children: [
@@ -139,12 +136,18 @@ class _LoginScreenState extends State<LoginScreen> {
                       decoration: narrow
                           ? null
                           : BoxDecoration(
-                              color: Colors.white,
-                              border: Border.all(color: const Color(0xFFE3E3E8)),
+                              color: c.surface,
+                              border: Border.all(color: c.line),
                               borderRadius: BorderRadius.circular(20),
-                              boxShadow: const [
-                                BoxShadow(color: Color(0x0A101828), blurRadius: 2, offset: Offset(0, 1)),
-                                BoxShadow(color: Color(0x14101828), blurRadius: 40, offset: Offset(0, 16)),
+                              boxShadow: [
+                                BoxShadow(
+                                    color: c.isDark ? const Color(0x66000000) : const Color(0x0A101828),
+                                    blurRadius: 2,
+                                    offset: const Offset(0, 1)),
+                                BoxShadow(
+                                    color: c.isDark ? const Color(0x80000000) : const Color(0x14101828),
+                                    blurRadius: 40,
+                                    offset: const Offset(0, 16)),
                               ],
                             ),
                       child: _card(narrow),
@@ -165,6 +168,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _card(bool narrow) {
+    final c = context.imd;
     final inputH = narrow ? 44.0 : 48.0;
     final inputFs = narrow ? 15.0 : 15.0;
     final header = Column(
@@ -181,7 +185,7 @@ class _LoginScreenState extends State<LoginScreen> {
         Text('نظام الإمداد والتموين',
             textAlign: TextAlign.center,
             style: TextStyle(
-                fontSize: narrow ? 19 : 24, fontWeight: FontWeight.w700, color: _text, height: 1.3)),
+                fontSize: narrow ? 19 : 24, fontWeight: FontWeight.w700, color: c.text, height: 1.3)),
         SizedBox(height: narrow ? 12 : 22),
       ],
     );
@@ -197,13 +201,13 @@ class _LoginScreenState extends State<LoginScreen> {
             margin: const EdgeInsets.only(bottom: 16),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: const Color(0xFFFEF3F2),
-              border: Border.all(color: const Color(0xFFFECDCA)),
+              color: c.dangerSoft,
+              border: Border.all(color: c.danger.withValues(alpha: .35)),
               borderRadius: BorderRadius.circular(12),
             ),
             child: ImdEmojiText(_error,
-                style: const TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFFB42318), height: 1.5)),
+                style: TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w500, color: c.danger, height: 1.5)),
           ),
         _label('اسم المستخدم'),
         _input(
@@ -260,7 +264,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _label(String t) => Padding(
         padding: const EdgeInsets.only(bottom: 6),
-        child: Text(t, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _text2)),
+        child: Text(t,
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: context.imd.text2)),
       );
 
   Widget _input({
@@ -341,15 +346,17 @@ class _LgInputState extends State<_LgInput> {
   @override
   Widget build(BuildContext context) {
     final focused = _focus.hasFocus;
-    final accent = context.imd.accent;
-    final border = focused ? accent : (_hover ? const Color(0xFFB9B9C6) : const Color(0xFFD1D1DB));
+    final c = context.imd;
+    final accent = c.accent;
+    final border =
+        focused ? accent : (_hover ? Color.lerp(c.lineStrong, c.faint, .45)! : c.lineStrong);
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: c.surface,
           border: Border.all(color: border),
           borderRadius: BorderRadius.circular(12),
           boxShadow: focused ? [BoxShadow(color: accent.withValues(alpha: .18), spreadRadius: 3)] : null,
@@ -359,7 +366,7 @@ class _LgInputState extends State<_LgInput> {
             if (widget.icon != null)
               Padding(
                 padding: const EdgeInsetsDirectional.only(start: 14, end: 12),
-                child: ImdIcon(widget.icon!, size: 18, color: focused ? accent : const Color(0xFF8E8EA0)),
+                child: ImdIcon(widget.icon!, size: 18, color: focused ? accent : c.faint),
               )
             else
               const SizedBox(width: 14),
@@ -373,7 +380,7 @@ class _LgInputState extends State<_LgInput> {
                 onSubmitted: widget.onSubmitted,
                 autocorrect: false,
                 enableSuggestions: false,
-                style: TextStyle(fontSize: widget.fontSize, color: const Color(0xFF202123)),
+                style: TextStyle(fontSize: widget.fontSize, color: c.text),
                 cursorColor: accent,
                 decoration: InputDecoration(
                   isCollapsed: true,
@@ -383,7 +390,7 @@ class _LgInputState extends State<_LgInput> {
                   focusedBorder: InputBorder.none,
                   hintText: widget.hint,
                   hintTextDirection: TextDirection.rtl,
-                  hintStyle: TextStyle(fontSize: widget.fontSize, color: const Color(0xFF8E8EA0)),
+                  hintStyle: TextStyle(fontSize: widget.fontSize, color: c.faint),
                 ),
               ),
             ),
@@ -410,6 +417,7 @@ class _EyeBtnState extends State<_EyeBtn> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.imd;
     return Tooltip(
       message: widget.on ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور',
       child: MouseRegion(
@@ -423,15 +431,13 @@ class _EyeBtnState extends State<_EyeBtn> {
             height: 36,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: _hover ? const Color(0xFFF2F2F5) : Colors.transparent,
+              color: _hover ? c.hover : Colors.transparent,
               borderRadius: BorderRadius.circular(8),
             ),
             child: ImdIcon(
               'eye',
               size: 18,
-              color: widget.on
-                  ? context.imd.accent
-                  : (_hover ? const Color(0xFF202123) : const Color(0xFF5B5E6B)),
+              color: widget.on ? c.accent : (_hover ? c.text : c.muted),
             ),
           ),
         ),
@@ -467,6 +473,7 @@ class _PrimaryBtnState extends State<_PrimaryBtn> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.imd;
     return Padding(
       padding: EdgeInsets.zero,
       child: MouseRegion(
@@ -479,7 +486,7 @@ class _PrimaryBtnState extends State<_PrimaryBtn> {
             duration: const Duration(milliseconds: 150),
             height: widget.height,
             decoration: BoxDecoration(
-              color: (_hover && !widget.busy ? context.imd.accentHover : context.imd.accent)
+              color: (_hover && !widget.busy ? c.accentHover : c.accent)
                   .withValues(alpha: widget.busy ? .85 : 1),
               borderRadius: BorderRadius.circular(12),
             ),
@@ -487,20 +494,24 @@ class _PrimaryBtnState extends State<_PrimaryBtn> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (widget.busy) ...[
-                  const SizedBox(
+                  SizedBox(
                     width: 16,
                     height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white, backgroundColor: Color(0x66FFFFFF)),
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: c.onAccent,
+                        backgroundColor: c.onAccent.withValues(alpha: .4)),
                   ),
                   const SizedBox(width: 8),
                 ] else if (widget.icon != null) ...[
-                  ImdIcon(widget.icon!, size: widget.fontSize + 2, color: Colors.white),
+                  ImdIcon(widget.icon!, size: widget.fontSize + 2, color: c.onAccent),
                   const SizedBox(width: 8),
                 ],
                 Flexible(
                   child: Text(widget.label,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: widget.fontSize, fontWeight: FontWeight.w600, color: Colors.white)),
+                      style: TextStyle(
+                          fontSize: widget.fontSize, fontWeight: FontWeight.w600, color: c.onAccent)),
                 ),
               ],
             ),
@@ -526,6 +537,7 @@ class _CornerCloseBtnState extends State<_CornerCloseBtn> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.imd;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -539,10 +551,10 @@ class _CornerCloseBtnState extends State<_CornerCloseBtn> {
           height: 28,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: _hover ? const Color(0xFFFEE4E2) : Colors.transparent,
+            color: _hover ? c.dangerSoft : Colors.transparent,
             shape: BoxShape.circle,
           ),
-          child: ImdIcon('x', size: 15, color: _hover ? const Color(0xFFB42318) : const Color(0xFF343541)),
+          child: ImdIcon('x', size: 15, color: _hover ? c.danger : c.text2),
         ),
       ),
     );
@@ -565,7 +577,8 @@ class _ExitBtnState extends State<_ExitBtn> {
 
   @override
   Widget build(BuildContext context) {
-    final fg = _hover ? const Color(0xFFB42318) : const Color(0xFF343541);
+    final c = context.imd;
+    final fg = _hover ? c.danger : c.text2;
     return Tooltip(
       message: 'إغلاق النظام',
       child: MouseRegion(
@@ -578,8 +591,8 @@ class _ExitBtnState extends State<_ExitBtn> {
             duration: const Duration(milliseconds: 150),
             height: widget.height,
             decoration: BoxDecoration(
-              color: _hover ? const Color(0xFFFEF3F2) : Colors.white,
-              border: Border.all(color: _hover ? const Color(0xFFFECDCA) : const Color(0xFFD1D1DB)),
+              color: _hover ? c.dangerSoft : c.surface,
+              border: Border.all(color: _hover ? c.danger.withValues(alpha: .35) : c.lineStrong),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [

@@ -224,6 +224,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
             ImdCol('الوحدة'),
             ImdCol('الحالة'),
           ],
+          pageSize: 50,
           cards: true,
           empty: 'لا أصناف مطابقة',
           rows: [

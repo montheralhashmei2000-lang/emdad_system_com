@@ -253,6 +253,7 @@ class _AuthoritiesScreenState extends State<AuthoritiesScreen> {
             ImdCol('ملاحظات'),
             ImdCol('', center: true),
           ],
+          pageSize: 50,
           cards: true,
           rows: [
             for (final a in _items)

@@ -126,6 +126,7 @@ class _KitchensScreenState extends State<KitchensScreen> {
         const ImdCol('وحدات مشتركة'),
         if (w) const ImdCol('', width: 110),
       ],
+      pageSize: 50,
       cards: true,
       rows: [
         for (final f in _facs)
@@ -287,6 +288,7 @@ class _KitchensScreenState extends State<KitchensScreen> {
     } else {
       list = ImdTable(
         columns: const [ImdCol('اشتراك', width: 70), ImdCol('الكود'), ImdCol('الوحدة', flex: 2), ImdCol('مشترك حاليًا مع', flex: 2)],
+        pageSize: 50,
         cards: true,
         rows: [
           for (final u in _units)

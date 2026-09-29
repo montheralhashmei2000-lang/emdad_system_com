@@ -247,6 +247,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
             const ImdCol('ملاحظات'),
             if (can) const ImdCol('', width: 110),
           ],
+          pageSize: 50,
           cards: true,
           rows: [
             for (final x in rows)

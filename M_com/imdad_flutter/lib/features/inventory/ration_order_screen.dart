@@ -847,6 +847,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
           ImdCol('المستند المنفِّذ'),
           ImdCol('', center: true),
         ],
+        pageSize: 50,
         cards: true,
         rows: [
           for (final o in _orders)
@@ -973,6 +974,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
               ImdCol('مستلم', numeric: true),
               ImdCol('الفرق', numeric: true),
             ],
+            pageSize: 50,
             cards: true,
             rows: [
               for (final l in full.lines)

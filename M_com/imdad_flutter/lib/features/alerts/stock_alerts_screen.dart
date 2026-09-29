@@ -110,6 +110,7 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
           ImdCol('المطلوب لبلوغ الحد', numeric: true),
           ImdCol('الحالة'),
         ],
+        pageSize: 50,
         cards: true,
         empty: 'لا أصناف تحت حدها الأدنى 👌 (يُضبط الحد من بطاقة الصنف)',
         rows: [
@@ -151,6 +152,7 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
             ImdCol('الباقي التقديري', numeric: true),
             ImdCol('الحالة'),
           ],
+          pageSize: 50,
           cards: true,
           empty: 'لا دفعات تنتهي صلاحيتها في هذه المدة 👌 (يُسجَّل تاريخ الانتهاء في سند الاستلام)',
           rows: [
@@ -189,6 +191,7 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
             ImdCol('يكفي لـ', numeric: true),
             ImdCol('النفاد المتوقع'),
           ],
+          pageSize: 50,
           cards: true,
           empty: 'لا صرف معتمد في آخر 30 يومًا ولا مقررات مع قوة محصورة — لا توقّع بعد',
           rows: [
