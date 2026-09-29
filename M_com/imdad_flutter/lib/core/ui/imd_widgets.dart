@@ -640,7 +640,7 @@ InputDecoration imdFieldDecoration(
   // رسالة الخطأ من `colorScheme.error`، وحدّ الحقل يوافقها فلا يختلف لونان.
   final err = Theme.of(context).colorScheme.error;
   OutlineInputBorder b(Color col, [double w = 1]) => OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(compact ? ImdSizes.compactRadius : 10),
         borderSide: BorderSide(color: col, width: w),
       );
   return InputDecoration(
@@ -653,7 +653,7 @@ InputDecoration imdFieldDecoration(
     filled: true,
     fillColor: readOnly ? c.bg : c.surface,
     contentPadding: EdgeInsets.symmetric(
-      horizontal: compact ? 8 : 12,
+      horizontal: compact ? ImdSizes.compactPadH : 12,
       vertical: compact ? ImdSizes.compactPadV : (dense ? 8 : 12),
     ),
     prefixIcon: prefixIcon == null

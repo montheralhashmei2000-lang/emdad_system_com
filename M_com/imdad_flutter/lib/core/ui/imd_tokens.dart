@@ -222,14 +222,20 @@ class ImdSizes {
   /// ارتفاع الحقل المدمج (بدل [touchMin]).
   static double get compactField => ImdBp.touch ? 40 : 34;
 
-  /// الفاصل الأفقي بين حقلين مترابطين في السطر.
-  static const double compactGap = 6;
+  /// الفاصل الأفقي بين حقلين مترابطين في السطر (بين أعمدة جدول الإدخال).
+  static const double compactGap = 8;
 
   /// الفاصل الرأسي بين سطرَي صنف.
-  static const double compactRowGap = 5;
+  static const double compactRowGap = 4;
 
   /// حشو الحقل المدمج رأسيًّا.
-  static const double compactPadV = 7;
+  static const double compactPadV = 4;
+
+  /// حشو الحقل المدمج أفقيًّا.
+  static const double compactPadH = 6;
+
+  /// نصف قطر زوايا الحقل المدمج (بدل [radius] العام).
+  static const double compactRadius = 6;
   static const String font = 'IBMPlexSansArabic';
 }
 
