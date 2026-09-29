@@ -430,6 +430,7 @@ class _UsersScreenState extends State<UsersScreen> {
             ImdCol(''),
           ],
           pageSize: 50,
+          maxHeight: ImdSizes.tableMaxHeight(context),
           cards: true,
           empty: 'لا نتائج',
           rows: [for (final u in rows) _row(u)],

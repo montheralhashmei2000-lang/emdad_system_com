@@ -238,6 +238,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
             if (w) const ImdCol('', width: 110),
           ],
           pageSize: 50,
+          maxHeight: ImdSizes.tableMaxHeight(context),
           cards: true,
           rows: [
             for (final x in rows)

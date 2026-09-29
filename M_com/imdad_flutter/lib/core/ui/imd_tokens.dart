@@ -205,6 +205,14 @@ class ImdSizes {
   static const EdgeInsets mainPaddingMobile = EdgeInsets.symmetric(horizontal: 10, vertical: 12); // ≤680
   static double get touchMin => ImdBp.touch ? 46 : 44; // --touch-min
 
+  /// سقفٌ مريح لجدولٍ طويل يُمرَّر تحت رأسٍ ثابت ([ImdTable.maxHeight]).
+  ///
+  /// نسبةٌ من ارتفاع النافذة لا رقمٌ صلب: على شاشةٍ قصيرة لا يبتلع الجدول
+  /// الصفحة كلّها، وعلى شاشةٍ طويلة لا يبقى قزمًا وحولَه فراغ. والحدّان
+  /// يمنعان الطرفين: أقلُّ من ٣٢٠ لا يُظهر صفوفًا كافيةً ليستحقّ التمرير.
+  static double tableMaxHeight(BuildContext context) =>
+      (MediaQuery.sizeOf(context).height * .55).clamp(320, 640);
+
   // ─────────── النمط المدمج (High-Density)
   //
   // **جدول الأصناف ليس نموذج تسجيل.** النموذج يُملأ مرةً فتُفسحه، والجدول

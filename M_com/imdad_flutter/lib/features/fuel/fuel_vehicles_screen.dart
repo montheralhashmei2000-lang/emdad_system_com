@@ -127,6 +127,7 @@ class _FuelVehiclesScreenState extends State<FuelVehiclesScreen> {
             ImdCol('الإجمالي', numeric: true),
           ],
           pageSize: 50,
+          maxHeight: ImdSizes.tableMaxHeight(context),
           cards: true,
           rows: [
             for (final v in _visible)

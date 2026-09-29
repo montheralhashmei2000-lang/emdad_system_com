@@ -7,6 +7,7 @@ import '../../core/security/perm.dart';
 import '../../core/ui/imd_files.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
+import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/catalog_repo.dart';
@@ -225,6 +226,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
             ImdCol('الحالة'),
           ],
           pageSize: 50,
+          maxHeight: ImdSizes.tableMaxHeight(context),
           cards: true,
           empty: 'لا أصناف مطابقة',
           rows: [

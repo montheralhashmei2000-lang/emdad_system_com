@@ -6,6 +6,7 @@ import '../../core/security/perm.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_layout.dart';
+import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/audit_repo.dart';
@@ -248,6 +249,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
             if (can) const ImdCol('', width: 110),
           ],
           pageSize: 50,
+          maxHeight: ImdSizes.tableMaxHeight(context),
           cards: true,
           rows: [
             for (final x in rows)
