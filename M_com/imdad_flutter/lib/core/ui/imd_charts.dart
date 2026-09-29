@@ -6,7 +6,10 @@ import 'imd_format.dart';
 import 'imd_tokens.dart';
 
 // رسوم بيانية مرسومة يدويًا بمظهر Chart.js كما تظهر في نسخة الويب:
-// خط الشبكة #e7eee9، لون النصوص #66756c، المحور الصادي يبدأ من الصفر، ووسيلة الإيضاح أسفل الرسم.
+// المحور الصادي يبدأ من الصفر، ووسيلة الإيضاح أسفل الرسم.
+//
+// الشبكة والنصوص تتبع السمة: في الفاتح تبقى ألوان الويب أدناه، وفي الداكن
+// تُشتقّ من رموز الثيم — بلا ذلك تختفي الشبكة الفاتحة على خلفيةٍ داكنة.
 
 const _gridColor = Color(0xFFE7EEE9);
 const _tickColor = Color(0xFF66756C);
@@ -71,14 +74,21 @@ class ImdLineChart extends StatelessWidget {
       {super.key,
       required this.labels,
       required this.series,
-      this.height = 280});
+      this.height = 280,
+      this.gridColor,
+      this.tickColor});
 
   final List<String> labels;
   final List<ImdSeries> series;
   final double height;
+  final Color? gridColor;
+  final Color? tickColor;
 
   @override
   Widget build(BuildContext context) {
+    final c = context.imd;
+    final grid = gridColor ?? (c.isDark ? c.line : _gridColor);
+    final tick = tickColor ?? c.muted;
     return SizedBox(
       height: height,
       child: Directionality(
@@ -88,7 +98,7 @@ class ImdLineChart extends StatelessWidget {
             Expanded(
                 child: CustomPaint(
                     size: Size.infinite,
-                    painter: _LinePainter(labels, series))),
+                    painter: _LinePainter(labels, series, grid, tick))),
             const SizedBox(height: 8),
             Wrap(
               alignment: WrapAlignment.center,
@@ -105,9 +115,7 @@ class ImdLineChart extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    Text(s.label,
-                        style:
-                            const TextStyle(fontSize: 12, color: _tickColor)),
+                    Text(s.label, style: TextStyle(fontSize: 12, color: tick)),
                   ]),
               ],
             ),
@@ -119,9 +127,11 @@ class ImdLineChart extends StatelessWidget {
 }
 
 class _LinePainter extends CustomPainter {
-  _LinePainter(this.labels, this.series);
+  _LinePainter(this.labels, this.series, this.gridPaintColor, this.tick);
   final List<String> labels;
   final List<ImdSeries> series;
+  final Color gridPaintColor;
+  final Color tick;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -131,19 +141,19 @@ class _LinePainter extends CustomPainter {
         maxV <= 0 ? [for (var i = 0; i <= 10; i++) i / 10] : _niceTicks(maxV);
     final top = ticks.last;
     final yLabelW = ticks
-            .map((t) => _tp(_tickLabel(t, ticks)).width)
+            .map((t) => _tp(_tickLabel(t, ticks), color: tick).width)
             .fold<double>(0, math.max) +
         10;
     const bottomH = 22.0;
     final plot =
         Rect.fromLTRB(yLabelW, 6, size.width - 6, size.height - bottomH);
     final grid = Paint()
-      ..color = _gridColor
+      ..color = gridPaintColor
       ..strokeWidth = 1;
     for (final t in ticks) {
       final y = plot.bottom - (t / top) * plot.height;
       canvas.drawLine(Offset(plot.left, y), Offset(plot.right, y), grid);
-      final tp = _tp(_tickLabel(t, ticks));
+      final tp = _tp(_tickLabel(t, ticks), color: tick);
       tp.paint(canvas, Offset(plot.left - tp.width - 8, y - tp.height / 2));
     }
     final n = labels.length;
@@ -152,7 +162,7 @@ class _LinePainter extends CustomPainter {
     // تسميات المحور السيني: 8 كحد أقصى (autoSkip).
     final skip = (n / 8).ceil().clamp(1, 1000);
     for (var i = 0; i < n; i += skip) {
-      final tp = _tp(labels[i]);
+      final tp = _tp(labels[i], color: tick);
       tp.paint(canvas, Offset(xOf(i) - tp.width / 2, plot.bottom + 6));
     }
     for (final s in series) {
@@ -209,7 +219,10 @@ class _LinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _LinePainter old) =>
-      old.labels != labels || old.series != series;
+      old.labels != labels ||
+      old.series != series ||
+      old.gridPaintColor != gridPaintColor ||
+      old.tick != tick;
 }
 
 /// مخطط أعمدة أفقية (indexAxis: 'y') بزوايا 8 وسماكة 20.
@@ -218,30 +231,47 @@ class ImdHBarChart extends StatelessWidget {
     super.key,
     required this.labels,
     required this.values,
-    this.color = const Color(0xFF0E6B3E),
+    this.color,
     this.height = 280,
+    this.gridColor,
+    this.tickColor,
   });
 
   final List<String> labels;
   final List<num> values;
-  final Color color;
+
+  /// لون الأعمدة — الافتراضي لون التمييز في السمة الحالية.
+  final Color? color;
   final double height;
+  final Color? gridColor;
+  final Color? tickColor;
 
   @override
   Widget build(BuildContext context) {
+    final c = context.imd;
     return SizedBox(
       height: height,
       child: CustomPaint(
-          size: Size.infinite, painter: _HBarPainter(labels, values, color)),
+        size: Size.infinite,
+        painter: _HBarPainter(
+          labels,
+          values,
+          color ?? c.accent,
+          gridColor ?? (c.isDark ? c.line : _gridColor),
+          tickColor ?? c.muted,
+        ),
+      ),
     );
   }
 }
 
 class _HBarPainter extends CustomPainter {
-  _HBarPainter(this.labels, this.values, this.color);
+  _HBarPainter(this.labels, this.values, this.color, this.gridPaintColor, this.tick);
   final List<String> labels;
   final List<num> values;
   final Color color;
+  final Color gridPaintColor;
+  final Color tick;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -252,17 +282,17 @@ class _HBarPainter extends CustomPainter {
     final top = ticks.last;
     // التسميات على يسار المحور (Chart.js يرسم الاتجاه LTR في اللوحة).
     final labelW =
-        labels.map((l) => _tp(l).width).fold<double>(0, math.max) + 10;
+        labels.map((l) => _tp(l, color: tick).width).fold<double>(0, math.max) + 10;
     const bottomH = 22.0;
     final plot =
         Rect.fromLTRB(labelW, 6, size.width - 12, size.height - bottomH);
     final grid = Paint()
-      ..color = _gridColor
+      ..color = gridPaintColor
       ..strokeWidth = 1;
     for (final t in ticks) {
       final x = plot.left + (t / top) * plot.width;
       canvas.drawLine(Offset(x, plot.top), Offset(x, plot.bottom), grid);
-      final tp = _tp(_tickLabel(t, ticks));
+      final tp = _tp(_tickLabel(t, ticks), color: tick);
       tp.paint(canvas, Offset(x - tp.width / 2, plot.bottom + 6));
     }
     final n = labels.length;
@@ -270,7 +300,7 @@ class _HBarPainter extends CustomPainter {
     final band = plot.height / n;
     for (var i = 0; i < n; i++) {
       final cy = plot.top + band * i + band / 2;
-      final tp = _tp(labels[i]);
+      final tp = _tp(labels[i], color: tick);
       tp.paint(canvas, Offset(plot.left - tp.width - 8, cy - tp.height / 2));
       final w = (values[i] / top) * plot.width;
       if (w <= 0) continue;
@@ -287,7 +317,11 @@ class _HBarPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _HBarPainter old) =>
-      old.labels != labels || old.values != values;
+      old.labels != labels ||
+      old.values != values ||
+      old.color != color ||
+      old.gridPaintColor != gridPaintColor ||
+      old.tick != tick;
 }
 
 /// `.score-ring` — حلقة مؤشر بنسبة مئوية.
@@ -448,5 +482,8 @@ class _VBarPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _VBarPainter old) =>
-      old.labels != labels || old.series != series || old.grid != grid;
+      old.labels != labels ||
+      old.series != series ||
+      old.grid != grid ||
+      old.tick != tick;
 }

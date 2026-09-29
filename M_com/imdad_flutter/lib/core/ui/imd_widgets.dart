@@ -884,6 +884,8 @@ class ImdTable extends StatefulWidget {
     this.footer,
     this.minWidth,
     this.onHeaderTap,
+    this.sortIndex,
+    this.sortAsc = true,
     this.zebra = false,
     this.pageSize,
     this.onPageChanged,
@@ -906,6 +908,15 @@ class ImdTable extends StatefulWidget {
 
   /// ضغط رأس العمود (`th[data-k]{cursor:pointer}`) — يُستخدم للفرز.
   final ValueChanged<int>? onHeaderTap;
+
+  /// فهرس العمود المفروز حاليًّا (من أعمدة هذا الجدول لا من بيانات الشاشة)،
+  /// أو `null` فلا فرز. الفرز نفسه يبقى على الشاشة؛ هذه علامته البصرية فقط:
+  /// سهمٌ بلون التمييز على رأس العمود يبيّن العمود والاتجاه معًا، فلا يحتاج
+  /// المستخدم أن يتذكّر ما ضغط. تجاهلها الشاشةُ ⇒ لا سهم كما كان.
+  final int? sortIndex;
+
+  /// اتجاه [sortIndex]: تصاعدي (الافتراضي) أو تنازلي.
+  final bool sortAsc;
 
   /// `null` (الافتراضي) ⇒ كل الصفوف كما هي اليوم. عدد صحيح ⇒ ترقيم صفحات
   /// داخلي بهذا الحجم، مع شريطٍ تحت الجدول. الفرز خارج مسؤولية هذه الودجة
@@ -975,9 +986,26 @@ class _ImdTableState extends State<ImdTable> {
 
   Widget _header(BuildContext context, ImdCol col, int index) {
     final c = context.imd;
-    final text = ImdEmojiText(col.label,
+    final sorted = widget.sortIndex == index;
+    final label = ImdEmojiText(col.label,
         iconSize: 13,
-        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: c.muted, height: 1.3));
+        style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: sorted ? FontWeight.w700 : FontWeight.w600,
+            color: sorted ? c.accent : c.muted,
+            height: 1.3));
+    // السهم على العمود المفروز وحده: لو وُضع على كل عمودٍ قابلٍ للفرز لاتّسعت
+    // كل الأعمدة (عرضها ذاتيٌّ من محتواها) وضاق الجدول بلا طائل.
+    final text = !sorted
+        ? label
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(child: label),
+              const SizedBox(width: 4),
+              ImdIcon(widget.sortAsc ? 'chevron-up' : 'chevron-down', size: 12, color: c.accent),
+            ],
+          );
     if (widget.onHeaderTap == null) return text;
     return MouseRegion(
       cursor: SystemMouseCursors.click,

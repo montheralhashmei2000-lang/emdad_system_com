@@ -514,12 +514,11 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
           minWidth: _out.columns.length > 7 ? 1000 : null,
           columns: [
             const ImdCol('م', numeric: true),
-            for (final (i, c) in _out.columns.indexed)
-              ImdCol(
-                '${c.title}${_sortCol == i ? (_sortDir > 0 ? ' ▲' : ' ▼') : ''}',
-                numeric: c.numeric,
-              ),
+            for (final c in _out.columns) ImdCol(c.title, numeric: c.numeric),
           ],
+          // عمود «م» يتقدّم أعمدة البيانات، فمؤشر الفرز يزيح بمقداره.
+          sortIndex: _sortCol == null ? null : _sortCol! + 1,
+          sortAsc: _sortDir > 0,
           cards: true,
           pageSize: 100,
           empty: 'لا توجد بيانات مطابقة للفلاتر الحالية',
