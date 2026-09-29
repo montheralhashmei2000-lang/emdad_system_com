@@ -3,8 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/core/theme/app_theme.dart';
 import 'package:imdad/core/ui/imd_widgets.dart';
 
-/// `ImdTable(cards: true)` — لا تُختبر إلا حين تُفعَّل صراحةً، ولا تُفعَّل بعد
-/// في أيّ شاشة من الـ٣٦ التي تستخدم `ImdTable`.
+/// `ImdTable(cards: …)` — عرض البطاقات على الجوال هو الافتراضي الآن، فقاعدة
+/// «الجداول العريضة تصير بطاقات دون 900» في CLAUDE.md تنطبق على أيّ جدولٍ
+/// جديد بلا أن يتذكّرها كاتبه. ومن أراد جدولًا صريحًا مرّر `cards: false`.
 void main() {
   Widget host(Widget child, {double width = 400}) => MaterialApp(
         theme: AppTheme.light(),
@@ -26,8 +27,14 @@ void main() {
       ];
 
   testWidgets('cards: false ⇒ جدولٌ كما هو دومًا، حتى على شاشةٍ ضيّقة', (tester) async {
-    await tester.pumpWidget(host(ImdTable(columns: cols(), rows: rowsOf(3)), width: 400));
+    await tester.pumpWidget(host(ImdTable(columns: cols(), rows: rowsOf(3), cards: false), width: 400));
     expect(find.byType(Table), findsOneWidget);
+    expect(find.text('عنصر 0'), findsOneWidget);
+  });
+
+  testWidgets('الافتراضي بطاقات: جدولٌ بلا `cards` يتحول بطاقاتٍ على شاشةٍ ضيّقة', (tester) async {
+    await tester.pumpWidget(host(ImdTable(columns: cols(), rows: rowsOf(3)), width: 400));
+    expect(find.byType(Table), findsNothing);
     expect(find.text('عنصر 0'), findsOneWidget);
   });
 

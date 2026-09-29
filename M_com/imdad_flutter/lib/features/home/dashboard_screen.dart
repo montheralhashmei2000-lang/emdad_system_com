@@ -361,7 +361,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final c = context.imd;
     final d = _d;
-    final can = context.read<AuthService>().currentUser?.role == 'admin';
     final nav = ImdNav.of(context);
     String v(int Function(_DashData) f) => d == null ? '…' : nf(f(d));
 
@@ -478,12 +477,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     if (more.isNotEmpty)
                       Theme(
                         data: Theme.of(context).copyWith(dividerColor: c.line),
-                        child: ExpansionTile(
-                          tilePadding: EdgeInsets.zero,
-                          childrenPadding: EdgeInsets.zero,
-                          title: Text('إجراءات إضافية (${nf(more.length)})',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.text2)),
-                          children: [ImdRbar(bottom: 0, children: [for (final a in more) button(a)])],
+                        // ExpansionTile يبني ListTile، وهذا يرسم تموّجه على أقرب
+                        // Material فوقه. وأقربُ ما فوقه هنا خلفية ImdPanel الملوّنة
+                        // فتحجب التموّج — وMaterial شفافةٌ تعطيه سطحًا بلا أثرٍ بصري.
+                        child: Material(
+                          type: MaterialType.transparency,
+                          child: ExpansionTile(
+                            tilePadding: EdgeInsets.zero,
+                            childrenPadding: EdgeInsets.zero,
+                            title: Text('إجراءات إضافية (${nf(more.length)})',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.text2)),
+                            children: [ImdRbar(bottom: 0, children: [for (final a in more) button(a)])],
+                          ),
                         ),
                       ),
                   ]);

@@ -6,6 +6,7 @@ import 'package:imdad/core/security/auth_service.dart';
 import 'package:imdad/core/security/perm.dart';
 import 'package:imdad/core/theme/app_theme.dart';
 import 'package:imdad/data/db/app_database.dart';
+import 'package:imdad/data/sync/auto_sync.dart';
 import 'package:imdad/domain/app_space.dart';
 import 'package:imdad/features/home/home_shell.dart';
 import 'package:provider/provider.dart';
@@ -23,10 +24,15 @@ void main() {
 
   late AppDatabase db;
   late AuthService auth;
+  // الشريط العلوي يقرأ حالة المزامنة، فلا تُبنى القشرة بلا هذه الخدمة.
+  // تُنشأ ولا تُشغَّل: بلا `refresh()` لا مؤقّت ولا منفذ، وحالتها الابتدائية
+  // (متوقفة، بلا آخر مزامنة) هي ما يعرضه الشريط.
+  late AutoSyncService autoSync;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     db = AppDatabase.forTesting(NativeDatabase.memory());
+    autoSync = AutoSyncService(db);
     auth = AuthService(db);
     await auth.createAdmin(username: 'admin', password: 'Test@12345');
     await auth.login('admin', 'Test@12345');
@@ -43,6 +49,7 @@ void main() {
         providers: [
           Provider<AppDatabase>.value(value: db),
           Provider<AuthService>.value(value: auth),
+          ChangeNotifierProvider<AutoSyncService>.value(value: autoSync),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
