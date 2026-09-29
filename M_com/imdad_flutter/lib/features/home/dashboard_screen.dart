@@ -50,6 +50,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   _DashData? _d;
   List<String> _quickActionIds = const [];
 
+  /// بطاقات المؤشرات المعروضة بترتيبها — فارغةٌ تعني الترتيب الافتراضي.
+  List<String> _kpiIds = const [];
+
+  /// المؤشرات المتاحة بمعرّفاتها وأسمائها، بالترتيب الافتراضي.
+  static const _kpiCatalog = <(String, String)>[
+    ('items', 'إجمالي الأصناف'),
+    ('warehouses', 'المستودعات الفعالة'),
+    ('todayOps', 'حركات اليوم'),
+    ('interventions', 'إجراءات تحتاج تدخل'),
+    ('stock', 'أصناف تحت الحد / صفرية'),
+    ('openStk', 'جلسات جرد مفتوحة'),
+  ];
+
   static const _quickActions = <(String, String, String)>[
     ('bell', 'الأوامر المعلقة', 'pendingOrders'),
     ('calculator', 'الأرصدة الحالية', 'balances'),
@@ -78,7 +91,83 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final userId = context.read<AuthService>().currentUser?.id ?? 'local';
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getStringList('imdad.dashboard.shortcuts.$userId');
-    if (mounted && saved != null) setState(() => _quickActionIds = saved);
+    final kpis = prefs.getStringList('imdad.dashboard.kpis.$userId');
+    if (!mounted) return;
+    setState(() {
+      if (saved != null) _quickActionIds = saved;
+      // معرّفٌ محفوظٌ لم يعد في الكتالوج (أُزيل مؤشر في إصدارٍ لاحق) يُسقَط
+      // هنا لا عند العرض، وإلا بقي في التفضيل المحفوظ إلى الأبد.
+      if (kpis != null) {
+        _kpiIds = kpis.where((id) => _kpiCatalog.any((k) => k.$1 == id)).toList();
+      }
+    });
+  }
+
+  /// اختيار المؤشرات وترتيبها: السحب يرتّب، ومربع الاختيار يُظهر ويُخفي.
+  Future<void> _configureKpis(BuildContext context) async {
+    final userId = context.read<AuthService>().currentUser?.id ?? 'local';
+    // المعروضة أولًا بترتيبها، ثم المخفيّة — فالسحب يرتّب ما يُرى دون أن
+    // تختفي البقية عن متناول اليد.
+    final shown = _kpiIds.isEmpty ? _kpiCatalog.map((k) => k.$1).toList() : List<String>.of(_kpiIds);
+    final ordered = [...shown, for (final k in _kpiCatalog) if (!shown.contains(k.$1)) k.$1];
+    final selected = Set<String>.of(shown);
+
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) {
+        final c = context.imd;
+        String labelOf(String id) => _kpiCatalog.firstWhere((k) => k.$1 == id).$2;
+        return AlertDialog(
+          title: const Text('تخصيص بطاقات المؤشرات'),
+          content: SizedBox(
+            width: 460,
+            height: 380,
+            child: ReorderableListView(
+              buildDefaultDragHandles: false,
+              // `onReorderItem` لا `onReorder`: الأخير يُسلّم فهرسًا محسوبًا
+              // قبل الحذف فيحتاج تصحيحًا يدويًا، وهذا يُسلّمه مضبوطًا.
+              onReorderItem: (from, to) => setDialogState(() => ordered.insert(to, ordered.removeAt(from))),
+              children: [
+                for (final (i, id) in ordered.indexed)
+                  ListTile(
+                    key: ValueKey(id),
+                    contentPadding: EdgeInsets.zero,
+                    leading: Checkbox(
+                      value: selected.contains(id),
+                      activeColor: c.accent,
+                      onChanged: (v) => setDialogState(() {
+                        if (v == true) {
+                          selected.add(id);
+                        } else {
+                          selected.remove(id);
+                        }
+                      }),
+                    ),
+                    title: Text(labelOf(id),
+                        style: TextStyle(color: selected.contains(id) ? c.text : c.muted)),
+                    trailing: ReorderableDragStartListener(
+                      index: i,
+                      child: ImdIcon('menu', size: 18, color: c.muted),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, [for (final id in ordered) if (selected.contains(id)) id]),
+              child: const Text('حفظ'),
+            ),
+          ],
+        );
+      }),
+    );
+    if (result == null || !mounted) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('imdad.dashboard.kpis.$userId', result);
+    if (mounted) setState(() => _kpiIds = result);
   }
 
   Future<void> _configureQuickActions(BuildContext context, List<(String, String, String)> available) async {
@@ -366,25 +455,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return ImdPage(
       children: [
-        const ImdPageTitle(
+        ImdPageTitle(
           title: 'لوحة التشغيل الرئيسية',
           icon: 'compass',
           subtitle: 'ملخص المخزون والمهام والتنبيهات، مع اختصارات تناسب صلاحياتك',
+          actions: [
+            ImdIconButton(
+              icon: 'sliders',
+              tooltip: 'تخصيص بطاقات المؤشرات',
+              onPressed: () => _configureKpis(context),
+            ),
+          ],
         ),
         if (d == null)
           const ImdShimmerKpis(count: 6)
         else
-          ImdKpis(children: [
-            ImdKpi(label: 'إجمالي الأصناف', value: v((d) => d.items)),
-            ImdKpi(label: 'المستودعات الفعالة', value: v((d) => d.warehouses), color: c.accent),
-            ImdKpi(label: 'حركات اليوم', value: v((d) => d.todayOps)),
-            ImdKpi(label: 'إجراءات تحتاج تدخل', value: v((d) => d.interventions), color: c.danger),
-            ImdKpi(
-                label: 'أصناف تحت الحد / صفرية',
-                value: '${nf(d.low)} / ${nf(d.zero)}',
-                color: c.danger),
-            ImdKpi(label: 'جلسات جرد مفتوحة', value: v((d) => d.openStk), color: c.accent),
-          ]),
+          Builder(builder: (context) {
+            final byId = {
+              'items': ImdKpi(label: 'إجمالي الأصناف', value: v((d) => d.items)),
+              'warehouses': ImdKpi(label: 'المستودعات الفعالة', value: v((d) => d.warehouses), color: c.accent),
+              'todayOps': ImdKpi(label: 'حركات اليوم', value: v((d) => d.todayOps)),
+              'interventions':
+                  ImdKpi(label: 'إجراءات تحتاج تدخل', value: v((d) => d.interventions), color: c.danger),
+              'stock': ImdKpi(
+                  label: 'أصناف تحت الحد / صفرية',
+                  value: '${nf(d.low)} / ${nf(d.zero)}',
+                  color: c.danger),
+              'openStk': ImdKpi(label: 'جلسات جرد مفتوحة', value: v((d) => d.openStk), color: c.accent),
+            };
+            final order = _kpiIds.isEmpty ? _kpiCatalog.map((k) => k.$1).toList() : _kpiIds;
+            return ImdKpis(children: [
+              for (final id in order)
+                if (byId[id] != null) byId[id]!,
+            ]);
+          }),
         const SizedBox(height: 16),
         ImdGrid2(children: [
           ImdPanel(
