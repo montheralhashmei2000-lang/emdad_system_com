@@ -883,8 +883,8 @@ class _IssueScreenState extends State<IssueScreen> {
           ImdWorkflowSteps(
             const ['حدد الجهة المستفيدة', 'اختر الأصناف', 'راجع الاستحقاق', 'اطبع أو نفّذ أو احفظ مسودة'],
             activeIndex: activeStep,
+            hints: nextSteps,
           ),
-          ImdAlert(nextSteps[activeStep], tone: activeStep == 3 ? ImdTone.ok : ImdTone.info),
           ImdQuickGrid([
             ('الأصناف', nf(_items.length)),
             ('الوحدات', nf(_units.length)),

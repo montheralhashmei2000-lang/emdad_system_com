@@ -358,10 +358,28 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
       _lab('التاريخ', ImdDateField(value: _uDate, onChanged: (v) => setState(() => _uDate = v))),
       _lab('المرجع', ImdReadonlyField(text: _uRef)),
     ];
+    final uc = _collect(_uRows, false);
+    // «حدد الحالة» لا تُعطِّل: `_cond` مضبوطةٌ دائمًا (صالح افتراضًا)، فتُعدّ
+    // منجزةً بمجرد اكتمال الترويسة، والعائق التالي هو الأصناف.
+    final uStep = (_uWh.isEmpty || _uUnit.isEmpty || imdIsFuture(_uDate))
+        ? 0
+        : (uc.err.isNotEmpty || uc.rows.isEmpty)
+            ? 2
+            : 3;
+
     return [
       ImdSoftCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const ImdWorkflowSteps(['اختر الوحدة والمستودع', 'حدد الحالة', 'أضف الأصناف', 'اطبع أو اعتمد']),
+          ImdWorkflowSteps(
+            const ['اختر الوحدة والمستودع', 'حدد الحالة', 'أضف الأصناف', 'اطبع أو اعتمد'],
+            activeIndex: uStep,
+            hints: const [
+              'اختر الوحدة التي أعادت الأصناف والمستودع المستلم، وتأكد أن التاريخ ليس في المستقبل.',
+              'حدد حالة المرتجع: صالح يعود للمخزون، وتالف يُسجَّل توثيقيًا بلا رصيد.',
+              'أضف صنفًا واحدًا على الأقل وحدد وحدته وكميته.',
+              'اكتمل التحقق. اطبع المرتجع أو اعتمده.',
+            ],
+          ),
           ImdQuickGrid([('المستودعات', nf(_whs.length)), ('الوحدات', nf(_units.length)), ('الأصناف', nf(_items.length))]),
           const ImdPrintTip('الأصناف الصالحة تُعاد للرصيد. الأصناف التالفة تُسجل توثيقيًا فقط بدون إضافة مخزون.'),
         ]),
@@ -420,10 +438,28 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
       _lab('التاريخ', ImdDateField(value: _sDate, onChanged: (v) => setState(() => _sDate = v))),
       _lab('المرجع', ImdReadonlyField(text: _sRef)),
     ];
+    final sc = _collect(_sRows, true);
+    // ربط السند الأصلي موصًى به لا إلزامي («إن وجد»)، فلا يُعدّ عائقًا —
+    // تنبيهه يبقى في صندوق الفحص.
+    final sStep = (_sWh.isEmpty || _sSup.isEmpty || imdIsFuture(_sDate))
+        ? 0
+        : (sc.err.isNotEmpty || sc.rows.isEmpty || _balError(sc.rows, _sWh).isNotEmpty)
+            ? 2
+            : 3;
+
     return [
       ImdSoftCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const ImdWorkflowSteps(['اختر المورد والمستودع', 'اربط السند الأصلي إن وجد', 'أضف الأصناف', 'اطبع واعتمد الخصم']),
+          ImdWorkflowSteps(
+            const ['اختر المورد والمستودع', 'اربط السند الأصلي إن وجد', 'أضف الأصناف', 'اطبع واعتمد الخصم'],
+            activeIndex: sStep,
+            hints: const [
+              'اختر الجهة الموردة والمستودع الذي سيخرج منه المرتجع، وتأكد أن التاريخ ليس في المستقبل.',
+              'اكتب مرجع سند التوريد الأصلي وسبب الإرجاع — غير إلزاميين لكنهما يسهّلان التتبع.',
+              'أضف الأصناف وتأكد أن رصيد المستودع يكفي للخصم.',
+              'اكتمل التحقق. الاعتماد يخصم الكميات من الرصيد الحالي.',
+            ],
+          ),
           ImdQuickGrid([('الموردون', nf(_sups.length)), ('المستودعات', nf(_whs.length)), ('الأصناف', nf(_items.length))]),
           const ImdPrintTip('اعتماد مرتجع المورد يخصم الكميات من الرصيد الحالي، فراجِع المرجع الأصلي والسبب قبل التنفيذ.'),
         ]),

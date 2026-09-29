@@ -39,17 +39,31 @@ class ImdSoftCard extends StatelessWidget {
 }
 
 /// `.workflow-steps > .wstep`
+///
+/// بلا [activeIndex] شريطُ خطواتٍ ساكن كما كان. ومعه تُعلَّم الخطوات المنجزة
+/// والخطوة الحالية، فيرى المستخدم أين هو من السند. ومع [hints] يُعرض تحتها
+/// سطرٌ يقول ما ينقصه الآن تحديدًا — وهو ما يسأل عنه من يقف أمام نموذجٍ لا
+/// يعرف لماذا لا يُعتمد.
 class ImdWorkflowSteps extends StatelessWidget {
-  const ImdWorkflowSteps(this.steps, {super.key, this.activeIndex});
+  const ImdWorkflowSteps(this.steps, {super.key, this.activeIndex, this.hints})
+      : assert(hints == null || hints.length == steps.length,
+            'لكل خطوة إرشادها: طول hints يساوي طول steps');
   final List<String> steps;
+
   /// الخطوة الأرجح التالية بناءً على اكتمال النموذج.
   final int? activeIndex;
+
+  /// إرشادُ كل خطوة — يُعرض منه إرشاد [activeIndex] وحده. الخطوة الأخيرة
+  /// تعني «جاهز» فتُعرض بنبرة نجاح لا معلومة.
+  final List<String>? hints;
 
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+    final i = activeIndex;
+    final hint = (hints == null || i == null || i < 0 || i >= hints!.length) ? null : hints![i];
+    final chips = Padding(
+      padding: EdgeInsets.only(bottom: hint == null ? 10 : 8),
       child: Wrap(spacing: 8, runSpacing: 8, children: [
         for (var i = 0; i < steps.length; i++)
           Builder(builder: (context) {
@@ -73,6 +87,15 @@ class ImdWorkflowSteps extends StatelessWidget {
             );
           }),
       ]),
+    );
+    if (hint == null) return chips;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        chips,
+        ImdAlert(hint, tone: i == steps.length - 1 ? ImdTone.ok : ImdTone.info),
+      ],
     );
   }
 }

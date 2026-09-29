@@ -679,8 +679,8 @@ class _TransferScreenState extends State<TransferScreen> {
           ImdWorkflowSteps(
             const ['اختر المصدر والهدف', 'أضف الأصناف', 'راجع الرصيد', 'أرسل للتحويل المعلّق'],
             activeIndex: activeStep,
+            hints: nextSteps,
           ),
-          ImdAlert(nextSteps[activeStep], tone: activeStep == 3 ? ImdTone.ok : ImdTone.info),
           ImdQuickGrid([('المستودعات', nf(_whs.length)), ('الأصناف', nf(_items.length))]),
           const ImdPrintTip('التحويل لا يكتمل هنا نهائيًا؛ هو يدخل حالة «بانتظار الاستلام» لحد ما الجهة الهدف تأكد الاستلام أو ترفضه.'),
         ]),

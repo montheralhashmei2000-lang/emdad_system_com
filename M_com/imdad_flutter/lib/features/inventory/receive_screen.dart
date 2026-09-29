@@ -521,10 +521,28 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     final refField = ImdLabeled('المرجع (سند)', ImdReadonlyField(text: _ref), size: 11);
     Widget fld(String l, TextEditingController ctrl) => ImdLabeled(l, ImdFld(controller: ctrl), size: 11);
 
+    final collected = _collect();
+    final activeStep = (_wh.isEmpty || _sup.isEmpty || imdIsFuture(_date))
+        ? 0
+        : !_rows.any((r) => r.itemId.isNotEmpty)
+            ? 1
+            : (collected.err.isNotEmpty || _validate().any((x) => x.level == 'err'))
+                ? 2
+                : 3;
+
     return [
       ImdSoftCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const ImdWorkflowSteps(['بيانات السند', 'إضافة الأصناف', 'مراجعة وطباعة', 'حفظ مسودة أو اعتماد نهائي']),
+          ImdWorkflowSteps(
+            const ['بيانات السند', 'إضافة الأصناف', 'مراجعة وطباعة', 'حفظ مسودة أو اعتماد نهائي'],
+            activeIndex: activeStep,
+            hints: const [
+              'حدد المستودع والجهة الموردة، وتأكد أن تاريخ التوريد ليس في المستقبل.',
+              'أضف صنفًا واحدًا على الأقل وحدد وحدته وكميته.',
+              'راجع الكميات وتواريخ الصلاحية والتكرارات قبل الحفظ.',
+              'اكتمل التحقق. احفظ كمسودة، أو اعتمد السند نهائيًا لإدخال الكميات للمخزون.',
+            ],
+          ),
           ImdQuickGrid([
             ('الأصناف المتاحة', nf(_items.length)),
             ('الموردون', nf(_sups.length)),
