@@ -332,7 +332,16 @@ class _ImdItemPickerState extends State<ImdItemPicker> {
   final _link = LayerLink();
   final _portal = OverlayPortalController();
   final _listScroll = ScrollController();
-  int _idx = -1;
+
+  /// الخيار المُبرَز — `ValueNotifier` لا حقلٌ في الحالة عمدًا.
+  ///
+  /// يتغيّر بمرور الفأرة، و`MouseRegion.onEnter` يُطلق في مرحلة
+  /// `postFrameCallbacks` (انظر `RendererBinding._scheduleMouseTrackerUpdate`).
+  /// والإطار يريد شجرة العرض نظيفةً في تلك المرحلة: `setState` فيها يُعلّم
+  /// عناصر البناء متّسخة، ومنها `LayoutBuilder` — وهذا يستدعي
+  /// `scheduleLayoutCallback` بلا فحص المرحلة، فيقع تأكيده. فالإبراز يُعاد
+  /// بناؤه وحده عبر `ValueListenableBuilder` بلا لمس الشجرة.
+  final _idx = ValueNotifier<int>(-1);
   List<Item> _rows = const [];
 
   static String norm(String s) => s
@@ -378,6 +387,7 @@ class _ImdItemPickerState extends State<ImdItemPicker> {
     _ctrl.dispose();
     _focus.dispose();
     _listScroll.dispose();
+    _idx.dispose();
     super.dispose();
   }
 
@@ -401,7 +411,7 @@ class _ImdItemPickerState extends State<ImdItemPicker> {
             : widget.items.where((i) => norm(_haystack(i)).contains(nq)))
         .take(60)
         .toList();
-    _idx = -1;
+    _idx.value = -1;
     if (!_portal.isShowing) _portal.show();
     setState(() {});
   }
@@ -409,7 +419,7 @@ class _ImdItemPickerState extends State<ImdItemPicker> {
   void _close() {
     if (!mounted) return;
     if (_portal.isShowing) _portal.hide();
-    _idx = -1;
+    _idx.value = -1;
     setState(() {});
   }
 
@@ -427,20 +437,18 @@ class _ImdItemPickerState extends State<ImdItemPicker> {
     if (e.logicalKey == LogicalKeyboardKey.arrowDown ||
         e.logicalKey == LogicalKeyboardKey.arrowUp) {
       if (!_portal.isShowing) _open(_ctrl.text);
-      setState(() {
-        _idx = (_idx + (e.logicalKey == LogicalKeyboardKey.arrowDown ? 1 : -1))
-            .clamp(0, _rows.isEmpty ? 0 : _rows.length - 1);
-      });
+      _idx.value = (_idx.value + (e.logicalKey == LogicalKeyboardKey.arrowDown ? 1 : -1))
+          .clamp(0, _rows.isEmpty ? 0 : _rows.length - 1);
       if (_listScroll.hasClients) {
         _listScroll.jumpTo(
-            (_idx * 38.0).clamp(0, _listScroll.position.maxScrollExtent));
+            (_idx.value * 38.0).clamp(0, _listScroll.position.maxScrollExtent));
       }
       return KeyEventResult.handled;
     }
     if (e.logicalKey == LogicalKeyboardKey.enter &&
         _portal.isShowing &&
         _rows.isNotEmpty) {
-      _pick(_rows[_idx >= 0 ? _idx : 0]);
+      _pick(_rows[_idx.value >= 0 ? _idx.value : 0]);
       return KeyEventResult.handled;
     }
     if (e.logicalKey == LogicalKeyboardKey.escape) {
@@ -459,7 +467,9 @@ class _ImdItemPickerState extends State<ImdItemPicker> {
       child: OverlayPortal(
         controller: _portal,
         overlayChildBuilder: (ctx) {
-          final box = context.findRenderObject() as RenderBox?;
+          // عرض الحقل من `LayerLink` لا من `findRenderObject().size`: الثاني
+          // يقرأ التخطيط أثناء البناء، وهو ما يمنعه الإطار خارج نطاقه.
+          final targetWidth = _link.leaderSize?.width ?? 300;
           return CompositedTransformFollower(
             link: _link,
             targetAnchor: Alignment.bottomRight,
@@ -470,7 +480,7 @@ class _ImdItemPickerState extends State<ImdItemPicker> {
               child: Material(
                 color: Colors.transparent,
                 child: Container(
-                  width: box?.size.width ?? 300,
+                  width: targetWidth,
                   constraints: const BoxConstraints(maxHeight: 260),
                   decoration: BoxDecoration(
                     color: c.surface,
@@ -499,18 +509,24 @@ class _ImdItemPickerState extends State<ImdItemPicker> {
                             final detail = widget.detailOf?.call(it) ?? '';
                             final row = MouseRegion(
                               cursor: SystemMouseCursors.click,
-                              onEnter: (_) => setState(() => _idx = i),
+                              // لا `setState` هنا: هذا النداء يقع في مرحلة
+                              // `postFrameCallbacks`، فيُبنى الإبراز وحده.
+                              onEnter: (_) => _idx.value = i,
                               child: GestureDetector(
                                 onTapDown: (_) => _pick(it),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: i == _idx ? c.accentSoft : null,
-                                    border: i == _rows.length - 1
-                                        ? null
-                                        : Border(
-                                            bottom: BorderSide(color: c.line)),
+                                child: ValueListenableBuilder<int>(
+                                  valueListenable: _idx,
+                                  builder: (context, idx, child) => Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: i == idx ? c.accentSoft : null,
+                                      border: i == _rows.length - 1
+                                          ? null
+                                          : Border(
+                                              bottom: BorderSide(color: c.line)),
+                                    ),
+                                    child: child,
                                   ),
                                   child: Row(children: [
                                     // **الكود شارةٌ لا نصٌّ ملتصق بالاسم**:

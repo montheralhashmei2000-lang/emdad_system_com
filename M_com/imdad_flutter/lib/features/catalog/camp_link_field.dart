@@ -121,8 +121,9 @@ class _CampLinkFieldState extends State<CampLinkField> {
 
   Widget _popup(BuildContext ctx) {
     final c = ctx.imd;
-    final box = context.findRenderObject() as RenderBox?;
-    final width = box?.size.width ?? 320;
+    // من `LayerLink` لا من `findRenderObject().size`: الثاني يقرأ التخطيط
+    // أثناء البناء، وهو ما يمنعه الإطار خارج نطاقه.
+    final width = _link.leaderSize?.width ?? 320;
     return Stack(children: [
       // إغلاق عند النقر خارج القائمة
       Positioned.fill(
