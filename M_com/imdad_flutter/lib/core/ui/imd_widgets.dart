@@ -892,6 +892,10 @@ class ImdTable extends StatefulWidget {
     this.pageSize,
     this.onPageChanged,
     this.cards = true,
+    this.headerBackground,
+    this.headerForeground,
+    this.headerPadding,
+    this.cellPadding,
   });
 
   final List<ImdCol> columns;
@@ -951,6 +955,22 @@ class ImdTable extends StatefulWidget {
   /// إجراءاتٍ أسفلها.
   final bool cards;
 
+  /// خلفية صف الرأس — `null` (الافتراضي) ⇒ الرمادي الفاتح المعتاد `c.tableHead`.
+  /// تستعملها جداول الإدخال الكثيفة لتلوين رأسها بلون التمييز، فيتّبع
+  /// السمة تلقائيًّا (زمردي داكن في الفاتح، زمردي فاتح في الداكن) بدل لونٍ
+  /// صلبٍ واحد يخالف الوضع الداكن.
+  final Color? headerBackground;
+
+  /// نص صف الرأس — `null` (الافتراضي) ⇒ `c.muted` المعتاد.
+  final Color? headerForeground;
+
+  /// حشوة خلايا الرأس — `null` (الافتراضي) ⇒ 12 أفقيًّا و10 رأسيًّا كالمعتاد.
+  final EdgeInsets? headerPadding;
+
+  /// حشوة خلايا الجسم — `null` (الافتراضي) ⇒ 12 أفقيًّا و9 رأسيًّا كالمعتاد.
+  /// جداول الإدخال الكثيفة تُضيّقها لتوفير المساحة على عشرات الأسطر.
+  final EdgeInsets? cellPadding;
+
   @override
   State<ImdTable> createState() => _ImdTableState();
 }
@@ -977,7 +997,7 @@ class _ImdTableState extends State<ImdTable> {
 
   Widget _cell(ImdCol col, Widget child, {required int row, EdgeInsets? pad}) {
     Widget w = Padding(
-      padding: pad ?? const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      padding: pad ?? widget.cellPadding ?? const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       child: Align(
         alignment: col.center ? Alignment.center : AlignmentDirectional.centerStart,
         widthFactor: 1,
@@ -1003,12 +1023,13 @@ class _ImdTableState extends State<ImdTable> {
   Widget _header(BuildContext context, ImdCol col, int index) {
     final c = context.imd;
     final sorted = widget.sortIndex == index;
+    final headerFg = widget.headerForeground;
     final label = ImdEmojiText(col.label,
         iconSize: 13,
         style: TextStyle(
             fontSize: 12.5,
             fontWeight: sorted ? FontWeight.w700 : FontWeight.w600,
-            color: sorted ? c.accent : c.muted,
+            color: headerFg ?? (sorted ? c.accent : c.muted),
             height: 1.3));
     // السهم على العمود المفروز وحده: لو وُضع على كل عمودٍ قابلٍ للفرز لاتّسعت
     // كل الأعمدة (عرضها ذاتيٌّ من محتواها) وضاق الجدول بلا طائل.
@@ -1196,14 +1217,17 @@ class _ImdTableState extends State<ImdTable> {
                   : FlexColumnWidth(cols[j].flex.toDouble()),
       };
       final headerRow = TableRow(
-        decoration: BoxDecoration(color: c.tableHead, border: Border(bottom: BorderSide(color: c.line))),
+        decoration: BoxDecoration(
+          color: widget.headerBackground ?? c.tableHead,
+          border: widget.headerBackground == null ? Border(bottom: BorderSide(color: c.line)) : null,
+        ),
         children: [
           for (var j = 0; j < cols.length; j++)
             _cell(
               cols[j],
               _header(context, cols[j], j),
               row: -1,
-              pad: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              pad: widget.headerPadding ?? const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             ),
         ],
       );

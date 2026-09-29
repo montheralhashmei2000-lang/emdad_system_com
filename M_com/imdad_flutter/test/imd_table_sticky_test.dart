@@ -101,4 +101,39 @@ void main() {
     expect(find.text('لا بيانات'), findsOneWidget);
     expect(find.byType(Table), findsNothing);
   });
+
+  testWidgets('headerBackground/headerForeground: يُطليان صفّ الرأس ونصّه معًا',
+      (tester) async {
+    await tester.pumpWidget(host(ImdTable(
+      columns: cols(),
+      rows: rowsOf(5),
+      cards: false,
+      headerBackground: const Color(0xFF047857),
+      headerForeground: Colors.white,
+    )));
+
+    // `TableRow.decoration` يُرسم داخليًّا في RenderTable لا عبر Container
+    // مستقل، فيُقرأ من صف الرأس (الأول) في شجرة الودجات مباشرة.
+    final table = tester.widget<Table>(find.byType(Table));
+    final headerRow = table.children.first;
+    final decoration = headerRow.decoration as BoxDecoration;
+    expect(decoration.color, const Color(0xFF047857));
+
+    final label = tester.widget<Text>(find.text('الكود'));
+    expect(label.style?.color, Colors.white);
+  });
+
+  testWidgets('cellPadding مُخصَّصة تُستبدل بها حشوة الجسم الافتراضية',
+      (tester) async {
+    await tester.pumpWidget(host(ImdTable(
+      columns: cols(),
+      rows: rowsOf(2),
+      cards: false,
+      cellPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+    )));
+    final pad = tester.widget<Padding>(find
+        .ancestor(of: find.text('صنف 0'), matching: find.byType(Padding))
+        .first);
+    expect(pad.padding, const EdgeInsets.symmetric(horizontal: 6, vertical: 4));
+  });
 }
