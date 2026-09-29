@@ -328,7 +328,7 @@ class MovementsRepo {
     return rows.any((r) => excludeStatus.isEmpty || r.data['status'] != excludeStatus);
   }
 
-  /// كتابة حدث الحفظ في سجل التدقيق بنفس أسماء أحداث الويب (`auditWrite`).
+  /// كتابة حدث الحفظ في سجل التدقيق.
   Future<void> _auditSave({
     required String action,
     required String entityType,

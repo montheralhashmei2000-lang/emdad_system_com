@@ -5,11 +5,11 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/migration/data_export.dart';
-import 'package:imdad/data/migration/web_import.dart';
+import 'package:imdad/data/migration/legacy_import.dart';
 import 'package:imdad/data/repos/catalog_repo.dart';
 import 'package:imdad/data/sync/sync_marks.dart';
 
-/// المزامنة بين الأجهزة والنسخ الاحتياطي كلاهما = [DataExporter] ثم [WebImporter].
+/// المزامنة بين الأجهزة والنسخ الاحتياطي كلاهما = [DataExporter] ثم [LegacyImporter].
 ///
 /// كل طرف يكتب قائمة حقوله بيده، فانفصلت القائمتان: نوع عملية الأسطوانة، والحد
 /// الأدنى للصنف، وسجل تعديل المستندات وإلغائها، ومعامل المقرر… كانت تضيع عند كل
@@ -73,7 +73,7 @@ void main() {
       await fill(a, pass);
 
       final map = await DataExporter(a).toMap(includeUsers: true);
-      await WebImporter(b).importJson(jsonDecode(jsonEncode(map)) as Map<String, dynamic>);
+      await LegacyImporter(b).importJson(jsonDecode(jsonEncode(map)) as Map<String, dynamic>);
 
       final lost = <String>[];
       for (final t in tables) {
@@ -116,8 +116,8 @@ void main() {
 
     // ذهابًا وإيابًا مرتين، كما تفعل المزامنة التلقائية.
     for (var i = 0; i < 2; i++) {
-      await WebImporter(b).importJson(jsonDecode(jsonEncode(await DataExporter(a).toMap())) as Map<String, dynamic>);
-      await WebImporter(a).importJson(jsonDecode(jsonEncode(await DataExporter(b).toMap())) as Map<String, dynamic>);
+      await LegacyImporter(b).importJson(jsonDecode(jsonEncode(await DataExporter(a).toMap())) as Map<String, dynamic>);
+      await LegacyImporter(a).importJson(jsonDecode(jsonEncode(await DataExporter(b).toMap())) as Map<String, dynamic>);
     }
 
     for (final db in [a, b]) {

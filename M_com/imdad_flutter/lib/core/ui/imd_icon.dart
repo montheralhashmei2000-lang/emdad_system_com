@@ -4,7 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'imd_icon_data.dart';
 import 'imd_tokens.dart';
 
-/// أيقونة من مكتبة الويب نفسها (`IMDAD_ICON(name)`): خط 2، viewBox 24، بلون النص الحالي.
+/// أيقونة من مكتبة النظام: مسار SVG بخط 2 داخل `viewBox 24`، بلون النص الحالي.
 class ImdIcon extends StatelessWidget {
   const ImdIcon(this.name, {super.key, this.size, this.color, this.strokeWidth = 2});
 
@@ -31,8 +31,7 @@ class ImdIcon extends StatelessWidget {
 
   static final Map<String, String> _cache = {};
 
-  /// أيقونات خاصة بالتطبيق الأصلي، غير موجودة في مكتبة الويب المولَّدة
-  /// (`imd_icon_data.dart` يُعاد توليده فلا يُعدَّل يدويًا).
+  /// أيقونات تُضاف هنا يدويًا لأن `imd_icon_data.dart` مولَّد فلا يُعدَّل.
   static const Map<String, String> _extra = {
     'log-in': '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/>',
     'log-out': '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>',
@@ -67,7 +66,8 @@ class ImdIcon extends StatelessWidget {
   }
 }
 
-/// نص قد يبدأ برمز تعبيري (كما في نصوص الويب) ⇒ يُعرض أيقونة + نص كما يفعل `ui-icons.js`.
+/// نصٌّ قد يبدأ برمزٍ تعبيري ⇒ يُستبدل الرمز بأيقونة النظام المقابلة ويُعرض
+/// قبل النص، فتتوحّد الرموز في الواجهة بدل أن تتبع خطّ نظام التشغيل.
 class ImdEmojiText extends StatelessWidget {
   const ImdEmojiText(this.text,
       {super.key,

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// باركود Code 128-B — نقل حرفي لـ `bcSvg()` في نسخة الويب (نفس الجداول ونفس المجموع الاختباري).
+/// باركود Code 128-B — الجداول والمجموع الاختباري وفق المواصفة.
 class Barcode128 {
   static const _p = [
     '212222', '222122', '222221', '121223', '121322', '131222', '122213', '122312', '132212', '221213',
@@ -36,7 +36,7 @@ class Barcode128 {
   }
 }
 
-/// رسم الباركود مثل SVG الويب: viewBox بعرض مجموع الوحدات × 74، أشرطة بارتفاع 60 والنص أسفلها.
+/// رسم الباركود: viewBox بعرض مجموع الوحدات × 74، أشرطة بارتفاع 60 والنص أسفلها.
 class Barcode128View extends StatelessWidget {
   const Barcode128View(this.value, {super.key, this.width = 170, this.height = 70});
 

@@ -7,7 +7,7 @@ import 'imd_icon.dart';
 /// تصلح للشاشة كلها أو لقسمٍ صغير أو لجدولٍ فارغ. أمّا [ImdEmptyBox] فيبقى صفَّ
 /// نصٍّ داخل إطار جدول للاستعمالات القائمة.
 ///
-/// الأيقونات من مكتبة `ImdIcon` (SVG المشتركة مع الويب) لا من `Icons` في Material،
+/// الأيقونات من مكتبة `ImdIcon` لا من `Icons` في Material،
 /// وليس فيها `inbox` ولا `search_off`، فأقربُ بدائلها: `package` و`search`.
 class ImdEmptyState extends StatelessWidget {
   const ImdEmptyState({

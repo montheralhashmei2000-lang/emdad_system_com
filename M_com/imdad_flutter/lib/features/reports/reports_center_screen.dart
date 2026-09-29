@@ -340,7 +340,7 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
     ]);
   }
 
-  /// `.rc-nav`
+  /// قائمة التنقل بين التقارير — رأسيّةٌ على سطح المكتب وأفقيّةٌ على الجوال.
   Widget _nav({required bool horizontal}) {
     final c = context.imd;
     final buttons = [

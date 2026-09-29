@@ -5,7 +5,7 @@ import '../../domain/access_control.dart';
 import '../ui/imd_widgets.dart';
 import 'auth_service.dart';
 
-/// مساعدات الصلاحيات في الشاشات — نفس `can()` و`hasPerm()` و`pageManage()` و`guardPerm()` في الويب.
+/// مساعدات الصلاحيات في الشاشات: فحص إذنٍ واحد، وإدارة صفحة، وحراسة وصول.
 class Perm {
   Perm(this._auth);
   final AuthService _auth;

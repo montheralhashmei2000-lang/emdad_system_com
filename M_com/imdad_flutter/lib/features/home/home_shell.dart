@@ -67,7 +67,7 @@ import '../stocktake/stocktake_screen.dart';
 import '../sync/sync_screen.dart';
 import 'dashboard_screen.dart';
 
-/// التنقل بين الشاشات من داخل أي شاشة (`curPage='x';renderPage()` في الويب).
+/// التنقل بين الشاشات من داخل أي شاشة.
 class ImdNav {
   ImdNav(this._go, this._current);
   final void Function(String page) _go;
@@ -229,7 +229,7 @@ const _menu = <_MenuSection>[
   ]),
 ];
 
-/// الهيكل الرئيسي بعد الدخول — مطابق لإطار نسخة الويب:
+/// الهيكل الرئيسي بعد الدخول:
 /// شريط علوي، قائمة جانبية داكنة بأقسام قابلة للطي (قسم واحد مفتوح)، ومنطقة المحتوى.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key, required this.onSignOut});
@@ -553,7 +553,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       case 'lanSync':
         return const SyncScreen();
     }
-    // نفس رسالة الويب للشاشات غير المبنية بعد.
+    // رسالة الشاشات غير المبنية بعد.
     return const _Soon();
   }
 
@@ -702,7 +702,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 }
 
-/// `.topbar`
+/// الشريط العلوي: عنوان الشاشة، وحالة المزامنة، وحساب المستخدم.
 class _Topbar extends StatelessWidget {
   const _Topbar({
     required this.userName,
@@ -824,7 +824,7 @@ class _Topbar extends StatelessWidget {
   }
 }
 
-/// `.device-sync`
+/// كبسولة حالةٍ بنقطةٍ ملوّنة — تُستعمل لحالة المزامنة في الشريط العلوي.
 class _StatusPill extends StatelessWidget {
   const _StatusPill({required this.label, this.tone = ImdTone.ok, this.tooltip, this.onTap});
   final String label;
@@ -863,7 +863,7 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
-/// `.avatar`
+/// دائرة الحرف الأول من اسم المستخدم.
 class _Avatar extends StatelessWidget {
   const _Avatar(
       {required this.name, required this.size, required this.fontSize});
@@ -892,7 +892,7 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-/// `.side` — القائمة الجانبية الداكنة.
+/// القائمة الجانبية الداكنة.
 class _Sidebar extends StatelessWidget {
   const _Sidebar({
     required this.page,
@@ -1510,7 +1510,7 @@ class _SideTileState extends State<_SideTile> {
   }
 }
 
-/// نفس رسالة الويب: «صلاحية غير متاحة 🔒».
+/// رسالة «صلاحية غير متاحة 🔒».
 class _NoAccess extends StatelessWidget {
   const _NoAccess();
 

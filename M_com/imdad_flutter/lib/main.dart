@@ -63,8 +63,8 @@ Future<void> main() async {
   ));
 }
 
-/// تفضيل السمة المحفوظ في شاشة الهوية (`APP_CFG.themePref`) — يطبَّق على التطبيق كله.
-/// الويب يطبّقه عبر `applyBranding()`، وهنا عبر `MaterialApp.themeMode`.
+/// تفضيل السمة المحفوظ في شاشة الهوية — يطبَّق على التطبيق كله
+/// عبر `MaterialApp.themeMode`.
 class ImdTheme extends ChangeNotifier {
   ImdTheme(this._mode, [String font = ImdFonts.defaultFamily])
       : _font = ImdFonts.normalize(font);

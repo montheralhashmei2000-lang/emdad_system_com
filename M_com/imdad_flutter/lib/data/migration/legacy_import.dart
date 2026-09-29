@@ -8,12 +8,12 @@ import '../db/app_database.dart';
 import 'backup_crypto.dart';
 import '../sync/sync_marks.dart';
 
-/// ترحيل بيانات النسخة الحالية (الويب) إلى قاعدة Drift.
-/// المصدر: ملف JSON مُصدَّر من النظام الحالي بالشكل:
+/// ترحيل بيانات النظام السابق إلى قاعدة Drift.
+/// المصدر: ملف JSON مُصدَّر منه بالشكل:
 /// { "items": [...], "warehouses": [...], "receipts": [...], ... }
-/// كل مجموعة مصفوفة من الوثائق بنفس أسماء الحقول المستخدمة في الويب.
-class WebImportResult {
-  WebImportResult();
+/// كل مجموعة مصفوفة من الوثائق بأسماء حقولها الأصلية.
+class LegacyImportResult {
+  LegacyImportResult();
 
   final Map<String, int> inserted = {};
   final List<String> warnings = [];
@@ -25,8 +25,8 @@ class WebImportResult {
       'استُورد $total سجلًا: ${inserted.entries.map((e) => '${e.key}=${e.value}').join('، ')}';
 }
 
-class WebImporter {
-  WebImporter(this.db);
+class LegacyImporter {
+  LegacyImporter(this.db);
 
   final AppDatabase db;
 
@@ -34,7 +34,7 @@ class WebImporter {
   ///
   /// [password] تلزم للملف المشفَّر فقط؛ وغيابها عنه يرمي [BackupError] برسالة
   /// صريحة بدل استيراد نصف ملف.
-  Future<WebImportResult> importFile(File file, {String password = ''}) async {
+  Future<LegacyImportResult> importFile(File file, {String password = ''}) async {
     final bytes = await file.readAsBytes();
     if (BackupCrypto.isEncrypted(bytes)) {
       if (password.isEmpty) {
@@ -68,8 +68,8 @@ class WebImporter {
     return incoming.stamp >= local.stamp;
   }
 
-  Future<WebImportResult> importJson(Map<String, dynamic> data) async {
-    final res = WebImportResult();
+  Future<LegacyImportResult> importJson(Map<String, dynamic> data) async {
+    final res = LegacyImportResult();
     final marks = SyncMarks(db);
 
     await db.transaction(() async {
@@ -120,7 +120,7 @@ class WebImporter {
   }
 
   /// ما حُذف في الجهاز الآخر يُحذف هنا أيضًا — ما لم يُعدَّل عندنا بعد حذفه.
-  Future<void> _applyTombstones(SyncMarks marks, WebImportResult res) async {
+  Future<void> _applyTombstones(SyncMarks marks, LegacyImportResult res) async {
     var removed = 0;
     for (final mark in _incoming.values) {
       if (!mark.isDeleted) continue;
@@ -147,7 +147,7 @@ class WebImporter {
 
   /// أوامر الجرد وسطورها — بيانات تشغيلية كانت خارج المزامنة، فكانت جلسة جرد
   /// تتم في فرع ولا تبلغ الإدارة أبدًا.
-  Future<void> _importStocktakes(Object? raw, WebImportResult res) async {
+  Future<void> _importStocktakes(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final s in rows) {
       if (!_accept('stocktakes', _id(s))) continue;
@@ -180,7 +180,7 @@ class WebImporter {
     if (rows.isNotEmpty) _count(res, 'أوامر الجرد', rows.length);
   }
 
-  Future<void> _importStocktakeLines(Object? raw, WebImportResult res) async {
+  Future<void> _importStocktakeLines(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final l in rows) {
       if (!_accept('stocktake_lines', _id(l))) continue;
@@ -209,7 +209,7 @@ class WebImporter {
     if (rows.isNotEmpty) _count(res, 'سطور الجرد', rows.length);
   }
 
-  Future<void> _importSensitiveReviews(Object? raw, WebImportResult res) async {
+  Future<void> _importSensitiveReviews(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('sensitive_reviews', _id(r))) continue;
@@ -229,7 +229,7 @@ class WebImporter {
 
   /// سجل التدقيق: يتجمّع من كل الأجهزة عند الإدارة، فيُرى نشاط الوحدة كله في
   /// مكان واحد. السطور لا تُعدَّل بعد كتابتها، فالدمج بالمعرّف لا يتعارض.
-  Future<void> _importAuditLogs(Object? raw, WebImportResult res) async {
+  Future<void> _importAuditLogs(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final a in rows) {
       if (!_accept('audit_logs', _id(a))) continue;
@@ -258,7 +258,7 @@ class WebImporter {
     if (rows.isNotEmpty) _count(res, 'سجل التدقيق', rows.length);
   }
 
-  Future<void> _importAssets(Object? raw, WebImportResult res) async {
+  Future<void> _importAssets(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final a in rows) {
       if (!_accept('assets', _id(a))) continue;
@@ -288,7 +288,7 @@ class WebImporter {
     if (rows.isNotEmpty) _count(res, 'الأصول الثابتة', rows.length);
   }
 
-  Future<void> _importAssetAssignments(Object? raw, WebImportResult res) async {
+  Future<void> _importAssetAssignments(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final g in rows) {
       if (!_accept('asset_assignments', _id(g))) continue;
@@ -311,7 +311,7 @@ class WebImporter {
     if (rows.isNotEmpty) _count(res, 'عهد الأصول', rows.length);
   }
 
-  Future<void> _importRationOrders(Object? raw, WebImportResult res) async {
+  Future<void> _importRationOrders(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final o in rows) {
       if (!_accept('ration_orders', _id(o))) continue;
@@ -345,7 +345,7 @@ class WebImporter {
   }
 
   Future<void> _importSupplyAuthorities(
-      Object? raw, WebImportResult res) async {
+      Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final a in rows) {
       if (!_accept('supply_authorities', _id(a))) continue;
@@ -364,7 +364,7 @@ class WebImporter {
   }
 
   Future<void> _importFuel(
-      Map<String, dynamic> data, WebImportResult res) async {
+      Map<String, dynamic> data, LegacyImportResult res) async {
     for (final w in _rows(data['fuelWarehouses'])) {
       if (!_accept('fuel_warehouses', _id(w))) continue;
       await db
@@ -563,7 +563,7 @@ class WebImporter {
     }
   }
 
-  Future<void> _importWarehouseLimits(Object? raw, WebImportResult res) async {
+  Future<void> _importWarehouseLimits(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final l in rows) {
       if (!_accept('warehouse_stock_limits', _id(l))) continue;
@@ -587,7 +587,7 @@ class WebImporter {
     if (rows.isNotEmpty) _count(res, 'حدود مخزون المستودعات', rows.length);
   }
 
-  Future<void> _importRationOrderLines(Object? raw, WebImportResult res) async {
+  Future<void> _importRationOrderLines(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final l in rows) {
       if (!_accept('ration_order_lines', _id(l))) continue;
@@ -610,7 +610,7 @@ class WebImporter {
     if (rows.isNotEmpty) _count(res, 'سطور طلبيات الإعاشة', rows.length);
   }
 
-  Future<void> _importMealPlans(Object? raw, WebImportResult res) async {
+  Future<void> _importMealPlans(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final p in rows) {
       if (!_accept('meal_plans', _id(p))) continue;
@@ -634,7 +634,7 @@ class WebImporter {
     if (rows.isNotEmpty) _count(res, 'خطط الوجبات', rows.length);
   }
 
-  Future<void> _importMealPlanEntries(Object? raw, WebImportResult res) async {
+  Future<void> _importMealPlanEntries(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final e in rows) {
       if (!_accept('meal_plan_entries', _id(e))) continue;
@@ -657,7 +657,7 @@ class WebImporter {
     if (rows.isNotEmpty) _count(res, 'وجبات الخطط', rows.length);
   }
 
-  Future<void> _importCampLedgers(Object? raw, WebImportResult res) async {
+  Future<void> _importCampLedgers(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final l in rows) {
       if (!_accept('camp_ledgers', _id(l))) continue;
@@ -689,7 +689,7 @@ class WebImporter {
     if (rows.isNotEmpty) _count(res, 'سجلات المعسكرات', rows.length);
   }
 
-  Future<void> _importCampStockLimits(Object? raw, WebImportResult res) async {
+  Future<void> _importCampStockLimits(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final c in rows) {
       if (!_accept('camp_stock_limits', _id(c))) continue;
@@ -709,7 +709,7 @@ class WebImporter {
     if (rows.isNotEmpty) _count(res, 'حدود مخزون المعسكرات', rows.length);
   }
 
-  Future<void> _importSettlements(Object? raw, WebImportResult res) async {
+  Future<void> _importSettlements(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final m in rows) {
       if (!_accept('monthly_settlements', _id(m))) continue;
@@ -786,11 +786,11 @@ class WebImporter {
     return DateTime.now();
   }
 
-  void _count(WebImportResult res, String key, int n) =>
+  void _count(LegacyImportResult res, String key, int n) =>
       res.inserted[key] = (res.inserted[key] ?? 0) + n;
 
   // ───────── الجداول ─────────
-  Future<void> _importUsers(Object? raw, WebImportResult res) async {
+  Future<void> _importUsers(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     var passwordless = 0;
     for (final u in rows) {
@@ -836,7 +836,7 @@ class WebImporter {
     }
   }
 
-  Future<void> _importCategories(Object? raw, WebImportResult res) async {
+  Future<void> _importCategories(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final c in rows) {
       if (!_accept('categories', _id(c))) continue;
@@ -851,7 +851,7 @@ class WebImporter {
     _count(res, 'categories', rows.length);
   }
 
-  Future<void> _importItems(Object? raw, WebImportResult res) async {
+  Future<void> _importItems(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final it in rows) {
       if (!_accept('items', _id(it))) continue;
@@ -864,7 +864,7 @@ class WebImporter {
             baseUnit: Value(_s(it, 'baseUnit')),
             units: Value(_json(it['units'])),
             qty: Value(_d(it, 'qty')),
-            // `min` في ملف الويب، و`minQty` في تصدير هذا التطبيق.
+            // `min` في الملف المصدَّر، و`minQty` في تصدير هذا التطبيق.
             minQty: Value(_d(it, 'minQty', _d(it, 'min'))),
             barcode: Value(_s(it, 'barcode')),
             isRefillable: Value(_b(it, 'isRefillable')),
@@ -875,7 +875,7 @@ class WebImporter {
     _count(res, 'items', rows.length);
   }
 
-  Future<void> _importWarehouses(Object? raw, WebImportResult res) async {
+  Future<void> _importWarehouses(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final w in rows) {
       if (!_accept('warehouses', _id(w))) continue;
@@ -897,7 +897,7 @@ class WebImporter {
     _count(res, 'warehouses', rows.length);
   }
 
-  Future<void> _importSuppliers(Object? raw, WebImportResult res) async {
+  Future<void> _importSuppliers(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final s in rows) {
       if (!_accept('suppliers', _id(s))) continue;
@@ -915,7 +915,7 @@ class WebImporter {
     _count(res, 'suppliers', rows.length);
   }
 
-  Future<void> _importUnits(Object? raw, WebImportResult res) async {
+  Future<void> _importUnits(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final u in rows) {
       if (!_accept('beneficiary_units', _id(u))) continue;
@@ -942,7 +942,7 @@ class WebImporter {
     _count(res, 'units', rows.length);
   }
 
-  Future<void> _importFacilities(Object? raw, WebImportResult res) async {
+  Future<void> _importFacilities(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final f in rows) {
       if (!_accept('facilities', _id(f))) continue;
@@ -960,7 +960,7 @@ class WebImporter {
     _count(res, 'facilities', rows.length);
   }
 
-  Future<void> _importReceipts(Object? raw, WebImportResult res) async {
+  Future<void> _importReceipts(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('receipts', _id(r))) continue;
@@ -1000,7 +1000,7 @@ class WebImporter {
     _count(res, 'receipts', rows.length);
   }
 
-  Future<void> _importIssues(Object? raw, WebImportResult res) async {
+  Future<void> _importIssues(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('issues', _id(r))) continue;
@@ -1044,7 +1044,7 @@ class WebImporter {
     _count(res, 'issues', rows.length);
   }
 
-  Future<void> _importTransfers(Object? raw, WebImportResult res) async {
+  Future<void> _importTransfers(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('transfers', _id(r))) continue;
@@ -1084,7 +1084,7 @@ class WebImporter {
     _count(res, 'transfers', rows.length);
   }
 
-  Future<void> _importReturns(Object? raw, WebImportResult res) async {
+  Future<void> _importReturns(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('returns', _id(r))) continue;
@@ -1122,7 +1122,7 @@ class WebImporter {
     _count(res, 'returns', rows.length);
   }
 
-  Future<void> _importOpening(Object? raw, WebImportResult res) async {
+  Future<void> _importOpening(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('opening_balances', _id(r))) continue;
@@ -1149,7 +1149,7 @@ class WebImporter {
 
   /// تسويات الجرد — موجودة في نسخ التطبيق الأصلي فقط، وبدونها تختل الأرصدة
   /// المستعادة لأن فروق الجرد المعتمدة جزء من رصيد المستودع.
-  Future<void> _importAdjustments(Object? raw, WebImportResult res) async {
+  Future<void> _importAdjustments(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final a in rows) {
       if (!_accept('adjustments', _id(a))) continue;
@@ -1185,7 +1185,7 @@ class WebImporter {
     if (rows.isNotEmpty) _count(res, 'adjustments', rows.length);
   }
 
-  Future<void> _importStrengths(Object? raw, WebImportResult res) async {
+  Future<void> _importStrengths(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('strengths', _id(r))) continue;
@@ -1210,7 +1210,7 @@ class WebImporter {
     _count(res, 'strengths', rows.length);
   }
 
-  Future<void> _importKitchenLogs(Object? raw, WebImportResult res) async {
+  Future<void> _importKitchenLogs(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('kitchen_logs', _id(r))) continue;
@@ -1237,13 +1237,13 @@ class WebImporter {
     _count(res, 'kitchenLogs', rows.length);
   }
 
-  Future<void> _importEntitlements(Object? raw, WebImportResult res) async {
+  Future<void> _importEntitlements(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final r in rows) {
       final itemId = _s(r, 'itemId', _id(r));
       if (!_accept('entitlements', itemId)) continue;
       final unitName = _s(r, 'measureUnitName', _s(r, 'unitName'));
-      // `entFactor(ent,item)`: المعامل من وحدات الصنف بالاسم (الويب لا يخزّنه في المقرر)،
+      // المعامل من وحدات الصنف بالاسم (النظام السابق لا يخزّنه في المقرر)،
       // وإلا فالمعامل المصدَّر مع المقرر (تصدير هذا التطبيق) حين لا يكون الصنف هنا بعد.
       var factor = _d(r, 'measureFactor', 1);
       if (factor <= 0) factor = 1;
@@ -1282,7 +1282,7 @@ class WebImporter {
     _count(res, 'entitlements', rows.length);
   }
 
-  Future<void> _importSettings(Object? raw, WebImportResult res) async {
+  Future<void> _importSettings(Object? raw, LegacyImportResult res) async {
     if (raw is! Map) return;
     final map = raw.cast<String, dynamic>();
     for (final entry in map.entries) {

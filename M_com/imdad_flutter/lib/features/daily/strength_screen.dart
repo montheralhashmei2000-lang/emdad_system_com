@@ -449,7 +449,7 @@ class _StrengthScreenState extends State<StrengthScreen> {
       title: w ? 'تسجيل التفريدة اليومية' : 'عرض التفريدة (قراءة فقط)',
       icon: w ? 'file' : 'eye',
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        // `.tokbar`
+        // شريط الوحدات المختارة
         Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.end, children: [
           SizedBox(
             width: 150,
@@ -504,7 +504,7 @@ class _StrengthScreenState extends State<StrengthScreen> {
             ),
         ]),
         const SizedBox(height: 12),
-        // `.tf-mode`
+        // اختيار نمط التفويج
         ImdGrid(columns: 2, minItemWidth: 280, gap: 10, children: [
           _modeCard('units', 'تفصيل قوة الوحدات الفرعية', 'يُحسب إجمالي المعسكر تلقائيًا', enabled: w),
           _modeCard('camp', 'إجمالي قوة المعسكر كاملًا', 'بدون تفصيل الوحدات', enabled: w),
@@ -523,7 +523,7 @@ class _StrengthScreenState extends State<StrengthScreen> {
               'أو أضف الوحدات من شاشة «الوحدات المستفيدة»')
         else
           for (final u in subs) _trow(u.name, _ctrl(u.id), enabled: w),
-        // `.tfoot`
+        // شريط الإجمالي
         _tfoot(base + inc),
         Padding(
           padding: const EdgeInsets.only(bottom: 10),
@@ -559,7 +559,7 @@ class _StrengthScreenState extends State<StrengthScreen> {
     );
   }
 
-  /// `.tf-mode label` — خيار بحدّ ملوّن عند الاختيار.
+  /// خيار نمطٍ بحدٍّ ملوّن عند الاختيار.
   Widget _modeCard(String value, String label, String hint, {required bool enabled}) {
     final c = context.imd;
     final on = _mode == value;
@@ -590,7 +590,7 @@ class _StrengthScreenState extends State<StrengthScreen> {
     );
   }
 
-  /// `.trow` + `.tgrid` — اسم الوحدة، القوة الفعلية، الزيادة (للقراءة)، الإجمالي.
+  /// اسم الوحدة، القوة الفعلية، الزيادة (للقراءة)، الإجمالي.
   Widget _trow(String name, TextEditingController base, {required bool enabled, String icon = 'dot'}) {
     final c = context.imd;
     final b = _num(base);
@@ -616,7 +616,7 @@ class _StrengthScreenState extends State<StrengthScreen> {
           ),
           SizedBox(
             width: narrow ? (cons.maxWidth - 8) / 2 : 110,
-            // `.tInc` — حقل محسوب للقراءة فقط بخلفية #EEF1EE كما في الويب.
+            // حقل محسوب للقراءة فقط بخلفيةٍ خضراء باهتة.
             child: ImdLabeled('الزيادة', ImdReadonlyField(text: _plain(inc)), size: 11),
           ),
           Container(
@@ -645,7 +645,7 @@ class _StrengthScreenState extends State<StrengthScreen> {
     );
   }
 
-  /// `.tfoot` + `.tgrand` — شريط الإجمالي بخلفية ذهبية متقطعة.
+  /// شريط الإجمالي بخلفية ذهبية متقطعة.
   Widget _tfoot(double total) {
     final c = context.imd;
     return Container(
@@ -715,7 +715,7 @@ class _StrengthScreenState extends State<StrengthScreen> {
     );
   }
 
-  /// `.archRow`
+  /// سطر أرشيفٍ لقوةٍ محفوظة سابقًا.
   Widget _archRowView(_ArchRow r, bool w) {
     final c = context.imd;
     return Container(

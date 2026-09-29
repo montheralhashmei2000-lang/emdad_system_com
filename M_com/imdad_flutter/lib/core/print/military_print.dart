@@ -11,7 +11,7 @@ import 'print_preview.dart';
 
 import '../ui/imd_format.dart';
 
-/// محرك الطباعة العسكرية الرسمية — نقل `militaryPrint` من نسخة الويب:
+/// محرك الطباعة العسكرية الرسمية:
 /// ترويسة موحّدة (التاريخ ورقم السند ورقم القيد يسارًا، الشعار وسطًا، أسطر الجهة
 /// يمينًا)، جدول بيانات بأقسام، جدول أصناف بترويسة خضراء وصفوف متناوبة،
 /// خانات توقيع حسب نوع السند، وترقيم صفحات (١٨ صنفًا في الصفحة الأولى ثم ٢٨).
@@ -26,7 +26,7 @@ class MilitaryPrint {
     this.printFont = ImdPrintFonts.defaultFamily,
   });
 
-  /// أسطر الجهة الأربعة (`APP_CFG.orgLine1..4`).
+  /// أسطر الجهة الأربعة في ترويسة السند.
   final List<String> orgLines;
 
   /// الشعار Base64 — عند غيابه يُرسم مربع أخضر بحرف «إ».
@@ -53,7 +53,7 @@ class MilitaryPrint {
   static const labelBg = PdfColor.fromInt(0xFFFAFAFA);
   static const dotted = PdfColor.fromInt(0xFFBBBBBB);
 
-  /// ألوان عناوين السندات كما في الويب.
+  /// ألوان عناوين السندات حسب نوع السند.
   static const titleIssue = PdfColor.fromInt(0xFFC0392B);
   static const titleReceive = green;
   static const titleTransfer = PdfColor.fromInt(0xFF2980B9);
@@ -671,7 +671,7 @@ class MilitaryPrint {
     return out.save();
   }
 
-  /// يعرض نافذة الطباعة/حفظ PDF (`printHtml` في الويب).
+  /// يعرض نافذة الطباعة أو حفظ PDF.
   /// تُعرض معاينة أولًا، ولا تُرسل إلى الطابعة إلا بتأكيد المستخدم.
   static Future<void> show(Uint8List bytes, {String name = 'مستند'}) =>
       showPrintPreview(bytes, name: name);

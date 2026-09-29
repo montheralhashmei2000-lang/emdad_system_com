@@ -7,14 +7,14 @@ import 'package:flutter/foundation.dart';
 import '../../core/security/device_activation.dart';
 import '../db/app_database.dart';
 import '../migration/data_export.dart';
-import '../migration/web_import.dart';
+import '../migration/legacy_import.dart';
 import '../repos/audit_repo.dart';
 import 'sync_crypto.dart';
 import 'sync_marks.dart';
 import 'sync_trust.dart';
 
-/// مزامنة الأجهزة عبر الشبكة المحلية — بديل `lan-sync.js` في نسخة الويب،
-/// لكن بلا إنترنت ولا خادم خارجي: جهاز يعمل **مستقبِلًا** فيفتح منفذًا على
+/// مزامنة الأجهزة عبر الشبكة المحلية — بلا إنترنت ولا خادم خارجي:
+/// جهاز يعمل **مستقبِلًا** فيفتح منفذًا على
 /// الشبكة، وبقية الأجهزة ترسل إليه بياناتها أو تسحب منه.
 ///
 /// الأمان (انظر [SyncSession]): المستقبِل يعرض رمز اقتران من ٦ أرقام، ولا يُقبل
@@ -302,7 +302,7 @@ class LanSync {
           case 'POST /import':
             // استقبال بيانات جهاز آخر ودمجها هنا.
             final data = await compute(_openTask, (session, body));
-            final result = await WebImporter(db).importJson(data);
+            final result = await LegacyImporter(db).importJson(data);
             await AuditRepo(db).log(
               action: 'sync.receive',
               entityType: 'مزامنة',
@@ -760,7 +760,7 @@ class LanSync {
         return const SyncResult(ok: false, message: 'رفض الجهاز الطلب — أعد الاقتران');
       }
       final upTo = ((data['meta'] as Map?)?['maxStamp'] as num?)?.toInt() ?? 0;
-      final result = await WebImporter(db).importJson(data);
+      final result = await LegacyImporter(db).importJson(data);
       await AuditRepo(db).log(
         action: 'sync.pull',
         entityType: 'مزامنة',

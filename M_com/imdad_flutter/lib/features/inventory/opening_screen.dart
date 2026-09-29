@@ -18,9 +18,9 @@ import '../../data/repos/settings_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/line_consolidation.dart';
 
-/// الأرصدة الافتتاحية — نقل `renderOpening()` / `opbPaint()`:
+/// الأرصدة الافتتاحية:
 /// بحث + طباعة كشف + جدول (الكود، الصنف، الحالة، الرصيد الافتتاحي، إجراء).
-/// الفرق الوحيد عن الويب: الرصيد يُثبَّت **لمستودع محدد** لأن أرصدة النظام هنا
+/// الرصيد يُثبَّت **لمستودع محدد** لأن أرصدة النظام
 /// مفصولة بالمستودعات (دفتر `stock-ledger`)، فأُضيف اختيار المستودع إلى شريط البحث.
 class OpeningScreen extends StatefulWidget {
   const OpeningScreen({super.key});

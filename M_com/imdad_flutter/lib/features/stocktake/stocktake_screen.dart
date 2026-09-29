@@ -931,7 +931,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
     );
   }
 
-  /// `.stk-sum div`
+  /// خليةٌ في شريط ملخّص الجرد: عنوانٌ فوق قيمة.
   Widget _sumCell(String label, String value) {
     final c = context.imd;
     return Container(

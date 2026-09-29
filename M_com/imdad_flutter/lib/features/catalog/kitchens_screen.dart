@@ -197,7 +197,7 @@ class _KitchensScreenState extends State<KitchensScreen> {
             'النوع',
             ImdSelect<String>(
               value: _type,
-              items: const [('KITCHEN', 'مطبخ'), ('OVEN', 'فرن')], // ui-icons.js يحذف الرموز من <option>
+              items: const [('KITCHEN', 'مطبخ'), ('OVEN', 'فرن')],
               onChanged: (v) => setState(() => _type = v ?? 'KITCHEN'),
             ),
           ),

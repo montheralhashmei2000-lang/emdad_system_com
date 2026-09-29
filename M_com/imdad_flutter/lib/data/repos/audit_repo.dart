@@ -68,7 +68,7 @@ class AuditRepo {
         ));
   }
 
-  /// `auditWrite(action, entityType, summary, details)` في الويب — نفس الحقول المستخرجة من details.
+  /// كتابة حدثٍ في سجل التدقيق — الحقول تُستخرج من details.
   Future<void> write(
     String action,
     String entityType,

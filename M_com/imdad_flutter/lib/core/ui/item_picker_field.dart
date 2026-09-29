@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../data/db/app_database.dart';
 
-/// حقل اختيار الصنف بالكتابة أو من القائمة — يقابل item-picker.js في نسخة الويب:
-/// يكتب المستخدم أول حرف أو حرفين من الاسم أو الكود أو الباركود فتظهر الاقتراحات.
+/// حقل اختيار الصنف بالكتابة أو من القائمة: يكتب المستخدم أول حرف أو حرفين من
+/// الاسم أو الكود أو الباركود فتظهر الاقتراحات.
 class ItemPickerField extends StatefulWidget {
   const ItemPickerField({
     super.key,

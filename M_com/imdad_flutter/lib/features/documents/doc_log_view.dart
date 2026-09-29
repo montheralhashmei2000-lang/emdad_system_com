@@ -38,7 +38,7 @@ class DocLogView extends StatefulWidget {
   State<DocLogView> createState() => _DocLogViewState();
 }
 
-/// `TYPES` في الويب.
+/// أنواع السندات المعروضة في السجل.
 class _DocType {
   const _DocType(this.kind, this.label, this.icon, this.perm, this.partyLbl);
   final DocKind kind;
@@ -107,7 +107,7 @@ class _DocLogViewState extends State<DocLogView> {
   List<Warehouse> _whs = const [];
   List<Supplier> _sups = const [];
 
-  /// أسماء الأصناف داخل كل سند — يحتاجها البحث كما في الويب (`g.lines.map(itemName)`).
+  /// أسماء الأصناف داخل كل سند — يحتاجها البحث داخل السطور لا الرؤوس وحدها.
   final _lineText = <String, String>{};
 
   @override
@@ -177,7 +177,7 @@ class _DocLogViewState extends State<DocLogView> {
     if (mounted) showImdToast(context, '✔ تم التحديث');
   }
 
-  /// `filtered()` — الحالة الفارغة تُخفي الملغى كما في الويب.
+  /// التصفية — الحالة الفارغة تُخفي الملغى.
   List<DocumentSummary> _filtered() {
     final q = _q.text.trim().toLowerCase();
     return (_docs ?? const <DocumentSummary>[]).where((g) {
@@ -656,7 +656,7 @@ class _EditRow {
   final TextEditingController qty;
   final TextEditingController notes;
 
-  /// السطر الأصلي — منه تُنقل حقول المستفيد وإجراء الأسطوانة كما في الويب.
+  /// السطر الأصلي — منه تُنقل حقول المستفيد وإجراء الأسطوانة.
   DocumentLineRow? source;
 }
 

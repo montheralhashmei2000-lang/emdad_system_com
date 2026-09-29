@@ -350,7 +350,7 @@ class _UsersScreenState extends State<UsersScreen> {
     await _load();
   }
 
-  /// `.perm-card`
+  /// بطاقة صلاحياتٍ لمجموعةٍ من الأذونات.
   Widget _permCard({
     required String page,
     required String label,

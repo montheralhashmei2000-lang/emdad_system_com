@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/migration/backup_crypto.dart';
 import 'package:imdad/data/migration/data_export.dart';
-import 'package:imdad/data/migration/web_import.dart';
+import 'package:imdad/data/migration/legacy_import.dart';
 import 'package:imdad/data/repos/catalog_repo.dart';
 import 'package:path/path.dart' as p;
 
@@ -100,7 +100,7 @@ void main() {
 
       final other = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(other.close);
-      final result = await WebImporter(other).importFile(File(file), password: 'سر قوي');
+      final result = await LegacyImporter(other).importFile(File(file), password: 'سر قوي');
 
       expect(result.total, greaterThan(0));
       expect((await CatalogRepo(other).items()).single.name, 'أرز أبيض');
@@ -114,7 +114,7 @@ void main() {
       addTearDown(other.close);
 
       await expectLater(
-        WebImporter(other).importFile(File(file)),
+        LegacyImporter(other).importFile(File(file)),
         throwsA(isA<BackupError>()),
       );
       expect(await CatalogRepo(other).items(), isEmpty, reason: 'لا يُستورد شيء عند الرفض');
@@ -125,7 +125,7 @@ void main() {
       final file = path('misleading.json');
       await DataExporter(db).writeToFile(file, password: 'سر');
 
-      expect(await WebImporter.isEncryptedFile(File(file)), isTrue);
+      expect(await LegacyImporter.isEncryptedFile(File(file)), isTrue);
     });
   });
 }

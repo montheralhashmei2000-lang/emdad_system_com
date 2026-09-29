@@ -10,7 +10,7 @@ import 'doc_numbering.dart';
 import 'movements_repo.dart';
 
 /// دورة الجرد الكاملة: إنشاء الأمر ← العد الفعلي ← تحليل الفروقات ←
-/// التسوية والاعتماد ← السجل. مطابقة لقواعد نسخة الويب:
+/// التسوية والاعتماد ← السجل. قواعدها:
 /// • رصيد الدفاتر يُلتقط من دفتر أرصدة المستودع لحظة إنشاء الأمر.
 /// • تجميد المستودع يمنع أي حركة عليه ما دام الأمر مفتوحًا.
 /// • الاعتماد يكتب فرق كل صنف تسويةً في رصيد المستودع، ثم يُغلق الأمر.
@@ -79,7 +79,7 @@ class StocktakeRepo {
     final moves = MovementsRepo(db);
     final balances = await moves.balances(warehouse: warehouse);
     final items = await catalog.items();
-    // `PARTIAL` في الويب = جرد جزئي بتصنيف محدد، وما عداه يشمل كل الأصناف.
+    // `PARTIAL` = جرد جزئي بتصنيف محدد، وما عداه يشمل كل الأصناف.
     final scoped = (type == 'PARTIAL' && categoryId.isNotEmpty)
         ? items.where((i) => i.categoryId == categoryId).toList()
         : items;

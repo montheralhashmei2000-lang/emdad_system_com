@@ -6,7 +6,8 @@ import 'package:flutter/widgets.dart';
 
 import 'imd_widgets.dart';
 
-/// حفظ الملفات واختيارها — مقابل التنزيل (`a.download`) و`<input type=file>` في الويب.
+/// حفظ الملفات واختيارها: على سطح المكتب يُفتح حوار النظام لاختيار الوجهة،
+/// وعلى الجوال يُكتب الملف ثم يُعرض للمشاركة.
 class ImdFiles {
   /// يحفظ ملفًا باسم مقترح؛ على ويندوز تظهر نافذة «حفظ باسم»، وعلى أندرويد يُحفظ عبر منتقي النظام.
   static Future<String?> saveBytes(BuildContext context, String fileName, List<int> bytes) async {
@@ -46,6 +47,6 @@ class ImdFiles {
     return (f.name, bytes);
   }
 
-  /// تاريخ اليوم بصيغة الويب `new Date().toISOString().slice(0,10)`.
+  /// تاريخ اليوم بصيغة `YYYY-MM-DD` — تُستعمل في أسماء الملفات المصدَّرة.
   static String today() => DateTime.now().toIso8601String().substring(0, 10);
 }

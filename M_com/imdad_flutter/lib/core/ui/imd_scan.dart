@@ -10,7 +10,8 @@ import 'imd_icon.dart';
 import 'imd_tokens.dart';
 import 'imd_widgets.dart';
 
-/// ماسح الباركود بالكاميرا — مقابل `scanWithCamera(input)` وزر 📷 الذي يُضاف بجوار حقول الباركود في الويب.
+/// ماسح الباركود بالكاميرا — يُعرض زرُّه بجوار حقول الباركود على الأجهزة التي
+/// تملك كاميرا مدعومة، ويُخفى على غيرها فتبقى الكتابة أو قارئ USB.
 class ImdScanner {
   static bool get supported => !kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isMacOS);
 

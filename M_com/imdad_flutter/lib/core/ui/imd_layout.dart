@@ -4,7 +4,7 @@ import 'package:flutter/rendering.dart';
 import 'imd_icon.dart';
 import 'imd_tokens.dart';
 
-/// `.kpis` — شبكة المؤشرات: auto-fit بحد أدنى 210، وأربعة أعمدة عند ≥1200،
+/// شبكة المؤشرات: auto-fit بحد أدنى 210، وأربعة أعمدة عند ≥1200،
 /// وعمودان بفجوة 8 على الجوال، وعمود واحد ≤420.
 class ImdKpis extends StatelessWidget {
   const ImdKpis({super.key, required this.children});
@@ -33,7 +33,7 @@ class ImdKpis extends StatelessWidget {
   }
 }
 
-/// `.kpi`
+/// بطاقة مؤشرٍ واحد: عنوانٌ ورقمٌ كبير، وإضافةٌ اختيارية تحتهما.
 class ImdKpi extends StatelessWidget {
   const ImdKpi({super.key, required this.label, required this.value, this.color, this.extra, this.icon});
   final String label;
@@ -194,7 +194,7 @@ class RenderEqualRow extends RenderBox
   void paint(PaintingContext context, Offset offset) => defaultPaint(context, offset);
 }
 
-/// `.grid-2` — عمودان متساويان بفجوة 16 وهامش سفلي 20؛ عمود واحد ≤920.
+/// عمودان متساويان بفجوة 16 وهامش سفلي 20؛ عمود واحد ≤920.
 class ImdGrid2 extends StatelessWidget {
   const ImdGrid2({super.key, required this.children, this.cols = 2, this.gap = 16, this.bottom = 20});
   final List<Widget> children;
@@ -212,13 +212,13 @@ class ImdGrid2 extends StatelessWidget {
   }
 }
 
-/// `.rbar` — شريط أزرار ملتف بفجوة 8؛ على الجوال كل زر بعرض كامل.
+/// شريط أزرار ملتف بفجوة 8؛ على الجوال كل زر بعرض كامل.
 class ImdRbar extends StatelessWidget {
   const ImdRbar({super.key, required this.children, this.bottom = 10, this.fullFirst = false});
   final List<Widget> children;
   final double bottom;
 
-  /// العنصر الأول بعرض كامل (حقل `.fld` داخل الشريط) والباقي في سطر تحته.
+  /// العنصر الأول بعرض كامل (حقل بحثٍ داخل الشريط) والباقي في سطر تحته.
   final bool fullFirst;
 
   @override
@@ -253,7 +253,7 @@ class ImdRbar extends StatelessWidget {
   }
 }
 
-/// `.status-list > .status-item` — نقطة حالة + عنوان + وصف.
+/// قائمة حالات: لكل سطرٍ نقطةٌ ملوّنة وعنوانٌ ووصف.
 class ImdStatusList extends StatelessWidget {
   const ImdStatusList({super.key, required this.items});
 

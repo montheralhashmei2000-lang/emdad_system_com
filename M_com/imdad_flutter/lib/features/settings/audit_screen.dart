@@ -60,7 +60,7 @@ const kAuditActionLabels = <String, String>{
   'SENSITIVE_REVIEW_MARKED': 'تمت مراجعة تغيير حساس',
 };
 
-/// خيارات قائمة «كل الأنشطة» في الويب.
+/// خيارات قائمة «كل الأنشطة».
 const _actionFilter = <String, String>{
   'ALL': 'كل الأنشطة',
   'OPENING_BALANCE_SET': 'أرصدة افتتاحية',

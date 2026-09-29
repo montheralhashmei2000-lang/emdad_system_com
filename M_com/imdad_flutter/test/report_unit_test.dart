@@ -2,7 +2,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/migration/data_export.dart';
-import 'package:imdad/data/migration/web_import.dart';
+import 'package:imdad/data/migration/legacy_import.dart';
 import 'package:imdad/data/repos/catalog_repo.dart';
 import 'package:imdad/data/repos/movements_repo.dart';
 
@@ -103,7 +103,7 @@ void main() {
 
       final other = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(other.close);
-      await WebImporter(other).importJson(payload);
+      await LegacyImporter(other).importJson(payload);
 
       final copied = (await CatalogRepo(other).items()).firstWhere((i) => i.id == item.id);
       expect(copied.reportUnit, 'كيس');

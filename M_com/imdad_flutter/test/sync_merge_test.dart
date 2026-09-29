@@ -2,7 +2,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/migration/data_export.dart';
-import 'package:imdad/data/migration/web_import.dart';
+import 'package:imdad/data/migration/legacy_import.dart';
 import 'package:imdad/data/repos/catalog_repo.dart';
 import 'package:imdad/data/sync/sync_marks.dart';
 
@@ -34,7 +34,7 @@ void main() {
 
   /// ينقل بيانات [from] إلى [to] كما تفعل المزامنة.
   Future<void> sync(AppDatabase from, AppDatabase to) async {
-    await WebImporter(to).importJson(await DataExporter(from).toMap());
+    await LegacyImporter(to).importJson(await DataExporter(from).toMap());
   }
 
   Future<List<String>> names(AppDatabase db) async =>
@@ -150,7 +150,7 @@ void main() {
       await addItem(a, '1001', 'أرز');
       final payload = await DataExporter(a).toMap()..remove('syncMarks');
 
-      await WebImporter(b).importJson(payload);
+      await LegacyImporter(b).importJson(payload);
 
       expect(await names(b), ['أرز']);
     });

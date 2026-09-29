@@ -5,10 +5,11 @@ import 'imd_format.dart';
 import 'imd_icon.dart';
 import 'imd_tokens.dart';
 
-// مكوّنات الواجهة المشتركة — كل مكوّن يقابل صنف CSS في نسخة الويب، بنفس المقاسات
-// المقيسة من الصفحة الفعلية (getComputedStyle) لا بالتقدير.
+// مكوّنات الواجهة المشتركة لنظام الإمداد والتموين: العناوين والأزرار والشارات
+// والجداول والحوارات. مقاساتها وألوانها من `ImdSizes` و`ImdColors` وحدهما، فلا
+// يُعاد تعريف قياسٍ ولا لونٍ في شاشة.
 
-/// `.page-title` + `.page-sub`
+/// عنوان الشاشة: أيقونةٌ وعنوانٌ وسطرٌ فرعي، ومكانٌ للإجراءات يمينه.
 class ImdPageTitle extends StatelessWidget {
   const ImdPageTitle({super.key, required this.title, this.icon, this.subtitle, this.trailing, this.actions});
 
@@ -88,7 +89,7 @@ class ImdPageTitle extends StatelessWidget {
   }
 }
 
-/// `.panel` / `.icard` — بطاقة بيضاء بحد رفيع وزوايا 12.
+/// لوحةٌ بخلفية السطح وحدٍّ رفيع وزوايا 12 — الحاوية الأساسية لأقسام الشاشة.
 class ImdPanel extends StatelessWidget {
   const ImdPanel({
     super.key,
@@ -204,7 +205,7 @@ class ImdMenuButton<T> extends StatelessWidget {
   }
 }
 
-/// `.btn` بأنواعه (`btn-p`, `btn-o`, `btn-d`, `btn-blue`, `btn-warn`, `btn-purple`) و`.btn-sm`.
+/// زرّ النظام بأنواعه: أساسي، مُحاط، خطر، أزرق، تحذير، بنفسجي، داكن — وبمقاسٍ صغير.
 class ImdButton extends StatefulWidget {
   const ImdButton({
     super.key,
@@ -355,7 +356,7 @@ class ImdIconButton extends StatelessWidget {
   }
 }
 
-/// `.tabbtn` — تبويبات كبسولية؛ النشط أسود.
+/// تبويبات كبسولية؛ النشط أسود.
 class ImdPillTabs<T> extends StatelessWidget {
   const ImdPillTabs({super.key, required this.tabs, required this.value, required this.onChanged, this.wrap = true, this.gap = 8});
 
@@ -363,7 +364,7 @@ class ImdPillTabs<T> extends StatelessWidget {
   final T value;
   final ValueChanged<T> onChanged;
 
-  /// false ⇒ صف واحد بفجوة 6 (`.itabs` قابل للتمرير أفقيًا).
+  /// false ⇒ صف واحد بفجوة 6 قابل للتمرير أفقيًا.
   final bool wrap;
   final double gap;
 
@@ -440,7 +441,7 @@ class _PillTabState extends State<_PillTab> {
   }
 }
 
-/// `.tabs` — مجموعة مقاطع بخلفية رمادية والنشط أبيض (مثل «وحدة مستفيدة / مطبخ / جهة»).
+/// مجموعة مقاطع بخلفية رمادية والنشط أبيض (مثل «وحدة مستفيدة / مطبخ / جهة»).
 class ImdSegmented<T> extends StatelessWidget {
   const ImdSegmented({super.key, required this.tabs, required this.value, required this.onChanged});
 
@@ -493,7 +494,7 @@ class ImdSegmented<T> extends StatelessWidget {
 
 enum ImdTone { ok, off, pend, code, err, info }
 
-/// `.chip` بأنواعه.
+/// شارة حالة: نصٌّ قصير بخلفيةٍ ولونٍ يحدّدهما [ImdTone].
 class ImdChip extends StatelessWidget {
   const ImdChip(this.label,
       {super.key, this.tone = ImdTone.off, this.icon, this.onTap, this.deriveBackgroundFromText = false});
@@ -527,7 +528,7 @@ class ImdChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final (soft, fg) = colors(context.imd, tone);
     final bg = deriveBackgroundFromText ? fg.withValues(alpha: .15) : soft;
-    // `.chip{white-space:nowrap}` — أصغر عرض للشريحة هو عرض نصها كاملًا،
+    // الشارة لا يلتفّ نصّها، فأصغر عرضٍ لها هو عرض نصّها كاملًا،
     // فلا يضغطها عمود الجدول إلى ما دونه (IntrinsicWidth يجعل الأصغر = الأكبر).
     final chip = IntrinsicWidth(
         child: Container(
@@ -535,7 +536,7 @@ class ImdChip extends StatelessWidget {
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (icon != null) ...[ImdIcon(icon!, size: 13, color: fg), const SizedBox(width: 6)],
-        // الرموز التعبيرية داخل الشارات تُحوَّل أيقونات كما يفعل `ui-icons.js` في الويب.
+        // الرموز التعبيرية داخل الشارات تُحوَّل أيقوناتٍ من مكتبة النظام.
         //
         // و[Flexible] هنا ليس زينة: [IntrinsicWidth] أعلاه يجعل أصغر عرضٍ
         // للشارة عرضَ نصها كاملًا، فإن ضاق أبوها عن ذلك — شارةٌ طويلة في
@@ -561,7 +562,7 @@ class ImdChip extends StatelessWidget {
 /// `ok` «مضبوط» أخضر، `off` «قيد الانتظار» رمادي، `err` أحمر، `info` أزرق.
 typedef StatusBadge = ImdChip;
 
-/// `.note-box` — صندوق ملاحظة أصفر.
+/// صندوق ملاحظة أصفر.
 class ImdNote extends StatelessWidget {
   const ImdNote(this.text, {super.key, this.child, this.margin = EdgeInsets.zero});
 
@@ -587,7 +588,7 @@ class ImdNote extends StatelessWidget {
   }
 }
 
-/// `.alert.err|warn|ok` و`.print-tip`
+/// شريط تنبيه: خطأ أو تحذير أو نجاح أو معلومة، بنبرة [ImdTone].
 class ImdAlert extends StatelessWidget {
   const ImdAlert(this.text, {super.key, this.tone = ImdTone.err, this.margin = const EdgeInsets.only(bottom: 12)});
 
@@ -607,7 +608,7 @@ class ImdAlert extends StatelessWidget {
   }
 }
 
-/// زخرفة `.fld` لحقول الإدخال.
+/// زخرفة حقول الإدخال الموحّدة.
 /// وسمٌ يُعلن أن ما تحته نمطٌ مدمج.
 ///
 /// **تُكتب مرةً حول الجدول فتتبعها حقوله كلها** — بديلًا عن تمرير `compact:`
@@ -676,7 +677,7 @@ InputDecoration imdFieldDecoration(
   );
 }
 
-/// `.field` — عنوان فوق الحقل (13/600) ثم الحقل.
+/// عنوان فوق الحقل (13/600) ثم الحقل.
 class ImdField extends StatelessWidget {
   const ImdField({
     super.key,
@@ -840,7 +841,7 @@ class ImdCol {
   final bool auto;
 }
 
-/// عرض عمود بأسلوب `table-layout:auto` في المتصفح: يبدأ بعرض المحتوى الأقصى،
+/// عرض عمودٍ يتبع محتواه: يبدأ بعرض المحتوى الأقصى،
 /// يُوزَّع الفائض بنسبة عرض المحتوى، ويُضغط العمود عند الضيق حتى أصغر عرض لمحتواه (مع التفاف النص).
 class _HtmlColumnWidth extends TableColumnWidth {
   const _HtmlColumnWidth();
@@ -872,7 +873,7 @@ class _HtmlColumnWidth extends TableColumnWidth {
   }
 }
 
-/// `.twrap > table.u` — جدول قراءة بيانات كثيفة: رأس رمادي فاتح، صفوف بخط فاصل، وتظليل عند المرور.
+/// جدول قراءة بيانات كثيفة: رأس رمادي فاتح، صفوف بخط فاصل، وتظليل عند المرور.
 class ImdTable extends StatefulWidget {
   const ImdTable({
     super.key,
@@ -1249,7 +1250,7 @@ class _ImdTableState extends State<ImdTable> {
     } else {
       tableArea = LayoutBuilder(builder: (context, cons) {
         if (cons.maxWidth >= minW) return table;
-        // شريط تمرير ظاهر كما في `.twrap{overflow:auto}` بالويب، وإلا لم يعرف
+        // شريط تمرير ظاهر، وإلا لم يعرف
         // المستخدم أن هناك أعمدة خارج الشاشة (لا تمرير أفقي بعجلة الفأرة).
         return Scrollbar(
           controller: _hScroll,
@@ -1327,7 +1328,7 @@ class _ImdTableState extends State<ImdTable> {
   }
 }
 
-/// صف فارغ بإطار (`.twrap` بنص «لا …») كما يظهر في الويب عند خلو القوائم.
+/// صفٌّ فارغ بإطار جدول («لا …») للقوائم الخالية.
 class ImdEmptyBox extends StatelessWidget {
   const ImdEmptyBox(this.text, {super.key});
   final String text;
@@ -1336,7 +1337,7 @@ class ImdEmptyBox extends StatelessWidget {
   Widget build(BuildContext context) => ImdTable(columns: const [], rows: const [], empty: text);
 }
 
-/// `.toast` — رسالة سوداء عائمة.
+/// رسالة سوداء عائمة.
 void showImdToast(BuildContext context, String message, {bool error = false}) {
   final c = context.imd;
   final messenger = ScaffoldMessenger.maybeOf(context);
@@ -1363,7 +1364,7 @@ void showImdToast(BuildContext context, String message, {bool error = false}) {
     ));
 }
 
-/// `.modal` — نافذة بزوايا 16.
+/// نافذة بزوايا 16.
 Future<T?> showImdModal<T>(
   BuildContext context, {
   required String title,
@@ -1410,7 +1411,7 @@ Future<T?> showImdModal<T>(
   );
 }
 
-/// تأكيد (`confirm()` في الويب).
+/// حوار تأكيدٍ بسؤالٍ وزرَّي موافقة وإلغاء.
 Future<bool> imdConfirm(
   BuildContext context,
   String message, {
@@ -1468,7 +1469,7 @@ class ImdGrid extends StatelessWidget {
   }
 }
 
-/// `.main` — منطقة المحتوى القابلة للتمرير بحشوة الويب حسب العرض.
+/// منطقة المحتوى القابلة للتمرير، بحشوةٍ تتبع عرض الشاشة.
 class ImdPage extends StatelessWidget {
   const ImdPage({super.key, required this.children, this.controller});
 
@@ -1493,7 +1494,7 @@ class ImdPage extends StatelessWidget {
   }
 }
 
-/// `prompt()` في الويب — نافذة إدخال نص واحد.
+/// حوار إدخال نصٍّ واحد.
 Future<String?> imdPrompt(BuildContext context, String message, {String ok = 'تأكيد', String initial = ''}) async {
   final ctrl = TextEditingController(text: initial);
   final r = await showImdModal<String>(

@@ -136,7 +136,7 @@ class _PendingScreenState extends State<PendingScreen> {
     ]);
   }
 
-  /// `.dcard`
+  /// بطاقة مجموعةٍ من أوامر الصرف المعلّقة.
   Widget _card(BuildContext context, String k, List<Issue> g, bool w) {
     final c = context.imd;
     final f = g.first;

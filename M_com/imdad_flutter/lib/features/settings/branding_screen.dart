@@ -82,7 +82,7 @@ class _BrandingScreenState extends State<BrandingScreen> {
 
   bool get _editable => _perm.admin || _perm.has('settings', PermAction.edit);
 
-  /// اختيار ملف الشعار وتخزينه Base64 (حد أقصى ٢ ميجابايت كما في الويب).
+  /// اختيار ملف الشعار وتخزينه Base64 (حد أقصى ٢ ميجابايت).
   Future<void> _pickLogo() async {
     final picked = await ImdFiles.pick(extensions: const ['png', 'jpg', 'jpeg', 'webp']);
     if (picked == null) return;
@@ -112,7 +112,7 @@ class _BrandingScreenState extends State<BrandingScreen> {
       showExpiry: _showExpiry,
     );
     await _settings.saveIdentity(id);
-    // السمة والخط يُطبَّقان فورًا كما في `applyBranding()` بالويب، بلا إعادة تشغيل.
+    // السمة والخط يُطبَّقان فورًا بلا إعادة تشغيل.
     if (mounted) {
       context.read<ImdTheme>()
         ..apply(id.themePref)
@@ -301,7 +301,7 @@ class _BrandingScreenState extends State<BrandingScreen> {
     );
   }
 
-  /// `.logo-preview` — مربع بحدود متقطعة يعرض الشعار أو الحرف «إ».
+  /// مربع بحدود متقطعة يعرض الشعار أو الحرف «إ».
   Widget _logoPreview(ImdColors c) {
     final size = (double.tryParse(_size.text.trim()) ?? 140).clamp(40, 200).toDouble();
     Uint8List? bytes;

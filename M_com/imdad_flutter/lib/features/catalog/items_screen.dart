@@ -22,7 +22,7 @@ import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../domain/stock_alerts.dart';
 
-/// إدارة الأصناف — نقل مطابق لـ `renderItems()` في نسخة الويب بتبويباتها الست:
+/// إدارة الأصناف بتبويباتها الست:
 /// القائمة، التصنيفات، بطاقة الصنف، الأرصدة، حركة الصنف، الباركودات.
 class ItemsScreen extends StatefulWidget {
   const ItemsScreen({super.key});
@@ -31,7 +31,7 @@ class ItemsScreen extends StatefulWidget {
   State<ItemsScreen> createState() => _ItemsScreenState();
 }
 
-/// صف وحدة قياس في النموذج (`.urow`).
+/// صف وحدة قياس في النموذج.
 class _URow {
   _URow(String name, double factor, this.base)
       : name = TextEditingController(text: name),
@@ -129,8 +129,8 @@ class _ItemsScreenState extends State<ItemsScreen> {
 
   /// رصيد الصنف من دفتر الحركات وحده (الأرصدة الافتتاحية + صافي الحركات).
   ///
-  /// كان يُضاف إليه عمود `items.qty`، وهو في الويب رصيد عرضٍ يُعاد حسابه من
-  /// الدفتر نفسه — فكانت البيانات المستوردة من الويب تُحسب مرتين هنا، بينما
+  /// كان يُضاف إليه عمود `items.qty`، وهو رصيد عرضٍ يُعاد حسابه من
+  /// الدفتر نفسه — فكانت البيانات المرحَّلة تُحسب مرتين هنا، بينما
   /// تتجاهله أرصدة المستودعات وفحوص الكفاية، فيظهر للصنف رصيدان مختلفان.
   double _qty(Item x) => _ledger[x.id] ?? 0;
 
@@ -1089,7 +1089,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
     if (!mounted) return;
     showImdToast(context, '✔ ولّد باركود لـ $n صنف');
     await _fetch();
-    // الأصناف ذات الباركود محددة افتراضيًا كما في الويب.
+    // الأصناف ذات الباركود محددة افتراضيًا.
     setState(() => _bcChecked.addAll(_items.where((x) => x.barcode.isNotEmpty).map((x) => x.id)));
   }
 
@@ -1112,7 +1112,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // الأصناف ذات الباركود محددة مبدئيًا (checked في الويب).
+    // الأصناف ذات الباركود محددة مبدئيًا.
     if (_bcChecked.isEmpty) _bcChecked.addAll(_items.where((x) => x.barcode.isNotEmpty).map((x) => x.id));
   }
 }

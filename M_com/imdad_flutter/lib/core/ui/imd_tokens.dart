@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-/// رموز الألوان والمقاسات — منقولة حرفيًا من متغيرات `ui-theme.css` في نسخة الويب
-/// (الوضع الفاتح `:root` والداكن `[data-theme=dark]`).
+/// رموز ألوان النظام — المصدر الوحيد لكل لونٍ في الواجهة. تُقرأ من
+/// `context.imd`، ولا يُكتب لونٌ صريح في شاشةٍ ولا في مكوّن.
 @immutable
 class ImdColors extends ThemeExtension<ImdColors> {
   const ImdColors({
@@ -193,7 +193,8 @@ extension ImdThemeX on BuildContext {
   ImdColors get imd => Theme.of(this).extension<ImdColors>() ?? ImdColors.light;
 }
 
-/// المقاسات الثابتة في `ui-theme.css`.
+/// مقاسات النظام الثابتة: نصف القطر، وعرض الشريط الجانبي، وارتفاع الشريط
+/// العلوي، وحشوات المحتوى حسب العرض، وأهداف اللمس.
 class ImdSizes {
   static const double radius = 12; // --ui-radius
   static const double sideWidth = 290; // .side

@@ -7,11 +7,11 @@ import 'connection/connection.dart';
 
 part 'app_database.g.dart';
 
-/// مخطط قاعدة البيانات المحلية (SQLite عبر Drift) — نقل مباشر لمجموعات نظام الويب:
+/// مخطط قاعدة البيانات المحلية (SQLite عبر Drift):
 /// users, items, categories, warehouses, suppliers, units, facilities,
 /// receipts, issues, transfers, returns, openingBalances, strengths,
 /// kitchenLogs, entitlements, stocktakes, stocktakeLines, auditLogs, appSettings.
-/// كل جدول حركة يحفظ سطرًا لكل صنف مع بيانات السند (نفس بنية النسخة الحالية).
+/// كل جدول حركة يحفظ سطرًا لكل صنف مع بيانات السند.
 
 class Users extends Table {
   TextColumn get id => text()();
@@ -196,7 +196,7 @@ class Issues extends Table with MovementColumns {
       text().withDefault(const Constant(''))();
   RealColumn get soldierCount => real().withDefault(const Constant(0))();
   IntColumn get durationDays => integer().withDefault(const Constant(1))();
-  // v2: اعتماد/رفض أوامر الصرف كما في الويب
+  // v2: اعتماد/رفض أوامر الصرف
   TextColumn get approvedBy => text().withDefault(const Constant(''))();
   TextColumn get rejectReason => text().withDefault(const Constant(''))();
   TextColumn get rejectedBy => text().withDefault(const Constant(''))();
@@ -310,7 +310,7 @@ class Entitlements extends Table {
   Set<Column> get primaryKey => {itemId};
 }
 
-/// v5: مراجعة الأحداث الحساسة/الحرجة (`sensitiveReviews` في الويب) —
+/// v5: مراجعة الأحداث الحساسة/الحرجة —
 /// سطر لكل حدث في سجل التدقيق تمت مراجعته، فلا يظهر ضمن «غير المراجَع».
 class SensitiveReviews extends Table {
   TextColumn get id => text()();
@@ -387,7 +387,7 @@ class AuditLogs extends Table {
   TextColumn get risk => text().withDefault(const Constant('normal'))();
   TextColumn get actorEmail => text().withDefault(const Constant(''))();
   TextColumn get logDate => text().withDefault(const Constant(''))();
-  // v2: حقول auditWrite في الويب
+  // v2: حقول سجل التدقيق
   TextColumn get actorName => text().withDefault(const Constant(''))();
   TextColumn get actorRole => text().withDefault(const Constant('user'))();
   TextColumn get refNo => text().withDefault(const Constant(''))();
@@ -1230,7 +1230,7 @@ class AppDatabase extends _$AppDatabase {
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
         onUpgrade: (m, from, to) async {
-          // v2: حقول الموردين وسجل التدقيق كما في نسخة الويب.
+          // v2: حقول الموردين وسجل التدقيق.
           if (from < 2) {
             await _addCol(m, suppliers, suppliers.contact);
             await _addCol(m, suppliers, suppliers.city);

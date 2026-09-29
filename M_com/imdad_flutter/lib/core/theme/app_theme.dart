@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../ui/imd_fonts.dart';
 import '../ui/imd_tokens.dart';
 
-/// سمة التطبيق — نفس لوحة ألوان نسخة الويب (أخضر مؤسسي على خلفية محايدة فاتحة)
-/// مع نسخة داكنة مطابقة لما اعتُمد في النظام الحالي.
+/// سمة التطبيق — أخضر مؤسسي على خلفية محايدة فاتحة،
+/// ونسخةٌ داكنة مقابلة لها.
 class AppTheme {
   static const Color accent = Color(0xFF047857);
   static const Color accentHover = Color(0xFF065F46);

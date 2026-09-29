@@ -6,10 +6,11 @@ import 'imd_layout.dart';
 import 'imd_tokens.dart';
 import 'imd_widgets.dart';
 
-// عناصر النماذج والبطاقات المتكررة في شاشات الويب: `.itabs`، `.icard`، `.f2/.f3/.f4`،
-// عنوان الحقل الصغير، `.fld`، `.chips-row`، `.ld`.
+// عناصر النماذج والبطاقات المتكررة: شريط التبويبات، البطاقة المعنونة، شبكات
+// الحقول بعمودين إلى أربعة، عنوان الحقل الصغير، الحقل النصي، صف الشارات،
+// ونص التحميل/الفراغ.
 
-/// `.itabs` — صف تبويبات أفقي قابل للتمرير بفجوة 6.
+/// صف تبويبات أفقي قابل للتمرير بفجوة 6.
 class ImdItabs extends StatelessWidget {
   const ImdItabs(
       {super.key,
@@ -34,7 +35,7 @@ class ImdItabs extends StatelessWidget {
   }
 }
 
-/// `.icard` — حشوة 16 وهامش 14 وعنوان h4.
+/// حشوة 16 وهامش 14 وعنوان h4.
 class ImdICard extends StatelessWidget {
   const ImdICard(
       {super.key, this.title, required this.child, this.icon, this.titleColor});
@@ -82,13 +83,13 @@ class ImdICard extends StatelessWidget {
   }
 }
 
-/// `.f2` — عمودان بفجوة 12، وعمود واحد ≤600.
+/// عمودان بفجوة 12، وعمود واحد ≤600.
 class ImdF2 extends StatelessWidget {
   const ImdF2(
       {super.key, required this.children, this.cols = 2, this.gap = 12});
   final List<Widget> children;
 
-  /// 2 = `.f2`، 3 = `.f3`، 4 = `.f4`.
+  /// عدد الأعمدة: ٢ أو ٣ أو ٤، وتنهار إلى عمودٍ واحد على الشاشات الضيّقة.
   final int cols;
   final double gap;
 
@@ -122,7 +123,7 @@ class ImdLabeled extends StatelessWidget {
   final String label;
   final Widget child;
 
-  /// 12 = `font-size:12px;font-weight:700`، 11 = `font-size:11px` (يُلوَّن text-2 بوزن 600 في ui-theme).
+  /// 12 ⇒ عنوانٌ أبرز بوزن 700، و11 ⇒ عنوانٌ أصغر بوزن 600 بلون النص الثانوي.
   final double size;
 
   @override
@@ -307,7 +308,7 @@ class ImdChipsRow extends StatelessWidget {
       );
 }
 
-/// `.ld` — نص تحميل/فراغ رمادي.
+/// نص تحميل/فراغ رمادي.
 class ImdLd extends StatelessWidget {
   const ImdLd(this.text, {super.key, this.center = false});
   final String text;
@@ -336,8 +337,8 @@ class ImdLdText extends StatelessWidget {
       );
 }
 
-/// `.rbar` بحقل بحث: الحقل بعرض كامل (`.fld{width:100%}`) فتنتقل الأزرار لسطر تحته،
-/// و`inline: true` ⇒ `.lst-bar` (الحقل والأزرار في سطر واحد).
+/// شريط أدواتٍ بحقل بحث: الحقل يأخذ عرض السطر كاملًا فتنزل الأزرار تحته،
+/// و`inline: true` ⇒ الحقل والأزرار في سطرٍ واحد.
 class ImdSearchBar extends StatelessWidget {
   const ImdSearchBar({
     super.key,

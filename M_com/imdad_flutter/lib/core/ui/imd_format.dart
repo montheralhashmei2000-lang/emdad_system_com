@@ -1,5 +1,4 @@
-/// تنسيق الأرقام والتواريخ كما في نسخة الويب:
-/// أرقامٌ هندية بثلاث خانات عشرية كحد أقصى.
+/// تنسيق الأرقام والتواريخ في النظام: أرقامٌ هندية بثلاث خانات عشرية كحد أقصى.
 ///
 /// وفاصلُ الآلاف فاصلةٌ عادية «,» والعشريّ نقطة «.» لا علامتا `ar-EG`
 /// المرتفعتان «٬ ٫»: الأخيرتان تُطبعان شرطةً معلّقة فوق السطر يظنها القارئ
@@ -21,12 +20,12 @@ String arDigits(String s) {
   return b.toString();
 }
 
-/// `nf()` في الويب.
+/// رقمٌ للعرض: مجموعٌ بفواصل الآلاف، بلا أصفارٍ عشرية زائدة، بأرقامٍ هندية.
 String nf(num? n) {
   final v = (n == null || (n is double && (n.isNaN || n.isInfinite))) ? 0 : n;
   final neg = v < 0;
   final abs = v.abs();
-  // toLocaleString يقرّب إلى ثلاث خانات عشرية ويحذف الأصفار الزائدة.
+  // التقريب إلى ثلاث خانات ثم حذف الأصفار الزائدة من اليمين.
   final fixed = abs.toStringAsFixed(3);
   final intPart = fixed.split('.')[0];
   final frac = fixed.split('.')[1].replaceFirst(RegExp(r'0+$'), '');
@@ -41,9 +40,9 @@ String nf(num? n) {
   return arDigits(out);
 }
 
-/// `toLocaleDateString('ar-EG')` ⇒ يوم/شهر/سنة بأرقام هندية.
+/// تاريخٌ للعرض: يوم/شهر/سنة بأرقام هندية.
 String arDate(DateTime d) => arDigits('${d.day}/${d.month}/${d.year}');
 
-/// صيغة التاريخ المخزَّنة في الويب (YYYY-MM-DD).
+/// صيغة التاريخ المخزَّنة في قاعدة البيانات (YYYY-MM-DD) — تُرتَّب نصيًّا.
 String isoDay(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';

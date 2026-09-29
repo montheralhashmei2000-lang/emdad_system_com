@@ -382,7 +382,7 @@ class _SensitiveOpsScreenState extends State<SensitiveOpsScreen> {
         _ => const ImdChip('مراجعة مطلوبة', tone: ImdTone.code),
       };
 
-  /// عنصر طابور بنقطة حالة ملوّنة (`.status-item`).
+  /// عنصر طابور بنقطة حالة ملوّنة.
   Widget _queueItem(_QueueItem it) {
     final c = context.imd;
     return Container(

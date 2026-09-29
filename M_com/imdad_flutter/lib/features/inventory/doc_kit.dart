@@ -11,11 +11,11 @@ import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 
-// عناصر شاشات المستندات المخزنية (الاستلام، الصرف، التحويل، المرتجعات) — نفس أصناف CSS في الويب:
-// .soft-card، .workflow-steps، .quick-grid، .print-tip، .bcinput، .rvrow/.rgrid، منتقي الأصناف (item-picker.js)،
-// صندوق الفحص السريع (paintValidationBox)، الشريط الثابت (.sticky-actions)، وبطاقات المستندات (.dcard).
+// عناصر شاشات المستندات المخزنية (الاستلام، الصرف، التحويل، المرتجعات):
+// البطاقة الخفيفة، وشريط الخطوات، وشبكة الأرقام السريعة، وسطر إرشاد الطباعة،
+// وحقل الباركود، وبطاقة سطر الصنف، ومنتقي الأصناف، وصندوق الفحص السريع،
 
-/// `.soft-card`
+/// بطاقةٌ خفيفة بخلفيةٍ باهتة — تُصدَّر بها رؤوس شاشات السندات.
 class ImdSoftCard extends StatelessWidget {
   const ImdSoftCard({super.key, required this.child});
   final Widget child;
@@ -100,7 +100,7 @@ class ImdWorkflowSteps extends StatelessWidget {
   }
 }
 
-/// `.quick-grid > .qcard` — auto-fit بحد أدنى 170.
+/// شبكة أرقامٍ سريعة: بطاقاتٌ صغيرة تتوزّع تلقائيًا بحدٍّ أدنى 170.
 class ImdQuickGrid extends StatelessWidget {
   const ImdQuickGrid(this.cards, {super.key});
   final List<(String, String)> cards;
@@ -151,7 +151,7 @@ class ImdQuickGrid extends StatelessWidget {
   }
 }
 
-/// `.print-tip`
+/// سطر إرشادٍ عن الطباعة أسفل بطاقة السند.
 class ImdPrintTip extends StatelessWidget {
   const ImdPrintTip(this.text, {super.key});
   final String text;
@@ -297,7 +297,7 @@ class _DashedRRect extends CustomPainter {
   bool shouldRepaint(covariant _DashedRRect old) => old.color != color;
 }
 
-/// منتقي الصنف بالكتابة — نقل لـ item-picker.js: بحث بالاسم أو الكود مع توحيد الحروف العربية،
+/// منتقي الصنف بالكتابة: بحث بالاسم أو الكود مع توحيد الحروف العربية،
 /// قائمة منسدلة بحد 60 نتيجة (الاسم + الكود صغيرًا)، أسهم وEnter وEsc.
 class ImdItemPicker extends StatefulWidget {
   const ImdItemPicker({
@@ -600,7 +600,7 @@ class ImdRowLabel extends StatelessWidget {
   }
 }
 
-/// `.rvrow` — بطاقة سطر صنف: كتلة واحدة تجمع كل بيانات الصنف.
+/// بطاقة سطر صنف: كتلة واحدة تجمع كل بيانات الصنف.
 ///
 /// [index] رقم السطر يُعرض في زاويته، و[trailing] سطر معلومات أسفله (مكافئ
 /// الكمية بالوحدة الأساسية مثلًا). الترقيم يفصل الأصناف بصريًا حين تكثر، وقد
@@ -660,7 +660,7 @@ class ImdRvRow extends StatelessWidget {
   }
 }
 
-/// `.rmeta`
+/// بياناتٌ ثانوية لسطر الصنف تُعرض تحته بخطٍّ أصغر.
 class ImdRowMeta extends StatelessWidget {
   const ImdRowMeta(this.text, {super.key});
   final String text;
@@ -685,7 +685,7 @@ class ImdRowMeta extends StatelessWidget {
   }
 }
 
-/// `.cy` — صندوق عملية الأصناف القابلة للتعبئة.
+/// صندوق عملية الأصناف القابلة للتعبئة.
 class ImdCyBox extends StatelessWidget {
   const ImdCyBox(
       {super.key,
@@ -780,7 +780,7 @@ class ImdValidationBox extends StatelessWidget {
   }
 }
 
-/// `.sticky-actions` — شريط الإجراءات (يلتصق بأسفل الشاشة عبر `ImdStickyPage`).
+/// شريط الإجراءات (يلتصق بأسفل الشاشة عبر `ImdStickyPage`).
 class ImdStickyActions extends StatelessWidget {
   const ImdStickyActions({super.key, required this.children, this.caption});
   final List<Widget> children;
@@ -812,7 +812,7 @@ class ImdStickyActions extends StatelessWidget {
                 runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: children),
-            // `.action-caption{margin-inline-start:auto}` يدفع التنبيه إلى الطرف الآخر من السطر.
+            // الحشوة التلقائية تدفع التنبيه إلى الطرف الآخر من السطر.
             if (caption != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -936,7 +936,7 @@ class _ImdStickyPageState extends State<ImdStickyPage> {
   }
 }
 
-/// `.dcard` — بطاقة مستند (مسودة/أمر/سند) برأس `.dh`.
+/// بطاقة مستند (مسودة/أمر/سند) برأسٍ يحمل رقمه وحالته.
 class ImdDocCard extends StatelessWidget {
   const ImdDocCard({super.key, required this.head, this.body, this.actions});
   final List<Widget> head;
@@ -1034,7 +1034,7 @@ int imdDuplicateCount<T>(List<T> rows, String Function(T) key) {
   return m.values.where((v) => v > 1).length;
 }
 
-/// `.target-pills` — مقاطع نوع التوجيه (الزر النشط أبيض بظل خفيف).
+/// مقاطع نوع التوجيه (الزر النشط أبيض بظل خفيف).
 class ImdTargetPills<T> extends StatelessWidget {
   const ImdTargetPills(
       {super.key,

@@ -1,5 +1,5 @@
-// مولَّد من source_web_v720/ui-icons.js عبر tool/gen_icons.js — لا تعدّله يدويًا.
-// كل أيقونة: عناصر SVG داخل viewBox 24×24 بخط 2 (نفس مكتبة أيقونات نسخة الويب).
+// ملفٌّ مولَّد عبر tool/gen_icons.js — لا تعدّله يدويًا.
+// كل أيقونة: عناصر SVG داخل viewBox 24×24 بخط 2.
 
 const Map<String, String> kImdIconBodies = {
   'x': '<path d="M18 6 6 18"/><path d="M6 6l12 12"/>',

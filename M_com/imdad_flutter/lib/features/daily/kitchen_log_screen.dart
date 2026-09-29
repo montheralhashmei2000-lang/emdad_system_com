@@ -342,7 +342,7 @@ class _KitchenLogScreenState extends State<KitchenLogScreen> {
     ]);
   }
 
-  /// `.rvrow` + `.rgrid` — الصنف (ومعه سطر المقارنة)، الوحدة، الكمية، زر الحذف.
+  /// الصنف (ومعه سطر المقارنة)، الوحدة، الكمية، زر الحذف.
   Widget _lineRow(_Row r) {
     final it = _itemById(r.itemId);
     final units = _unitsOf(it);

@@ -29,7 +29,7 @@ class AuthResult {
   bool get isOk => status == AuthStatus.ok;
 }
 
-/// المصادقة والجلسة — نقل مطابق لسلوك نظام الويب:
+/// المصادقة والجلسة:
 /// • PBKDF2-HMAC-SHA256 + salt لكل مستخدم؛ الحسابات القديمة (45,000 دورة) تُعاد
 ///   تجزئتها بالعدد الحالي تلقائيًا عند أول دخول ناجح.
 /// • قفل الدخول بعد 5 محاولات خاطئة لمدة 3 دقائق (لكل اسم مستخدم).
@@ -49,7 +49,7 @@ class AuthService {
   User? get currentUser => _current;
 
   /// لا يوجد أي مستخدم بعد ⇒ تظهر تهيئة حساب المدير الأول.
-  /// يظهر قسم التهيئة ما دام لا يوجد حساب مدير مُهيّأ محليًا (`AUTH_LOCAL.hasUsers()` في الويب).
+  /// يظهر قسم التهيئة ما دام لا يوجد حساب مدير مُهيّأ محليًا.
   Future<bool> needsBootstrap() async {
     final count =
         await db.customSelect("SELECT COUNT(*) AS c FROM users WHERE id LIKE 'local-%'").getSingle();
@@ -278,7 +278,7 @@ class AuthService {
     await prefs.setInt(_kSessionStart, DateTime.now().millisecondsSinceEpoch);
   }
 
-  /// صلاحيات المستخدم الحالي (JSON مطابق لبنية نظام الويب).
+  /// صلاحيات المستخدم الحالي، مخزَّنةً JSON.
   Map<String, dynamic> permissionsOf(User user) {
     try {
       return (jsonDecode(user.permissions) as Map).cast<String, dynamic>();
@@ -317,7 +317,7 @@ class AuthService {
     if (v.length < 6) throw ArgumentError('✖ كلمة المرور 6 أحرف على الأقل');
   }
 
-  /// `fmt(ms)` في الويب.
+  /// مدّةٌ بالمللي ثانية إلى نصٍّ مقروء.
   static String _fmt(Duration d) {
     final s = (d.inMilliseconds / 1000).ceil();
     return s < 60 ? '$s ثانية' : '${(s / 60).ceil()} دقيقة';

@@ -301,7 +301,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-/// `.lg-input` مع أيقونة يمينًا وزر إظهار يسارًا، ولون الأيقونة يتحول للأساسي عند التركيز.
+/// حقل الدخول: أيقونة يمينًا وزر إظهار يسارًا، ولون الأيقونة يتحول للأساسي عند التركيز.
 class _LgInput extends StatefulWidget {
   const _LgInput({
     required this.controller,
@@ -446,7 +446,7 @@ class _EyeBtnState extends State<_EyeBtn> {
   }
 }
 
-/// `.lg-btn`
+/// زرّ الدخول الأساسي — يعرض مؤشر انتظارٍ أثناء التحقق.
 class _PrimaryBtn extends StatefulWidget {
   const _PrimaryBtn({
     required this.label,

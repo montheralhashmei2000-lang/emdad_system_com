@@ -19,7 +19,7 @@ import '../../data/db/app_database.dart';
 import '../catalog/authorities_screen.dart';
 import '../../data/migration/data_export.dart';
 import '../../data/migration/excel_import.dart';
-import '../../data/migration/web_import.dart';
+import '../../data/migration/legacy_import.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../inventory/doc_kit.dart' show ImdReadonlyField;
 import '../../data/repos/selfcheck_repo.dart';
@@ -257,7 +257,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     // الملف المشفَّر يُعرف من بادئته لا من امتداده، فلا يخدع الاسم.
     var password = '';
-    if (await WebImporter.isEncryptedFile(File(path))) {
+    if (await LegacyImporter.isEncryptedFile(File(path))) {
       if (!mounted) return;
       final entered = await _askBackupPassword(creating: false);
       if (entered == null || entered.isEmpty || !mounted) return;
@@ -273,7 +273,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (!ok) return;
     try {
-      final result = await WebImporter(_db).importFile(File(path), password: password);
+      final result = await LegacyImporter(_db).importFile(File(path), password: password);
       if (!mounted) return;
       setState(() => _note = result.toString());
       _toast('✔ اكتملت الاستعادة: ${nf(result.total)} سجل');
@@ -450,7 +450,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ]);
   }
 
-  /// `.set-nav`
+  /// قائمة التنقل بين أقسام الإعدادات — رأسيّةٌ على سطح المكتب وأفقيّةٌ على الجوال.
   Widget _nav({required bool horizontal}) {
     final c = context.imd;
     final buttons = [for (final s in _sections) _navButton(s, horizontal: horizontal)];
@@ -791,7 +791,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           icon: 'upload',
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             const ImdNote('استورد الأصناف والموردين والمستودعات والأرصدة من ملف Excel، '
-                'أو رحّل بيانات نسخة الويب من ملف JSON.'),
+                'أو رحّل بيانات النظام السابق من ملف JSON.'),
             const SizedBox(height: 10),
             Wrap(spacing: 8, runSpacing: 8, children: [
               ImdButton.outline(
@@ -807,7 +807,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onPressed: _excelTemplate,
               ),
               ImdButton.outline(
-                label: 'ترحيل ملف JSON من الويب',
+                label: 'ترحيل JSON من النظام السابق',
                 icon: 'swap',
                 small: true,
                 onPressed: _editable ? _restoreBackup : null,

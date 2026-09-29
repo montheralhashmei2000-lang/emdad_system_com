@@ -30,7 +30,7 @@ class VoucherLine {
 /// نوع السند المطبوع — يحدد جدول البيانات وخانات التوقيع ولون العنوان.
 enum VoucherKind { receive, issue, transfer, returnFromUnit, returnToSupplier }
 
-/// طباعة السندات بمحرك الطباعة العسكرية الرسمية (`militaryPrint`).
+/// طباعة السندات عبر [MilitaryPrint].
 class VoucherPrint {
   static Future<void> print({
     required AppDatabase db,

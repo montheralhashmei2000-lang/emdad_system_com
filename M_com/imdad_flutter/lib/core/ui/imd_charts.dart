@@ -5,11 +5,11 @@ import 'package:flutter/material.dart';
 import 'imd_format.dart';
 import 'imd_tokens.dart';
 
-// رسوم بيانية مرسومة يدويًا بمظهر Chart.js كما تظهر في نسخة الويب:
-// المحور الصادي يبدأ من الصفر، ووسيلة الإيضاح أسفل الرسم.
+// رسوم بيانية مرسومة على لوحةٍ مباشرة بلا حزمة خارجية: المحور الصادي يبدأ من
+// الصفر، وخطواته أرقامٌ مستريحة، ووسيلة الإيضاح أسفل الرسم.
 //
-// الشبكة والنصوص تتبع السمة: في الفاتح تبقى ألوان الويب أدناه، وفي الداكن
-// تُشتقّ من رموز الثيم — بلا ذلك تختفي الشبكة الفاتحة على خلفيةٍ داكنة.
+// الشبكة والنصوص تتبع السمة؛ القيمتان أدناه هما لونا الوضع الفاتح فقط، وفي
+// الداكن تُشتقّ من رموز الثيم — بلا ذلك تختفي الشبكة الفاتحة على خلفيةٍ داكنة.
 
 const _gridColor = Color(0xFFE7EEE9);
 const _tickColor = Color(0xFF66756C);
@@ -21,7 +21,7 @@ class ImdSeries {
   final Color color;
 }
 
-/// «خطوات» المحور كما يحسبها Chart.js تقريبًا (niceNum).
+/// «خطوات» المحور: أرقامٌ مستريحة (1، 2، 5 ومضاعفاتها) تغطّي أكبر قيمة.
 List<double> _niceTicks(double maxV, {int maxTicks = 11}) {
   if (maxV <= 0) return [for (var i = 0; i <= 10; i++) i / 10];
   double nice(double range, bool round) {
@@ -53,7 +53,7 @@ List<double> _niceTicks(double maxV, {int maxTicks = 11}) {
   return [for (var v = 0.0; v <= top + 1e-9; v += step) v];
 }
 
-/// Chart.js يعرض القيم بعدد خانات الخطوة: الصفر «0» والباقي «0.1 … 1.0» عند خطوة كسرية.
+/// القيم تُعرض بعدد خانات الخطوة: الصفر «0» والباقي «0.1 … 1.0» عند خطوة كسرية.
 String _tickLabel(double v, List<double> ticks) {
   final fractional = ticks.length > 1 && (ticks[1] - ticks[0]) < 1;
   if (v == 0) return '0';
@@ -202,7 +202,7 @@ class _LinePainter extends CustomPainter {
     }
   }
 
-  /// منحنى بيزيه بتوتر مثل Chart.js (tension).
+  /// منحنى بيزيه بتوتّرٍ يُنعّم الخط بلا أن يتجاوز نقاطه.
   Path _smooth(List<Offset> p, double t) {
     final path = Path()..moveTo(p.first.dx, p.first.dy);
     for (var i = 0; i < p.length - 1; i++) {
@@ -280,7 +280,7 @@ class _HBarPainter extends CustomPainter {
         ? [for (var i = 0; i <= 5; i++) i / 5]
         : _niceTicks(maxV, maxTicks: 8);
     final top = ticks.last;
-    // التسميات على يسار المحور (Chart.js يرسم الاتجاه LTR في اللوحة).
+    // التسميات على يسار المحور: اللوحة تُرسم باتجاه LTR.
     final labelW =
         labels.map((l) => _tp(l, color: tick).width).fold<double>(0, math.max) + 10;
     const bottomH = 22.0;
@@ -324,7 +324,7 @@ class _HBarPainter extends CustomPainter {
       old.tick != tick;
 }
 
-/// `.score-ring` — حلقة مؤشر بنسبة مئوية.
+/// حلقة مؤشر بنسبة مئوية.
 class ImdScoreRing extends StatelessWidget {
   const ImdScoreRing({super.key, required this.percent});
   final int percent;

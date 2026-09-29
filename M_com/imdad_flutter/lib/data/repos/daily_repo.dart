@@ -25,7 +25,7 @@ class StrengthEntry {
   final String unitName;
   final String campName;
 
-  /// «القوة الفعلية» في الويب.
+  /// «القوة الفعلية».
   final double soldierCount;
 
   /// «الزيادة» المحسوبة من النسبة.

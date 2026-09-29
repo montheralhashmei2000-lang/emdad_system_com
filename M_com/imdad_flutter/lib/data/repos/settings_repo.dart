@@ -6,7 +6,7 @@ import '../../core/ui/imd_fonts.dart';
 import '../db/app_database.dart';
 import '../../domain/print_layout.dart';
 
-/// هوية التطبيق والجهة (`APP_CFG` في الويب): الاسم والشعار وأسطر الترويسة والسمة.
+/// هوية التطبيق والجهة: الاسم والشعار وأسطر الترويسة والسمة.
 class AppIdentity {
   const AppIdentity({
     this.name = 'نظام الإمداد والتموين',

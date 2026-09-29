@@ -141,7 +141,7 @@ class CatalogRepo {
     final newId = id ?? _newId('itm');
     final list = units.isEmpty ? [ItemUnit(name: baseUnit, factor: 1, isBase: true)] : units;
     final unitsJson = jsonEncode(list.map((u) => u.toMap()).toList());
-    // وحدة الأساس تُشتق من الوحدات حين لا تُمرَّر صراحةً (كما في الويب: `baseUnit` = وحدة isBase).
+    // وحدة الأساس تُشتق من الوحدات حين لا تُمرَّر صراحةً (الوحدة ذات isBase).
     final base = baseUnit.isNotEmpty
         ? baseUnit
         : list.firstWhere((u) => u.isBase, orElse: () => list.first).name;
@@ -270,7 +270,7 @@ class CatalogRepo {
     String category = '',
   }) async {
     final newId = id ?? _newId('unit');
-    // facilityId لا يُمس عند التعديل (اشتراك المطبخ يُدار من شاشة المطابخ) كما في unSave بالويب.
+    // facilityId لا يُمس عند التعديل (اشتراك المطبخ يُدار من شاشة المطابخ).
     await db.into(db.beneficiaryUnits).insertOnConflictUpdate(BeneficiaryUnitsCompanion.insert(
           id: newId,
           name: name,

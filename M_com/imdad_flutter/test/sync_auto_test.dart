@@ -10,7 +10,7 @@ import 'package:imdad/data/repos/audit_repo.dart';
 import 'package:imdad/data/repos/catalog_repo.dart';
 import 'package:imdad/core/security/auth_service.dart';
 import 'package:imdad/data/migration/data_export.dart';
-import 'package:imdad/data/migration/web_import.dart';
+import 'package:imdad/data/migration/legacy_import.dart';
 import 'package:imdad/data/sync/lan_sync.dart';
 import 'package:imdad/data/sync/sync_crypto.dart';
 import 'package:imdad/data/sync/sync_marks.dart';
@@ -353,7 +353,7 @@ void main() {
       // نسخة ويب قديمة لا تحمل salt/hash: الاستيراد منها كان سيُفرغ كلمات
       // المرور على هذا الجهاز، فيقفل الجميع خارج النظام بلا سبب ظاهر.
       await AuthService(branch).createAdmin(username: 'admin', password: 'Test@12345');
-      await WebImporter(branch).importJson({
+      await LegacyImporter(branch).importJson({
         'users': [
           {'id': 'local-admin', 'username': 'admin', 'name': 'admin', 'role': 'admin'},
         ],

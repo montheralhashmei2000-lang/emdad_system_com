@@ -13,7 +13,7 @@ import 'barcode128.dart';
 
 typedef BarcodeLabel = ({String name, String code, String barcode});
 
-/// ورقة ملصقات الباركود — مقابل `#bcSheet` في الويب: شريط (طباعة، إغلاق، عدد الملصقات) ثم شبكة 3 أعمدة.
+/// ورقة ملصقات الباركود: شريط (طباعة، إغلاق، عدد الملصقات) ثم شبكة 3 أعمدة.
 class BarcodeLabelsSheet extends StatelessWidget {
   const BarcodeLabelsSheet({super.key, required this.labels});
 
@@ -131,7 +131,7 @@ class BarcodeLabelsSheet extends StatelessWidget {
   }
 }
 
-/// `.lbl`
+/// ملصقٌ واحد في الورقة: الرمز الشريطي فوق نصّه.
 class _Label extends StatelessWidget {
   const _Label(this.l);
   final BarcodeLabel l;

@@ -15,7 +15,7 @@ import '../../data/repos/movements_repo.dart';
 import '../../domain/stock_alerts.dart';
 import 'home_shell.dart';
 
-/// الرئيسية — نقل مطابق لـ `renderDash()` في نسخة الويب:
+/// الشاشة الرئيسية:
 /// Dashboard + Admin Operations Center بمؤشراته ومؤشر الصحة والإجراءات السريعة والرسوم والقوائم.
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});

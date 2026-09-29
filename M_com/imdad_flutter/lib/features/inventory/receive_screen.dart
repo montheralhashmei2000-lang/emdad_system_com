@@ -28,7 +28,7 @@ class ReceiveScreen extends StatefulWidget {
   State<ReceiveScreen> createState() => _ReceiveScreenState();
 }
 
-/// سطر `.rvrow` في سند الوارد.
+/// سطر صنفٍ في سند الوارد.
 class _Row {
   _Row({this.itemId = '', this.unit = '', double? qty, this.cy = 'RECEIVE_FULL', this.expiry = '', this.noAuto = false})
       : qty = TextEditingController(text: qty == null ? '' : _num(qty));
@@ -293,7 +293,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     final units = _catalog.unitsOf(it);
     row.unit = units.where((u) => u.isBase).firstOrNull?.name ?? (units.isNotEmpty ? units.first.name : '');
     setState(() {
-      // يحل محل السطر الفارغ الأخير كي يبقى سطر فارغ واحد في النهاية كما في الويب.
+      // يحل محل السطر الفارغ الأخير كي يبقى سطر فارغ واحد في النهاية.
       _rows.add(row);
       if (_rows.last.itemId.isNotEmpty) _rows.add(_Row());
     });
