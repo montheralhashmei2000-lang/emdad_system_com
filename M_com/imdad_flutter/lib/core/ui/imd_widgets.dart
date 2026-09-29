@@ -160,6 +160,50 @@ class ImdPanel extends StatelessWidget {
 
 enum ImdBtnKind { primary, outline, danger, blue, warn, purple, dark }
 
+/// زر قائمة للإجراءات الثانوية في الشاشات التشغيلية.
+class ImdMenuButton<T> extends StatelessWidget {
+  const ImdMenuButton({
+    super.key,
+    required this.label,
+    required this.items,
+    required this.onSelected,
+    this.icon = 'menu',
+    this.small = false,
+  });
+
+  final String label;
+  final String icon;
+  final bool small;
+  final List<PopupMenuEntry<T>> Function(BuildContext) items;
+  final ValueChanged<T> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.imd;
+    return PopupMenuButton<T>(
+      tooltip: label,
+      onSelected: onSelected,
+      itemBuilder: items,
+      child: Container(
+        constraints: BoxConstraints(minHeight: small ? 34 : ImdSizes.touchMin),
+        padding: EdgeInsets.symmetric(horizontal: small ? 12 : 16, vertical: small ? 6 : 9),
+        decoration: BoxDecoration(
+          color: c.surface,
+          border: Border.all(color: c.lineStrong),
+          borderRadius: BorderRadius.circular(ImdSizes.radius),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          ImdIcon(icon, size: small ? 13 : 15, color: c.text),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(fontSize: small ? 12.5 : 13.5, fontWeight: FontWeight.w600, color: c.text)),
+          const SizedBox(width: 4),
+          ImdIcon('chevron-down', size: 13, color: c.muted),
+        ]),
+      ),
+    );
+  }
+}
+
 /// `.btn` بأنواعه (`btn-p`, `btn-o`, `btn-d`, `btn-blue`, `btn-warn`, `btn-purple`) و`.btn-sm`.
 class ImdButton extends StatefulWidget {
   const ImdButton({
@@ -224,14 +268,14 @@ class _ImdButtonState extends State<ImdButton> {
         bg = _hover ? (c.isDark ? const Color(0x40F97066) : const Color(0xFFFDD5D1)) : c.dangerSoft;
         fg = c.danger;
       case ImdBtnKind.blue:
-        bg = _hover ? const Color(0xFF1849A9) : (c.isDark ? const Color(0xFF2E6BE6) : c.info);
-        fg = Colors.white;
+        bg = c.info;
+        fg = c.isDark ? c.bg : c.surface;
       case ImdBtnKind.warn:
-        bg = _hover ? const Color(0xFF93370D) : const Color(0xFFB54708);
-        fg = Colors.white;
+        bg = _hover ? c.warn.withValues(alpha: .88) : c.warn;
+        fg = c.isDark ? c.bg : c.surface;
       case ImdBtnKind.purple:
-        bg = _hover ? const Color(0xFF53389E) : const Color(0xFF6941C6);
-        fg = Colors.white;
+        bg = c.info;
+        fg = c.isDark ? c.bg : c.surface;
       case ImdBtnKind.dark:
         bg = _hover ? c.text2 : c.text;
         fg = c.isDark ? const Color(0xFF171717) : Colors.white;
@@ -843,7 +887,7 @@ class ImdTable extends StatefulWidget {
     this.zebra = false,
     this.pageSize,
     this.onPageChanged,
-    this.cards = false,
+    this.cards = true,
   });
 
   final List<ImdCol> columns;
@@ -873,10 +917,9 @@ class ImdTable extends StatefulWidget {
   /// إشعارٌ اختياري بفهرس الصفحة الحالية (من صفر) بعد أي تنقّل.
   final ValueChanged<int>? onPageChanged;
 
-  /// `false` (الافتراضي) ⇒ السلوك الحالي دومًا (جدولٌ، وتمريرٌ أفقيٌّ إن
-  /// ضاق `minWidth` عنه). `true` ⇒ كل صفٍّ يصير بطاقةً بدل صفّ جدول، لكن
-  /// فقط عند `ImdBp.of(context).mobile` — عرضٌ أوسع من 900 يبقى جدولًا
-  /// كالمعتاد بصرف النظر عن هذا المعامل، ونقطة التحوّل ثابتةٌ لا تُضبط هنا.
+  /// `true` (الافتراضي) ⇒ يتحول كل صف إلى بطاقة عند العرض دون 900 بكسل.
+  /// مرّر `false` فقط للجداول الصغيرة التي لا تستفيد من عرض البطاقات.
+  /// العرض الأكبر من 900 يبقى جدولًا كالمعتاد.
   ///
   /// عمودٌ بعنوانٍ فارغ (`ImdCol('')`، كما تفعل كل أعمدة الإجراءات في
   /// الشاشات القائمة) لا يُعنوَن في البطاقة، بل يُجمَع مع أمثاله في صفّ
@@ -1082,9 +1125,17 @@ class _ImdTableState extends State<ImdTable> {
     final Widget body;
     if (rows.isEmpty || cols.isEmpty) {
       body = Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        child: ImdEmojiText(widget.empty,
-            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500, color: c.muted, height: 1.5)),
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: cols.isEmpty ? 9 : 18),
+        child: cols.isEmpty
+            ? ImdEmojiText(widget.empty,
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500, color: c.muted, height: 1.5))
+            : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                ImdIcon('package', size: 18, color: c.faint),
+                const SizedBox(width: 8),
+                Flexible(child: ImdEmojiText(widget.empty,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500, color: c.muted, height: 1.5))),
+              ]),
       );
     } else {
       body = Table(

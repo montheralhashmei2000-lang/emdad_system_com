@@ -647,6 +647,22 @@ class _TransferScreenState extends State<TransferScreen> {
 
   List<Widget> _formBody(BuildContext context) {
     final c = context.imd;
+    final collected = _collect();
+    final checks = _validate();
+    final hasRows = _rows.any((row) => row.itemId.isNotEmpty);
+    final activeStep = _from.isEmpty || _to.isEmpty || _from == _to
+        ? 0
+        : !hasRows
+            ? 1
+            : collected.err.isNotEmpty || checks.any((x) => x.level == 'err')
+                ? 2
+                : 3;
+    const nextSteps = [
+      'اختر مستودع المصدر والهدف، وتأكد أنهما مختلفان.',
+      'أضف صنفًا وحدد الكمية المراد تحويلها.',
+      'راجع كفاية الرصيد والتكرارات قبل الإرسال.',
+      'التحويل جاهز للإرسال، وسيبقى معلقًا حتى يؤكد المستودع المستلم استلامه.',
+    ];
     final toOpts = _whsForCamp(_camp);
     final campFiltered = _camp.isEmpty ? <Warehouse>[] : _whs.where((w) => _feeds(w, _camp)).toList();
     final note = _camp.isEmpty
@@ -660,7 +676,11 @@ class _TransferScreenState extends State<TransferScreen> {
     return [
       ImdSoftCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const ImdWorkflowSteps(['اختر المصدر والهدف', 'أضف الأصناف', 'اطبع الإذن', 'أرسل للتحويل المعلّق']),
+          ImdWorkflowSteps(
+            const ['اختر المصدر والهدف', 'أضف الأصناف', 'راجع الرصيد', 'أرسل للتحويل المعلّق'],
+            activeIndex: activeStep,
+          ),
+          ImdAlert(nextSteps[activeStep], tone: activeStep == 3 ? ImdTone.ok : ImdTone.info),
           ImdQuickGrid([('المستودعات', nf(_whs.length)), ('الأصناف', nf(_items.length))]),
           const ImdPrintTip('التحويل لا يكتمل هنا نهائيًا؛ هو يدخل حالة «بانتظار الاستلام» لحد ما الجهة الهدف تأكد الاستلام أو ترفضه.'),
         ]),

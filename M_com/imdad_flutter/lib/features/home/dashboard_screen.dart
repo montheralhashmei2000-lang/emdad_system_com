@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/security/auth_service.dart';
 import '../../core/ui/imd_charts.dart';
@@ -30,7 +31,7 @@ class _Feed {
 }
 
 class _DashData {
-  int items = 0, warehouses = 0, todayOps = 0, interventions = 0, low = 0, zero = 0, openStk = 0;
+  int items = 0, warehouses = 0, units = 0, suppliers = 0, facilities = 0, todayOps = 0, interventions = 0, low = 0, zero = 0, openStk = 0;
   int score = 0;
   List<(bool, String)> healthChips = const [];
   String healthNote = '';
@@ -47,11 +48,84 @@ class _DashData {
 class _DashboardScreenState extends State<DashboardScreen> {
   late final AppDatabase _db = context.read<AppDatabase>();
   _DashData? _d;
+  List<String> _quickActionIds = const [];
+
+  static const _quickActions = <(String, String, String)>[
+    ('bell', 'الأوامر المعلقة', 'pendingOrders'),
+    ('calculator', 'الأرصدة الحالية', 'balances'),
+    ('chart', 'مركز التقارير', 'reports'),
+    ('clipboard', 'الجرد', 'stocktake'),
+    ('warehouse', 'المستودعات', 'stores'),
+    ('truck', 'الموردون', 'suppliers'),
+    ('settings', 'الإعدادات', 'settings'),
+    ('shield', 'صحة النظام', 'healthOps'),
+    ('bulb', 'ذكاء النشاط', 'activityIntel'),
+    ('target', 'القيادة التنفيذية', 'executiveCmd'),
+    ('scan', 'سجل النشاط', 'auditTrail'),
+    ('alert', 'المراجعة الحساسة', 'sensitiveOps'),
+    ('utensils', 'التشغيل اليومي', 'kitchenLog'),
+    ('users', 'الصلاحيات والوصول', 'usersAccess'),
+  ];
 
   @override
   void initState() {
     super.initState();
     _load();
+    _restoreQuickActions();
+  }
+
+  Future<void> _restoreQuickActions() async {
+    final userId = context.read<AuthService>().currentUser?.id ?? 'local';
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList('imdad.dashboard.shortcuts.$userId');
+    if (mounted && saved != null) setState(() => _quickActionIds = saved);
+  }
+
+  Future<void> _configureQuickActions(BuildContext context, List<(String, String, String)> available) async {
+    final userId = context.read<AuthService>().currentUser?.id ?? 'local';
+    final initial = _quickActionIds.isEmpty
+        ? available.take(6).map((a) => a.$3).toList()
+        : _quickActionIds.where((id) => available.any((a) => a.$3 == id)).toList();
+    final selected = Set<String>.of(initial);
+    final result = await showDialog<Set<String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) {
+        final c = context.imd;
+        return AlertDialog(
+          title: const Text('تخصيص الإجراءات السريعة'),
+          content: SizedBox(
+            width: 460,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                for (final action in available)
+                  CheckboxListTile(
+                    value: selected.contains(action.$3),
+                    activeColor: c.accent,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(action.$2),
+                    onChanged: (value) => setDialogState(() {
+                      if (value == true) {
+                        selected.add(action.$3);
+                      } else {
+                        selected.remove(action.$3);
+                      }
+                    }),
+                  ),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, selected), child: const Text('حفظ')),
+          ],
+        );
+      }),
+    );
+    if (result == null || !mounted) return;
+    final ordered = [for (final a in available) if (result.contains(a.$3)) a.$3];
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('imdad.dashboard.shortcuts.$userId', ordered);
+    if (mounted) setState(() => _quickActionIds = ordered);
   }
 
   Future<void> _load() async {
@@ -248,6 +322,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _d = _DashData()
         ..items = items.length
         ..warehouses = warehouses.length
+        ..units = units.length
+        ..suppliers = suppliers.length
+        ..facilities = facilities.length
         ..todayOps = todayOps
         ..interventions = interventions
         ..low = lowItems.length
@@ -291,10 +368,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return ImdPage(
       children: [
         const ImdPageTitle(
-          title: 'Dashboard + Admin Operations Center',
+          title: 'لوحة التشغيل الرئيسية',
           icon: 'compass',
-          subtitle:
-              'رؤية تشغيلية موحدة للمدير: المخزون، الإجراءات المعلقة، الجاهزية، والتنبيهات الحرجة — من شاشة واحدة بشكل production فعلي',
+          subtitle: 'ملخص المخزون والمهام والتنبيهات، مع اختصارات تناسب صلاحياتك',
         ),
         if (d == null)
           const ImdShimmerKpis(count: 6)
@@ -361,37 +437,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
             margin: EdgeInsets.zero,
             title: 'مركز الإجراءات السريعة',
             icon: 'zap',
+            actions: [
+              IconButton(
+                tooltip: 'تخصيص الإجراءات',
+                onPressed: () {
+                  final auth = context.read<AuthService>();
+                  final user = auth.currentUser;
+                  final available = _quickActions.where((a) => user != null && (user.role == 'admin' || auth.can(user, a.$3))).toList();
+                  _configureQuickActions(context, available);
+                },
+                icon: Icon(Icons.tune, color: c.muted, size: 19),
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ImdRbar(children: [
-                  for (final a in [
-                    ('bell', 'الأوامر المعلقة', 'pendingOrders'),
-                    ('calculator', 'الأرصدة الحالية', 'balances'),
-                    ('chart', 'مركز التقارير', 'reports'),
-                    ('clipboard', 'الجرد', 'stocktake'),
-                    ('warehouse', 'المستودعات', 'stores'),
-                    ('truck', 'الموردون', 'suppliers'),
-                    ('settings', 'الإعدادات', 'settings'),
-                    ('shield', 'صحة النظام', 'healthOps'),
-                    ('bulb', 'ذكاء النشاط', 'activityIntel'),
-                    ('target', 'القيادة التنفيذية', 'executiveCmd'),
-                    ('scan', 'سجل النشاط', 'auditTrail'),
-                    ('alert', 'المراجعة الحساسة', 'sensitiveOps'),
-                    ('utensils', 'التشغيل اليومي', 'kitchenLog'),
-                    if (can) ('users', 'الصلاحيات والوصول', 'usersAccess'),
-                  ])
-                    ImdButton.outline(
-                      label: a.$2,
-                      icon: a.$1,
-                      small: true,
-                      onPressed: () => nav.go(a.$3),
-                    ),
-                ]),
+                Builder(builder: (context) {
+                  final user = context.read<AuthService>().currentUser;
+                  final auth = context.read<AuthService>();
+                  final available = _quickActions.where((a) => user != null && (user.role == 'admin' || auth.can(user, a.$3))).toList();
+                  final orderedIds = _quickActionIds.isEmpty
+                      ? available.map((a) => a.$3).toList()
+                      : _quickActionIds;
+                  final actions = [
+                    for (final id in orderedIds)
+                      for (final action in available)
+                        if (action.$3 == id) action,
+                  ];
+                  Widget button((String, String, String) a) => ImdButton.outline(
+                        label: a.$2,
+                        icon: a.$1,
+                        small: true,
+                        onPressed: () => nav.go(a.$3),
+                      );
+                  final primary = actions.take(6).toList();
+                  final more = actions.skip(6).toList();
+                  return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    ImdRbar(children: [for (final a in primary) button(a)]),
+                    if (more.isNotEmpty)
+                      Theme(
+                        data: Theme.of(context).copyWith(dividerColor: c.line),
+                        child: ExpansionTile(
+                          tilePadding: EdgeInsets.zero,
+                          childrenPadding: EdgeInsets.zero,
+                          title: Text('إجراءات إضافية (${nf(more.length)})',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.text2)),
+                          children: [ImdRbar(bottom: 0, children: [for (final a in more) button(a)])],
+                        ),
+                      ),
+                  ]);
+                }),
                 const SizedBox(height: 12),
-                const ImdNote(
-                  'الفكرة هنا مش مجرد Dashboard شكلي — دي شاشة تشغيل تنفيذية تساعد المدير يعرف فين الخطر، فين الزحمة، وإيه اللي محتاج تدخل فورًا.',
-                ),
+                const ImdNote('رتّب اختصاراتك من زر التخصيص، وتظهر الإجراءات المتاحة لحسابك فقط.'),
               ],
             ),
           ),
@@ -479,7 +577,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
             margin: EdgeInsets.zero,
             title: 'حالة الجاهزية الأساسية',
             icon: 'flask',
-            child: ImdStatusList(items: d?.ready ?? const []),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              ImdStatusList(items: d?.ready ?? const []),
+              if (d != null && (d.items == 0 || d.warehouses == 0 || d.units == 0 || d.suppliers == 0 || d.facilities == 0)) ...[
+                const SizedBox(height: 10),
+                ImdRbar(bottom: 0, children: [
+                  if (d.items == 0)
+                    ImdButton.outline(label: 'إضافة أول صنف', icon: 'package', small: true, onPressed: () => nav.go('items')),
+                  if (d.warehouses == 0)
+                    ImdButton.outline(label: 'إضافة أول مستودع', icon: 'warehouse', small: true, onPressed: () => nav.go('stores')),
+                  if (d.units == 0)
+                    ImdButton.outline(label: 'إضافة أول وحدة', icon: 'users', small: true, onPressed: () => nav.go('units')),
+                  if (d.suppliers == 0)
+                    ImdButton.outline(label: 'إضافة أول مورد', icon: 'truck', small: true, onPressed: () => nav.go('suppliers')),
+                  if (d.facilities == 0)
+                    ImdButton.outline(label: 'إضافة مطبخ أو فرن', icon: 'utensils', small: true, onPressed: () => nav.go('kitchens')),
+                ]),
+              ],
+            ]),
           ),
           ImdPanel(
             margin: EdgeInsets.zero,

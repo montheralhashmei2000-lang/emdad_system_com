@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/security/auth_service.dart';
 import '../../data/repos/reports_repo.dart' show ReportId;
@@ -17,6 +18,7 @@ import '../../core/ui/imd_widgets.dart';
 import '../../domain/access_control.dart';
 import '../../domain/app_space.dart';
 import '../../domain/menu_doors.dart';
+import '../../data/sync/auto_sync.dart';
 import 'space_chooser_screen.dart';
 import '../fuel/fuel_allocations_screen.dart';
 import '../fuel/fuel_consumption_screen.dart';
@@ -730,6 +732,18 @@ class _Topbar extends StatelessWidget {
       final showIam = w > 720;
       final showName = w > 560;
       final showTitle = w > 430;
+      final sync = context.watch<AutoSyncService>();
+      final failed = !sync.isRunning &&
+          (sync.status.contains('تعذّر') || sync.status.contains('تعثّرت') || sync.status.contains('فشل'));
+      final syncLabel = sync.isRunning
+          ? 'جارٍ التزامن'
+          : !sync.enabled
+              ? 'المزامنة متوقفة'
+              : failed
+                  ? 'تعذّرت آخر مزامنة'
+                  : sync.lastAt == null
+                      ? 'بانتظار أول مزامنة'
+                      : 'آخر مزامنة ${DateFormat('HH:mm').format(sync.lastAt!)}';
 
       return Container(
         height: ImdSizes.topbarHeight,
@@ -793,7 +807,12 @@ class _Topbar extends StatelessWidget {
                   ],
                   if (showSync) ...[
                     const SizedBox(width: 10),
-                    const _StatusPill(label: 'متصل — متزامن'),
+                    _StatusPill(
+                      label: syncLabel,
+                      tone: failed ? ImdTone.err : (sync.isRunning ? ImdTone.info : (sync.enabled ? ImdTone.ok : ImdTone.off)),
+                      tooltip: sync.status.isEmpty ? null : sync.status,
+                      onTap: () => onOpenPage('lanSync'),
+                    ),
                   ],
                 ],
               ),
@@ -807,13 +826,17 @@ class _Topbar extends StatelessWidget {
 
 /// `.device-sync`
 class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.label});
+  const _StatusPill({required this.label, this.tone = ImdTone.ok, this.tooltip, this.onTap});
   final String label;
+  final ImdTone tone;
+  final String? tooltip;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
-    return Container(
+    final (_, foreground) = ImdChip.colors(c, tone);
+    final pill = Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
         color: c.surface,
@@ -824,8 +847,7 @@ class _StatusPill extends StatelessWidget {
         Container(
           width: 8,
           height: 8,
-          decoration: const BoxDecoration(
-              color: Color(0xFF35C978), shape: BoxShape.circle),
+          decoration: BoxDecoration(color: foreground, shape: BoxShape.circle),
         ),
         const SizedBox(width: 6),
         Text(label,
@@ -836,6 +858,8 @@ class _StatusPill extends StatelessWidget {
                 height: 1.6)),
       ]),
     );
+    final tappable = onTap == null ? pill : InkWell(onTap: onTap, borderRadius: BorderRadius.circular(999), child: pill);
+    return tooltip == null || tooltip!.isEmpty ? tappable : Tooltip(message: tooltip!, child: tappable);
   }
 }
 
@@ -1416,8 +1440,7 @@ class _SideTileState extends State<_SideTile> {
             ? Colors.white
             : c.sideText.withValues(alpha: .86);
         iconColor = widget.on ? ImdColors.dark.accentHover : null;
-        pad = const EdgeInsetsDirectional.fromSTEB(14, 11, 10, 11)
-            .resolve(TextDirection.rtl);
+        pad = const EdgeInsets.only(left: 10, top: 11, right: 14, bottom: 11);
         margin = const EdgeInsets.only(left: 4, top: 1, bottom: 1);
         fs = 13.5;
         fw = FontWeight.w500;

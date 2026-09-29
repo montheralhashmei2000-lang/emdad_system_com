@@ -571,6 +571,19 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
             ImdTab('history', 'سجل الجرد', icon: 'clock'),
           ],
         ),
+      if (_tab != 'history') ...[
+        ImdWorkflowSteps(
+          const ['إنشاء أمر الجرد', 'إدخال العد الفعلي', 'مراجعة الفروقات', 'اعتماد التسوية'],
+          activeIndex: switch (_tab) {
+            'count' => 1,
+            'analysis' => 2,
+            'approve' => 3,
+            _ => 0,
+          },
+        ),
+        if (_tab != 'create' && _cur.isEmpty)
+          const ImdAlert('اختر أمر جرد مفتوحًا من القائمة لعرض الخطوة التالية.', tone: ImdTone.info),
+      ],
       const SizedBox(height: 12),
       if (_loading)
         const ImdLd('جارٍ التحميل…')

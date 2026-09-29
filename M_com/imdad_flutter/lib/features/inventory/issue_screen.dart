@@ -1,6 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/print/document_pdf.dart';
 import '../../core/print/voucher_print.dart';
@@ -36,9 +40,12 @@ class IssueScreen extends StatefulWidget {
 }
 
 class _Row {
-  _Row({this.itemId = '', this.unit = '', double? qty, String notes = '', this.benUnit = '', this.noAuto = false})
+  _Row({this.itemId = '', this.unit = '', double? qty, String notes = '', this.benUnit = '', this.noAuto = false, this.onEdit})
       : cy = 'EXCHANGE', qty = TextEditingController(text: qty == null ? '' : _num(qty)),
-        notes = TextEditingController(text: notes);
+        notes = TextEditingController(text: notes) {
+    this.qty.addListener(_changed);
+    this.notes.addListener(_changed);
+  }
   String itemId;
   String unit;
   final TextEditingController qty;
@@ -46,9 +53,14 @@ class _Row {
   String cy;
   String benUnit;
   bool noAuto;
+  final VoidCallback? onEdit;
   final key = UniqueKey();
 
+  void _changed() => onEdit?.call();
+
   void dispose() {
+    qty.removeListener(_changed);
+    notes.removeListener(_changed);
     qty.dispose();
     notes.dispose();
   }
@@ -90,17 +102,31 @@ class _IssueScreenState extends State<IssueScreen> {
   final _days = TextEditingController(text: '1');
   final _notes = TextEditingController();
   final List<_Row> _rows = [];
+  Timer? _autosaveTimer;
+  DateTime? _autosavedAt;
+  bool _restoringAutosave = false;
+
+  String get _autosaveKey =>
+      'imdad.issue.recovery.${context.read<AuthService>().currentUser?.id ?? 'local'}';
+
+  _Row _newRow({String itemId = '', String unit = '', double? qty, String notes = '', String benUnit = '', bool noAuto = false}) =>
+      _Row(itemId: itemId, unit: unit, qty: qty, notes: notes, benUnit: benUnit, noAuto: noAuto, onEdit: _scheduleAutosave);
 
 
   @override
   void initState() {
     super.initState();
+    for (final controller in [_custom, _days, _notes]) {
+      controller.addListener(_scheduleAutosave);
+    }
     _form();
   }
 
   @override
   void dispose() {
+    _autosaveTimer?.cancel();
     for (final c in [_custom, _days, _notes]) {
+      c.removeListener(_scheduleAutosave);
       c.dispose();
     }
     for (final r in _rows) {
@@ -117,6 +143,7 @@ class _IssueScreenState extends State<IssueScreen> {
   // ───────────────────────── النموذج ─────────────────────────
   /// `issFetchAll()` + `issRenderForm()`
   Future<void> _form() async {
+    _ready = false;
     final perm = Perm.of(context);
     final items = await _catalog.items();
     final units = await _catalog.units();
@@ -152,12 +179,110 @@ class _IssueScreenState extends State<IssueScreen> {
       }
       _rows
         ..clear()
-        ..add(_Row());
+        ..add(_newRow());
       _wh = _whsForCamp('').isNotEmpty ? _whsForCamp('').first.name : '';
       if (_type == 2 || _type == 3) _strength = 0;
       _ready = true;
     });
     await _refreshBal();
+    await _restoreAutosave();
+  }
+
+  void _scheduleAutosave() {
+    if (!_ready || _restoringAutosave || _tab != 'form') return;
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(const Duration(milliseconds: 500), _saveAutosave);
+    if (_autosavedAt != null && mounted) setState(() => _autosavedAt = null);
+  }
+
+  Future<void> _saveAutosave() async {
+    if (!_ready || _restoringAutosave || _busy || _tab != 'form') return;
+    final prefs = await SharedPreferences.getInstance();
+    final snapshot = <String, dynamic>{
+      'type': _type,
+      'warehouse': _wh,
+      'date': _date,
+      'parent': _parent,
+      'beneficiary': _ben,
+      'facility': _fac,
+      'custom': _custom.text,
+      'strengthDate': _strDate,
+      'days': _days.text,
+      'notes': _notes.text,
+      'strength': _strength,
+      'rows': [
+        for (final row in _rows)
+          {
+            'item': row.itemId,
+            'unit': row.unit,
+            'qty': row.qty.text,
+            'notes': row.notes.text,
+            'beneficiary': row.benUnit,
+            'cylinder': row.cy,
+            'noAuto': row.noAuto,
+          },
+      ],
+      'savedAt': DateTime.now().toIso8601String(),
+    };
+    await prefs.setString(_autosaveKey, jsonEncode(snapshot));
+    if (mounted) setState(() => _autosavedAt = DateTime.now());
+  }
+
+  Future<void> _restoreAutosave() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_autosaveKey);
+    if (raw == null || !mounted) return;
+    Map<String, dynamic> data;
+    try {
+      data = (jsonDecode(raw) as Map).cast<String, dynamic>();
+    } catch (_) {
+      await prefs.remove(_autosaveKey);
+      return;
+    }
+    _restoringAutosave = true;
+    try {
+      setState(() {
+        _type = (data['type'] as num?)?.toInt() ?? _type;
+        _wh = '${data['warehouse'] ?? _wh}';
+        _date = '${data['date'] ?? _date}';
+        _parent = '${data['parent'] ?? ''}';
+        _ben = '${data['beneficiary'] ?? ''}';
+        _fac = '${data['facility'] ?? ''}';
+        imdSetText(_custom, '${data['custom'] ?? ''}');
+        _strDate = '${data['strengthDate'] ?? _date}';
+        imdSetText(_days, '${data['days'] ?? '1'}');
+        imdSetText(_notes, '${data['notes'] ?? ''}');
+        _strength = (data['strength'] as num?)?.toDouble() ?? 0;
+        for (final row in _rows) {
+          row.dispose();
+        }
+        final savedRows = data['rows'];
+        _rows
+          ..clear()
+          ..addAll(savedRows is List
+              ? [
+                  for (final value in savedRows.whereType<Map>())
+                    _newRow(
+                      itemId: '${value['item'] ?? ''}',
+                      unit: '${value['unit'] ?? ''}',
+                      qty: double.tryParse('${value['qty'] ?? ''}'),
+                      notes: '${value['notes'] ?? ''}',
+                      benUnit: '${value['beneficiary'] ?? ''}',
+                      noAuto: value['noAuto'] == true,
+                    )..cy = '${value['cylinder'] ?? 'EXCHANGE'}',
+                ]
+              : <_Row>[]);
+        if (_rows.isEmpty) _rows.add(_newRow());
+      });
+      await _refreshBal();
+      final savedAt = DateTime.tryParse('${data['savedAt'] ?? ''}');
+      if (mounted) {
+        setState(() => _autosavedAt = savedAt);
+        showImdToast(context, 'استُعيدت مسودة الصرف المحفوظة تلقائيًا');
+      }
+    } finally {
+      _restoringAutosave = false;
+    }
   }
 
   Future<void> _refreshBal() async {
@@ -187,6 +312,7 @@ class _IssueScreenState extends State<IssueScreen> {
         _nextDueColor = null;
       }
     });
+    _scheduleAutosave();
     _fetchStrength();
   }
 
@@ -200,11 +326,13 @@ class _IssueScreenState extends State<IssueScreen> {
       _nextDue = '—';
       _nextDueColor = null;
     });
+    _scheduleAutosave();
     _refreshBal();
   }
 
   Future<void> _onBen(String uid) async {
     setState(() => _ben = uid);
+    _scheduleAutosave();
     if (_type != 0) return;
     if (uid.isEmpty) {
       setState(() {
@@ -332,10 +460,10 @@ class _IssueScreenState extends State<IssueScreen> {
                 .round() /
             1000;
         if (qty <= 0) continue;
-        _rows.add(_Row(itemId: it.id, unit: uName, qty: qty, benUnit: ben, noAuto: true));
+        _rows.add(_newRow(itemId: it.id, unit: uName, qty: qty, benUnit: ben, noAuto: true));
         added++;
       }
-      if (_rows.isEmpty) _rows.add(_Row(benUnit: ben));
+      if (_rows.isEmpty) _rows.add(_newRow(benUnit: ben));
     });
     showImdToast(context, '✔ احتُسب $added صنفًا تلقائيًا — راجع الكميات قبل التنفيذ');
   }
@@ -356,7 +484,7 @@ class _IssueScreenState extends State<IssueScreen> {
       r.unit = units.where((u) => u.isBase).firstOrNull?.name ?? (units.isNotEmpty ? units.first.name : '');
       if (r.benUnit.isEmpty && _units.isNotEmpty) r.benUnit = _units.first.id;
       _calcRow(r);
-      if (it != null && !r.noAuto && identical(_rows.last, r)) _rows.add(_Row(benUnit: _units.isNotEmpty ? _units.first.id : ''));
+      if (it != null && !r.noAuto && identical(_rows.last, r)) _rows.add(_newRow(benUnit: _units.isNotEmpty ? _units.first.id : ''));
     });
   }
 
@@ -449,7 +577,7 @@ class _IssueScreenState extends State<IssueScreen> {
         ..clear()
         ..addAll([
           for (final l in consolidated)
-            _Row(
+            _newRow(
               itemId: l.groupKey.split('|')[0],
               unit: l.unitName,
               qty: l.qty,
@@ -459,7 +587,7 @@ class _IssueScreenState extends State<IssueScreen> {
             )..cy = l.groupKey.split('|')[2].isEmpty ? 'EXCHANGE' : l.groupKey.split('|')[2],
           ...pending,
         ]);
-      if (_rows.isEmpty) _rows.add(_Row());
+      if (_rows.isEmpty) _rows.add(_newRow());
     });
   }
 
@@ -474,7 +602,7 @@ class _IssueScreenState extends State<IssueScreen> {
         return;
       }
     }
-    final row = _Row(qty: 1);
+    final row = _newRow(qty: 1);
     setState(() => _rows.add(row));
     _onItem(row, it.id);
     showImdToast(context, '➕ أُضيف: ${it.name}');
@@ -570,6 +698,9 @@ class _IssueScreenState extends State<IssueScreen> {
       );
       if (!mounted) return;
       if (!res.ok) return showImdToast(context, res.error);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_autosaveKey);
+      _autosavedAt = null;
       if (!mounted) return;
       showImdToast(
           context,
@@ -681,21 +812,27 @@ class _IssueScreenState extends State<IssueScreen> {
     final w = Perm.of(context).writable('issue');
     return ImdStickyPage(
       sticky: ImdStickyActions(
-        caption: 'تنبيه: التنفيذ النهائي يخصم الرصيد فورًا',
+        caption: _autosavedAt == null
+            ? 'الحفظ التلقائي محلي على هذا الجهاز'
+            : 'حُفظت المسودة تلقائيًا على هذا الجهاز',
         children: [
-          ImdButton.outline(
-            label: '+ سطر صنف جديد',
-            small: true,
-            // التجميع قبل فتح سطر جديد: أحد موضعي الاستدعاء التلقائي.
-            onPressed: _busy
-                ? null
-                : () {
-                    _autoConsolidate();
-                    setState(() => _rows.add(_Row()));
-                  },
-          ),
           ImdButton.outline(label: 'طباعة أمر الصرف', icon: 'printer', small: true, onPressed: _busy ? null : () => _print(false)),
-          ImdButton.outline(label: 'طباعة صرف واستلام', icon: 'printer', small: true, onPressed: _busy ? null : () => _print(true)),
+          ImdMenuButton<int>(
+            label: 'خيارات إضافية',
+            small: true,
+            items: (_) => const [
+              PopupMenuItem(value: 1, child: Text('إضافة سطر صنف')),
+              PopupMenuItem(value: 2, child: Text('طباعة صرف واستلام')),
+            ],
+            onSelected: (action) {
+              if (action == 1 && !_busy) {
+                _autoConsolidate();
+                setState(() => _rows.add(_newRow()));
+                _scheduleAutosave();
+              }
+              if (action == 2 && !_busy) _print(true);
+            },
+          ),
           if (w) ...[
             ImdButton(label: 'تنفيذ أمر الصرف وخصم الرصيد', icon: 'check', busy: _busy, onPressed: () => _submit('COMPLETED')),
             ImdButton(label: 'إرسال إشعار للمستودع', icon: 'upload', kind: ImdBtnKind.blue, busy: _busy, onPressed: () => _submit('ORDER')),
@@ -710,6 +847,23 @@ class _IssueScreenState extends State<IssueScreen> {
 
   List<Widget> _formBody(BuildContext context) {
     final c = context.imd;
+    final headerReady = IssueRules.headerProblems(_header, today: DateTime.now()).isEmpty;
+    final collected = _collect();
+    final hasRows = _rows.any((row) => row.itemId.isNotEmpty);
+    final hasErrors = _validate().any((x) => x.level == 'err');
+    final activeStep = !headerReady
+        ? 0
+        : !hasRows
+            ? 1
+            : (collected.err.isNotEmpty || hasErrors)
+                ? 2
+                : 3;
+    const nextSteps = [
+      'أكمل المستودع والجهة المستفيدة وتأكد من صحة التاريخ.',
+      'أضف صنفًا واحدًا على الأقل وحدد وحدته وكميته.',
+      'راجع الرصيد والاستحقاق والملاحظات قبل الإرسال.',
+      'اكتمل التحقق. اختر الحفظ كمسودة أو الإرسال أو التنفيذ النهائي.',
+    ];
     final camps = _units.where((u) => u.parentId.isEmpty).toList();
     final whOpts = _whsForCamp(_parent);
     final campFiltered = _parent.isEmpty ? <Warehouse>[] : _whs.where((w) => _feeds(w, _parent)).toList();
@@ -726,7 +880,11 @@ class _IssueScreenState extends State<IssueScreen> {
     return [
       ImdSoftCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const ImdWorkflowSteps(['حدد الجهة المستفيدة', 'اختر الأصناف', 'راجع الاستحقاق', 'اطبع أو نفّذ أو احفظ مسودة']),
+          ImdWorkflowSteps(
+            const ['حدد الجهة المستفيدة', 'اختر الأصناف', 'راجع الاستحقاق', 'اطبع أو نفّذ أو احفظ مسودة'],
+            activeIndex: activeStep,
+          ),
+          ImdAlert(nextSteps[activeStep], tone: activeStep == 3 ? ImdTone.ok : ImdTone.info),
           ImdQuickGrid([
             ('الأصناف', nf(_items.length)),
             ('الوحدات', nf(_units.length)),
@@ -773,7 +931,7 @@ class _IssueScreenState extends State<IssueScreen> {
                   child: ImdEmojiText(whNote, iconSize: 11, style: TextStyle(fontSize: 11, color: c.muted)),
                 ),
             ]),
-            lab('تاريخ الصرف', ImdDateField(value: _date, onChanged: (v) => setState(() => _date = v))),
+            lab('تاريخ الصرف', ImdDateField(value: _date, onChanged: (v) { setState(() => _date = v); _scheduleAutosave(); })),
             lab('رقم السند/المرجع', ImdReadonlyField(text: _ref)),
             lab(
               'موعد الصرف القادم',
@@ -816,6 +974,7 @@ class _IssueScreenState extends State<IssueScreen> {
                   ],
                   onChanged: (v) {
                     setState(() => _fac = v ?? '');
+                    _scheduleAutosave();
                     _fetchStrength();
                   },
                 ),
@@ -830,6 +989,7 @@ class _IssueScreenState extends State<IssueScreen> {
                 child: ImdF2(cols: 3, children: [
                   lab('تاريخ إلحاق القوة (حصر القوة)', ImdDateField(value: _strDate, onChanged: (v) {
                     setState(() => _strDate = v);
+                    _scheduleAutosave();
                     _fetchStrength();
                   })),
                   Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
@@ -914,7 +1074,7 @@ class _IssueScreenState extends State<IssueScreen> {
         items: _items,
         value: r.itemId,
         detailOf: (i) => 'رصيد ${nf(_whBal[i.id] ?? 0)}',
-        onChanged: (v) => _onItem(r, v),
+        onChanged: (v) { _onItem(r, v); _scheduleAutosave(); },
       ),
       ImdRowMeta(meta),
     ]);
@@ -923,7 +1083,7 @@ class _IssueScreenState extends State<IssueScreen> {
       ImdSelect<String>(
         value: r.benUnit.isEmpty && _units.isNotEmpty ? _units.first.id : r.benUnit,
         items: [for (final u in _units) (u.id, '${u.code} — ${u.name}')],
-        onChanged: (v) => setState(() => r.benUnit = v ?? ''),
+        onChanged: (v) { setState(() => r.benUnit = v ?? ''); _scheduleAutosave(); },
       ),
     ]);
     final unit = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -931,7 +1091,7 @@ class _IssueScreenState extends State<IssueScreen> {
       ImdSelect<String>(
         value: r.unit,
         items: units.isEmpty ? const [('', '—')] : [for (final u in units) (u.name, u.name)],
-        onChanged: (v) => setState(() {
+        onChanged: (v) { _scheduleAutosave(); setState(() {
           final next = v ?? '';
           final previous = r.unit;
           final qty = double.tryParse(r.qty.text.trim()) ?? 0;
@@ -950,7 +1110,7 @@ class _IssueScreenState extends State<IssueScreen> {
               )),
             );
           }
-        }),
+        }); },
       ),
     ]);
     final qty = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -968,11 +1128,14 @@ class _IssueScreenState extends State<IssueScreen> {
       child: ImdIconButton(
         icon: 'x',
         kind: ImdBtnKind.danger,
-        onPressed: () => setState(() {
-          _rows.remove(r);
-          r.dispose();
-          if (_rows.isEmpty) _rows.add(_Row());
-        }),
+        onPressed: () {
+          setState(() {
+            _rows.remove(r);
+            r.dispose();
+            if (_rows.isEmpty) _rows.add(_newRow());
+          });
+          _scheduleAutosave();
+        },
       ),
     );
     // **نوع العملية في صفّ الصنف لا تحته**: صندوقٌ مستقل يستقطع سطرًا لكل
@@ -983,7 +1146,7 @@ class _IssueScreenState extends State<IssueScreen> {
       ImdSelect<String>(
         value: r.cy,
         items: CylAction.issueOptions,
-        onChanged: (v) => setState(() => r.cy = v ?? r.cy),
+        onChanged: (v) { setState(() => r.cy = v ?? r.cy); _scheduleAutosave(); },
       ),
     ]);
     const gap = SizedBox(width: ImdSizes.compactGap);

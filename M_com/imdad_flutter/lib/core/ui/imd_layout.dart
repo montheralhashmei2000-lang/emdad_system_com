@@ -288,7 +288,7 @@ class ImdStatusList extends StatelessWidget {
                     color: items[i].$1 == 'err'
                         ? c.danger
                         : items[i].$1 == 'warn'
-                            ? const Color(0xFFF79009)
+                            ? c.warn
                             : c.success,
                   ),
                 ),

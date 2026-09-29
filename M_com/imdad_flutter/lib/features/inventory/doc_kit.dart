@@ -40,8 +40,10 @@ class ImdSoftCard extends StatelessWidget {
 
 /// `.workflow-steps > .wstep`
 class ImdWorkflowSteps extends StatelessWidget {
-  const ImdWorkflowSteps(this.steps, {super.key});
+  const ImdWorkflowSteps(this.steps, {super.key, this.activeIndex});
   final List<String> steps;
+  /// الخطوة الأرجح التالية بناءً على اكتمال النموذج.
+  final int? activeIndex;
 
   @override
   Widget build(BuildContext context) {
@@ -50,28 +52,26 @@ class ImdWorkflowSteps extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Wrap(spacing: 8, runSpacing: 8, children: [
         for (var i = 0; i < steps.length; i++)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: c.surface,
-              border: Border.all(color: c.line),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text.rich(
-              TextSpan(children: [
-                TextSpan(
-                    text: '${i + 1}',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700, color: c.accent)),
-                TextSpan(text: ' ${steps[i]}'),
-              ]),
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: c.text2,
-                  height: 1.6),
-            ),
-          ),
+          Builder(builder: (context) {
+            final active = i == activeIndex;
+            final done = activeIndex != null && i < activeIndex!;
+            final fg = done ? c.success : (active ? c.accent : c.muted);
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: done ? c.successSoft : (active ? c.accentSoft : c.surface),
+                border: Border.all(color: active ? c.accent : c.line),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text.rich(
+                TextSpan(children: [
+                  TextSpan(text: done ? '✓' : '${i + 1}', style: TextStyle(fontWeight: FontWeight.w700, color: fg)),
+                  TextSpan(text: ' ${steps[i]}'),
+                ]),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: active ? c.text : c.text2, height: 1.6),
+              ),
+            );
+          }),
       ]),
     );
   }
@@ -830,6 +830,7 @@ class _ImdStickyPageState extends State<ImdStickyPage> {
   final _inlineKey = GlobalKey();
   final _viewKey = GlobalKey();
   bool _pinned = false;
+  double _stickyHeight = 0;
 
   @override
   void initState() {
@@ -866,7 +867,12 @@ class _ImdStickyPageState extends State<ImdStickyPage> {
     final bottom =
         inline.localToGlobal(Offset(0, inline.size.height), ancestor: view).dy;
     final pinned = bottom > view.size.height - 12 + .5;
-    if (pinned != _pinned) setState(() => _pinned = pinned);
+    if (pinned != _pinned || (inline.size.height - _stickyHeight).abs() > .5) {
+      setState(() {
+        _pinned = pinned;
+        _stickyHeight = inline.size.height;
+      });
+    }
   }
 
   @override
@@ -891,6 +897,8 @@ class _ImdStickyPageState extends State<ImdStickyPage> {
             Opacity(
                 opacity: _pinned ? 0 : 1,
                 child: KeyedSubtree(key: _inlineKey, child: widget.sticky)),
+            // Keep the last form fields scrollable above the floating action bar.
+            if (_pinned) SizedBox(height: _stickyHeight + 24),
             ...widget.after,
           ]),
         ),
