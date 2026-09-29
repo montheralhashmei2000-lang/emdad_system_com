@@ -499,7 +499,9 @@ class ImdCheckbox extends StatelessWidget {
                 borderRadius: BorderRadius.circular(5),
               ),
               child: value
-                  ? const ImdIcon('check', size: 13, color: Colors.white)
+                  // على خلفية التمييز، فلونه onAccent لا أبيضَ ثابتًا: في
+                  // الداكن التمييز فاتحٌ (#10B981) فالعلامة البيضاء تبهت عليه.
+                  ? ImdIcon('check', size: 13, color: c.onAccent)
                   : null,
             ),
             const SizedBox(width: 8),
