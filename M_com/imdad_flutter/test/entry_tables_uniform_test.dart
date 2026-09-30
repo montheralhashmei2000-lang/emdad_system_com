@@ -91,8 +91,8 @@ void main() {
 
   test('مقاسات النمط المدمج تطابق المواصفة', () {
     expect(ImdSizes.compactRadius, 6);
-    expect(ImdSizes.compactPadH, 4);
-    expect(ImdSizes.compactPadV, 2);
+    expect(ImdSizes.compactPadH, 8);
+    expect(ImdSizes.compactPadV, 6);
     expect(ImdSizes.compactGap, 4, reason: 'بين الأعمدة');
     expect(ImdSizes.compactRowGap, 2, reason: 'بين الصفوف');
   });

@@ -570,14 +570,14 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
         icon: 'clipboard',
         child: ImdCompact(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ImdFormGrid(children: [whField, supField, dateField, refField]),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           ImdFormGrid(children: [
             fld('لجنة الفحص (رقابة)', _c1),
             fld('المراجعة والتفتيش', _c2),
             fld('التدقيق', _c3),
             fld('رقم الفاتورة/التاجر', _inv),
           ]),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           ImdCollapsibleSection(title: 'ملاحظات', child: ImdFld(controller: _notes)),
         ])),
       ),

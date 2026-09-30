@@ -938,7 +938,7 @@ class _IssueScreenState extends State<IssueScreen> {
               ImdTab(3, 'وحدات متعددة', icon: 'file'),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           ImdFormGrid(children: [
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
               lab(
@@ -972,7 +972,7 @@ class _IssueScreenState extends State<IssueScreen> {
               ),
             ),
           ]),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           ImdFormGrid(children: [
             if (_type == 0) ...[
               lab(
@@ -1013,7 +1013,7 @@ class _IssueScreenState extends State<IssueScreen> {
           ]),
           if (_type == 0 || _type == 1)
             Padding(
-              padding: const EdgeInsets.only(top: 10),
+              padding: const EdgeInsets.only(top: 6),
               child: ImdDashedBox(
                 child: ImdFormGrid(children: [
                   lab('تاريخ إلحاق القوة (حصر القوة)', ImdDateField(value: _strDate, onChanged: (v) {
@@ -1033,7 +1033,7 @@ class _IssueScreenState extends State<IssueScreen> {
                 ]),
               ),
             ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           ImdCollapsibleSection(
             title: 'ملاحظات السند / الغرض من الصرف',
             child: ImdFld(controller: _notes, hint: 'ملاحظات توثيقية حول أمر الصرف...'),

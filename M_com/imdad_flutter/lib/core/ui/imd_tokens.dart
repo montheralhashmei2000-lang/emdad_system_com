@@ -231,11 +231,12 @@ class ImdSizes {
   /// سطح المكتب يفصل صفوفه بخطوط الشبكة لا بهذه الفجوة).
   static const double compactRowGap = 2;
 
-  /// حشو الحقل المدمج رأسيًّا — الحدّ الأدنى الذي يبقي نصًّا بخطّ ١٣ مقروءًا.
-  static const double compactPadV = 2;
+  /// حشو الحقل المدمج رأسيًّا — موحَّدٌ على كل حقول الجدول ونموذج السند
+  /// (الصنف والوحدة والكمية والملاحظة...)، فلا يبدو حقلٌ أقصر من أخيه.
+  static const double compactPadV = 6;
 
   /// حشو الحقل المدمج أفقيًّا.
-  static const double compactPadH = 4;
+  static const double compactPadH = 8;
 
   /// نصف قطر زوايا الحقل المدمج (بدل [radius] العام).
   static const double compactRadius = 6;

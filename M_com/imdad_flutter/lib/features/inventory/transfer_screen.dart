@@ -705,7 +705,7 @@ class _TransferScreenState extends State<TransferScreen> {
               }),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           ImdFormGrid(children: [
             lab('من مستودع (المصدر) *', _whSelect(_from, _whs, (v) {
               setState(() => _from = v);
@@ -723,7 +723,7 @@ class _TransferScreenState extends State<TransferScreen> {
             lab('التاريخ', ImdDateField(value: _date, onChanged: (v) => setState(() => _date = v))),
             lab('المرجع', ImdReadonlyField(text: _ref)),
           ]),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           ImdCollapsibleSection(title: 'مبررات التحويل / ملاحظات', child: ImdFld(controller: _notes)),
         ])),
       ),
