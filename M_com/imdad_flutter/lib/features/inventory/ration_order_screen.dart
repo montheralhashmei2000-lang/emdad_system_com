@@ -17,8 +17,11 @@ import '../../data/repos/movements_repo.dart';
 import '../../data/repos/ration_repo.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../domain/access_control.dart';
+import '../../domain/line_consolidation.dart';
 import '../../domain/ration_order.dart';
 import 'doc_kit.dart';
+
+String _num(double v) => v == v.roundToDouble() ? v.toInt().toString() : v.toString();
 
 /// طلبيات الإعاشة: فرعٌ يطلب من مستودع مورِّد، ثم تُعتمد وتُستلم.
 ///
@@ -36,22 +39,36 @@ class RationOrderScreen extends StatefulWidget {
 }
 
 class _LineDraft {
-  _LineDraft({this.itemId = '', double qty = 0})
-      : qty = TextEditingController(text: qty > 0 ? '$qty' : '');
+  _LineDraft({this.itemId = '', double qty = 0, this.unit = '', String notes = ''})
+      : qty = TextEditingController(text: qty > 0 ? '$qty' : ''),
+        notes = TextEditingController(text: notes);
 
   String itemId;
   final TextEditingController qty;
+
+  /// وحدة الطلب — فارغةٌ تعني وحدة الأساس (كما كان الحال دومًا قبل أن
+  /// تُختار الوحدة صراحةً): الطلبية طلبٌ لا حركة، فلا تحويل وحداتٍ حقيقي
+  /// يجري عليها، لكن الطالب قد يعرف كميته بوحدةٍ غير الأساس (كرتونًا لا
+  /// كيلو) فيطلب بها مباشرةً بدل أن يحسبها بنفسه.
+  String unit;
+
+  /// ملاحظة السطر — سبب طلبٍ خاص أو ظرفٌ يخصّ هذا الصنف وحده.
+  final TextEditingController notes;
 
   /// هوية السطر عبر إعادة البناء — بها يبقى متحكّمه وتركيزه لو حُذف سطرٌ
   /// قبله، بدل أن تُعاد بقية الأسطر من فهارسها الجديدة.
   final key = UniqueKey();
 
-  void dispose() => qty.dispose();
+  void dispose() {
+    qty.dispose();
+    notes.dispose();
+  }
 }
 
 class _RationOrderScreenState extends State<RationOrderScreen> {
   late final AppDatabase _db = context.read<AppDatabase>();
   late final RationRepo _repo = RationRepo(_db);
+  late final CatalogRepo _catalog = CatalogRepo(_db);
 
   List<RationOrder> _orders = const [];
   List<Warehouse> _warehouses = const [];
@@ -168,7 +185,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
       ..clear()
       ..addAll([
         for (final l in full.lines)
-          _LineDraft(itemId: l.itemId, qty: l.requestedQty),
+          _LineDraft(itemId: l.itemId, qty: l.requestedQty, unit: l.unitName, notes: l.notes),
       ]);
     imdSetText(_notes, o.notes);
     setState(() {
@@ -242,13 +259,19 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
 
   RationLineInput _inputOf(_LineDraft l) {
     final item = _items.where((i) => i.id == l.itemId).firstOrNull;
+    // بلا وحدةٍ مختارة: وحدة الأساس بمعامل ١، كما كان الحال دومًا. ووحدةٌ
+    // مختارة تحمل معاملها الفعلي — فالكمية المطلوبة تُفهم بوحدتها لا
+    // بافتراض أنها بالأساس دائمًا.
+    final unitName = l.unit.isNotEmpty ? l.unit : (item?.baseUnit ?? '');
+    final factor = (item != null && l.unit.isNotEmpty) ? _catalog.factorOf(item, l.unit) : 1.0;
     return RationLineInput(
       itemId: l.itemId,
       itemCode: item?.code ?? '',
       itemName: item?.name ?? '',
-      unitName: item?.baseUnit ?? '',
-      factor: 1,
+      unitName: unitName,
+      factor: factor,
       requestedQty: double.tryParse(l.qty.text.trim()) ?? 0,
+      notes: l.notes.text.trim(),
     );
   }
 
@@ -919,17 +942,45 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
         ],
       );
 
+  /// وحدة الطلب لصنف السطر — قائمة وحدات صنفه، أو فارغة إن لم يُختر صنفٌ بعد.
+  /// تغييرها يحوّل الكمية بمعامل الوحدتين (كما في بقية السندات): ١١٠٠ كجم
+  /// ⇒ ٢٧٫٥ كيسًا، لا ١١٠٠ كيسًا.
+  Widget _unitFieldFor(_LineDraft l) {
+    final item = _items.where((i) => i.id == l.itemId).firstOrNull;
+    final units = item == null ? const <ItemUnit>[] : _catalog.unitsOf(item);
+    return ImdUnitPicker(
+      units: [for (final u in units) u.name],
+      value: l.unit,
+      onChanged: (v) => setState(() {
+        final next = v;
+        final previous = l.unit;
+        final qty = double.tryParse(l.qty.text.trim()) ?? 0;
+        l.unit = next;
+        if (item != null && qty > 0 && previous.isNotEmpty && next.isNotEmpty && next != previous) {
+          imdSetText(
+            l.qty,
+            _num(convertQty(qty, _catalog.factorOf(item, previous), _catalog.factorOf(item, next))),
+          );
+        }
+      }),
+    );
+  }
+
   /// محرّر أسطر الطلبية — الجدول الكثيف المشترك نفسه في بقية السندات.
   ///
-  /// الطلبية طلبٌ لا حركة، فلا وحدةَ قياسٍ فيها ولا إجراء أسطوانة: عمودان
-  /// للإدخال وثالثٌ للرصيد المتاح في المخزن المورِّد حين يكون محدَّدًا.
+  /// الطلبية طلبٌ لا حركة، فلا إجراء أسطوانة فيها؛ لكن الوحدة تبقى مفيدة:
+  /// الطالب قد يعرف كميته بوحدةٍ غير الأساس (كرتونًا لا كيلو) فيطلب بها
+  /// مباشرةً بدل أن يحسبها بنفسه — بلا وحدةٍ مختارة تبقى الأساس كما كانت
+  /// دومًا. والملاحظة لكل صنفٍ سبب طلبٍ خاص لا يخصّ الطلبية كلّها.
   Widget _linesTableEditor(BuildContext context) {
     const cell = ImdEntryTable.cell;
     return ImdEntryTable(
       columns: const [
-        ImdCol('الصنف', flex: 4),
+        ImdCol('الصنف', flex: 3),
         ImdCol('المتاح', width: 96),
-        ImdCol('الكمية', width: 110),
+        ImdCol('الوحدة', width: 112),
+        ImdCol('الكمية', width: 96),
+        ImdCol('ملاحظة', flex: 2),
         ImdCol('', width: 56),
       ],
       rowKeys: [for (final l in _lines) l.key],
@@ -941,17 +992,25 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
             cell(ImdItemPicker(
               items: _items,
               value: l.itemId,
-              onChanged: (v) => setState(() => l.itemId = v),
+              onChanged: (v) => setState(() {
+                l.itemId = v;
+                final item = _items.where((i) => i.id == v).firstOrNull;
+                final units = item == null ? const <ItemUnit>[] : _catalog.unitsOf(item);
+                l.unit = units.where((u) => u.isBase).firstOrNull?.name ??
+                    (units.isNotEmpty ? units.first.name : '');
+              }),
             )),
             cell(ImdEntryBalanceCell(
               _supplying.isEmpty || l.itemId.isEmpty ? '' : nf(_supplyBal[l.itemId] ?? 0),
             )),
+            cell(_unitFieldFor(l)),
             cell(ImdFld(
               controller: l.qty,
               number: true,
               hint: 'الكمية',
               onChanged: (_) => setState(() {}),
             )),
+            cell(ImdFld(controller: l.notes, hint: 'ملاحظة على هذا الصنف…')),
             cell(ImdIconButton(
               icon: 'trash',
               tooltip: 'حذف السطر',
