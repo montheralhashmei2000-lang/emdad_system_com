@@ -147,6 +147,11 @@ class _TransferScreenState extends State<TransferScreen> {
   // المعلقة والسجل
   List<Transfer>? _pending;
 
+  // سندات معلّقة داخل الجلسة (تبويب «سند جديد»)
+  final List<ImdDocTab<Map<String, dynamic>>> _suspended = [];
+  int _tabSeq = 1;
+  int _activeTabId = 0;
+
   @override
   void initState() {
     super.initState();
@@ -169,6 +174,96 @@ class _TransferScreenState extends State<TransferScreen> {
     if (t == 'form') _form();
     if (t == 'pending') _loadPending();
   }
+
+  /// لقطة بيانات سند التحويل الحالي — لتعليق السند في تبويبٍ جانبي.
+  Map<String, dynamic> _captureDocSnapshot() => {
+        'camp': _camp,
+        'from': _from,
+        'to': _to,
+        'date': _date,
+        'ref': _ref,
+        'notes': _notes.text,
+        'orderId': _orderId,
+        'orderRef': _orderRef,
+        'matchEnt': _matchEnt,
+        'acDate': _acDate,
+        'acHead': _acHead.text,
+        'acDays': _acDays.text,
+        'rows': [
+          for (final r in _rows) {'itemId': r.itemId, 'unit': r.unit, 'qty': r.qty.text, 'noAuto': r.noAuto, 'cy': r.cy},
+        ],
+      };
+
+  /// يكتب لقطةً محفوظةً من تبويبٍ معلّق رجوعًا إلى حقول النموذج.
+  void _applySnapshot(Map<String, dynamic> data) {
+    for (final r in _rows) {
+      r.qty.dispose();
+    }
+    setState(() {
+      _camp = '${data['camp'] ?? ''}';
+      _from = '${data['from'] ?? _from}';
+      _to = '${data['to'] ?? _to}';
+      _date = '${data['date'] ?? _date}';
+      _ref = '${data['ref'] ?? _ref}';
+      imdSetText(_notes, '${data['notes'] ?? ''}');
+      _orderId = '${data['orderId'] ?? ''}';
+      _orderRef = '${data['orderRef'] ?? ''}';
+      _matchEnt = data['matchEnt'] == true;
+      _acDate = '${data['acDate'] ?? _acDate}';
+      imdSetText(_acHead, '${data['acHead'] ?? ''}');
+      imdSetText(_acDays, '${data['acDays'] ?? '1'}');
+      final savedRows = data['rows'];
+      _rows
+        ..clear()
+        ..addAll(savedRows is List
+            ? [
+                for (final v in savedRows.whereType<Map>())
+                  _Row(
+                    itemId: '${v['itemId'] ?? ''}',
+                    unit: '${v['unit'] ?? ''}',
+                    qty: double.tryParse('${v['qty'] ?? ''}'),
+                    noAuto: v['noAuto'] == true,
+                    cy: '${v['cy'] ?? CylAction.transferFull}',
+                  ),
+              ]
+            : <_Row>[]);
+      if (_rows.isEmpty) _rows.add(_Row());
+    });
+    _refreshBal();
+    _loadReady();
+  }
+
+  // ─────────────────────── تبويبات السندات المعلّقة ───────────────────────
+  String _activeTabLabel() => _ref.isNotEmpty ? _ref : 'سند بلا رقم';
+
+  /// زر «سند جديد»: يعلّق السند الحالي في تبويبٍ جانبي ويفتح سندًا فارغًا.
+  void _openNewTab() {
+    final snap = _captureDocSnapshot();
+    setState(() {
+      _suspended.add(ImdDocTab<Map<String, dynamic>>(id: _activeTabId, label: _activeTabLabel(), snapshot: snap));
+      _activeTabId = _tabSeq++;
+      _tab = 'form';
+    });
+    _form();
+  }
+
+  void _switchDocTab(int id) {
+    if (id == _activeTabId) return;
+    final idx = _suspended.indexWhere((t) => t.id == id);
+    if (idx == -1) return;
+    final target = _suspended.removeAt(idx);
+    final current = ImdDocTab<Map<String, dynamic>>(id: _activeTabId, label: _activeTabLabel(), snapshot: _captureDocSnapshot());
+    setState(() {
+      _suspended
+        ..removeWhere((t) => t.id == target.id)
+        ..add(current);
+      _activeTabId = target.id;
+      _tab = 'form';
+    });
+    _applySnapshot(target.snapshot);
+  }
+
+  void _closeDocTab(int id) => setState(() => _suspended.removeWhere((t) => t.id == id));
 
   /// `trfFetchAll()` + `trfForm()`
   Future<void> _form() async {
@@ -588,20 +683,30 @@ class _TransferScreenState extends State<TransferScreen> {
   @override
   Widget build(BuildContext context) {
     final head = <Widget>[
-      const ImdPageTitle(
+      ImdPageTitle(
         title: 'التحويل المخزني',
         icon: 'refresh',
         subtitle: 'إرسال واستلام تحويلات بين المستودعات بدورة اعتماد ثنائية (إرسال ← استلام وتأكيد)',
-      ),
-      ImdItabs(
-        value: _tab,
-        onChanged: _switch,
-        tabs: const [
-          ImdTab('form', 'إرسال تحويل جديد', icon: 'file'),
-          ImdTab('pending', 'بانتظار الاستلام', icon: 'hourglass'),
-          ImdTab('hist', 'سجل التحويلات', icon: 'file'),
+        actions: [
+          ImdButton.outline(label: 'سند جديد', icon: 'plus-square', small: true, onPressed: _openNewTab),
+          ImdItabs(
+            value: _tab,
+            onChanged: _switch,
+            tabs: const [
+              ImdTab('form', 'إرسال تحويل جديد', icon: 'file'),
+              ImdTab('pending', 'بانتظار الاستلام', icon: 'hourglass'),
+              ImdTab('hist', 'سجل التحويلات', icon: 'file'),
+            ],
+          ),
         ],
       ),
+      if (_suspended.isNotEmpty)
+        ImdDocTabsBar<Map<String, dynamic>>(
+          activeLabel: _activeTabLabel(),
+          suspended: _suspended,
+          onSelect: _switchDocTab,
+          onClose: _closeDocTab,
+        ),
     ];
     if (_tab != 'form') {
       return ImdPage(children: [...head, if (_tab == 'pending') _pendingView(context) else const DocLogView(kinds: {DocKind.transfer}, embedded: true)]);
@@ -674,18 +779,20 @@ class _TransferScreenState extends State<TransferScreen> {
     final mobile = ImdBp.of(context).mobile;
 
     return [
-      ImdSoftCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          ImdWorkflowSteps(
-            const ['اختر المصدر والهدف', 'أضف الأصناف', 'راجع الرصيد', 'أرسل للتحويل المعلّق'],
-            activeIndex: activeStep,
-            hints: nextSteps,
-          ),
-          ImdQuickGrid([('المستودعات', nf(_whs.length)), ('الأصناف', nf(_items.length))]),
-          const ImdPrintTip('التحويل لا يكتمل هنا نهائيًا؛ هو يدخل حالة «بانتظار الاستلام» لحد ما الجهة الهدف تأكد الاستلام أو ترفضه.'),
-        ]),
+      ImdGuidePanel(
+        child: ImdSoftCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ImdWorkflowSteps(
+              const ['اختر المصدر والهدف', 'أضف الأصناف', 'راجع الرصيد', 'أرسل للتحويل المعلّق'],
+              activeIndex: activeStep,
+              hints: nextSteps,
+            ),
+            ImdQuickGrid([('المستودعات', nf(_whs.length)), ('الأصناف', nf(_items.length))]),
+            const ImdPrintTip('التحويل لا يكتمل هنا نهائيًا؛ هو يدخل حالة «بانتظار الاستلام» لحد ما الجهة الهدف تأكد الاستلام أو ترفضه.'),
+          ]),
+        ),
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: 8),
       ImdICard(
         title: 'بيانات التحويل',
         icon: 'clipboard',

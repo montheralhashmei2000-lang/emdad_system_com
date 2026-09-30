@@ -73,6 +73,11 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
 
   // السجل
 
+  // سندات معلّقة داخل الجلسة (تبويب «سند جديد»)
+  final List<ImdDocTab<Map<String, dynamic>>> _suspended = [];
+  int _tabSeq = 1;
+  int _activeTabId = 0;
+
   @override
   void initState() {
     super.initState();
@@ -97,6 +102,104 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
       _fetch();
     }
   }
+
+  /// لقطة بيانات نموذجَي المرتجع (من وحدة وإلى مورّد معًا) — لتعليق السند
+  /// الحالي في تبويبٍ جانبي.
+  Map<String, dynamic> _captureDocSnapshot() => {
+        'uWh': _uWh,
+        'uUnit': _uUnit,
+        'uDate': _uDate,
+        'uRef': _uRef,
+        'uNotes': _uNotes.text,
+        'uRows': [
+          for (final r in _uRows) {'itemId': r.itemId, 'unit': r.unit, 'qty': r.qty.text, 'cy': r.cy},
+        ],
+        'sWh': _sWh,
+        'sSup': _sSup,
+        'sDate': _sDate,
+        'sRef': _sRef,
+        'sOrig': _sOrig.text,
+        'sNotes': _sNotes.text,
+        'sRows': [
+          for (final r in _sRows) {'itemId': r.itemId, 'unit': r.unit, 'qty': r.qty.text, 'cy': r.cy},
+        ],
+      };
+
+  List<_Row> _rowsFrom(Object? saved) => saved is List
+      ? [
+          for (final v in saved.whereType<Map>())
+            _Row()
+              ..itemId = '${v['itemId'] ?? ''}'
+              ..unit = '${v['unit'] ?? ''}'
+              ..qty.text = '${v['qty'] ?? ''}'
+              ..cy = '${v['cy'] ?? CylAction.returnEmpty}',
+        ]
+      : <_Row>[];
+
+  /// يكتب لقطةً محفوظةً من تبويبٍ معلّق رجوعًا إلى حقول النموذجَين.
+  void _applySnapshot(Map<String, dynamic> data) {
+    for (final r in [..._uRows, ..._sRows]) {
+      r.qty.dispose();
+    }
+    setState(() {
+      _uWh = '${data['uWh'] ?? _uWh}';
+      _uUnit = '${data['uUnit'] ?? ''}';
+      _uDate = '${data['uDate'] ?? _uDate}';
+      _uRef = '${data['uRef'] ?? _uRef}';
+      imdSetText(_uNotes, '${data['uNotes'] ?? ''}');
+      _uRows
+        ..clear()
+        ..addAll(_rowsFrom(data['uRows']));
+      if (_uRows.isEmpty) _uRows.add(_Row());
+
+      _sWh = '${data['sWh'] ?? _sWh}';
+      _sSup = '${data['sSup'] ?? ''}';
+      _sDate = '${data['sDate'] ?? _sDate}';
+      _sRef = '${data['sRef'] ?? _sRef}';
+      imdSetText(_sOrig, '${data['sOrig'] ?? ''}');
+      imdSetText(_sNotes, '${data['sNotes'] ?? ''}');
+      _sRows
+        ..clear()
+        ..addAll(_rowsFrom(data['sRows']));
+      if (_sRows.isEmpty) _sRows.add(_Row());
+    });
+    _refreshBal();
+  }
+
+  // ─────────────────────── تبويبات السندات المعلّقة ───────────────────────
+  String _activeTabLabel() {
+    final ref = _tab == 'unit' ? _uRef : _sRef;
+    return ref.isNotEmpty ? ref : 'سند بلا رقم';
+  }
+
+  /// زر «سند جديد»: يعلّق السند الحالي في تبويبٍ جانبي ويفتح سندًا فارغًا.
+  void _openNewTab() {
+    final snap = _captureDocSnapshot();
+    setState(() {
+      _suspended.add(ImdDocTab<Map<String, dynamic>>(id: _activeTabId, label: _activeTabLabel(), snapshot: snap));
+      _activeTabId = _tabSeq++;
+      if (_tab == 'hist') _tab = 'unit';
+    });
+    _fetch();
+  }
+
+  void _switchDocTab(int id) {
+    if (id == _activeTabId) return;
+    final idx = _suspended.indexWhere((t) => t.id == id);
+    if (idx == -1) return;
+    final target = _suspended.removeAt(idx);
+    final current = ImdDocTab<Map<String, dynamic>>(id: _activeTabId, label: _activeTabLabel(), snapshot: _captureDocSnapshot());
+    setState(() {
+      _suspended
+        ..removeWhere((t) => t.id == target.id)
+        ..add(current);
+      _activeTabId = target.id;
+      if (_tab == 'hist') _tab = 'unit';
+    });
+    _applySnapshot(target.snapshot);
+  }
+
+  void _closeDocTab(int id) => setState(() => _suspended.removeWhere((t) => t.id == id));
 
   /// `retFetchAll()`
   Future<void> _fetch() async {
@@ -274,20 +377,30 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
   @override
   Widget build(BuildContext context) {
     final head = <Widget>[
-      const ImdPageTitle(
+      ImdPageTitle(
         title: 'المرتجعات',
         icon: 'undo',
         subtitle: 'مرتجعات من الوحدات المستفيدة (فائض/تالف) ومرتجعات إلى الموردين (مواد غير مطابقة)',
-      ),
-      ImdItabs(
-        value: _tab,
-        onChanged: _switch,
-        tabs: const [
-          ImdTab('unit', 'مرتجع من وحدة', icon: 'users'),
-          ImdTab('supplier', 'مرتجع إلى مورّد', icon: 'truck'),
-          ImdTab('hist', 'سجل المرتجعات', icon: 'file'),
+        actions: [
+          ImdButton.outline(label: 'سند جديد', icon: 'plus-square', small: true, onPressed: _openNewTab),
+          ImdItabs(
+            value: _tab,
+            onChanged: _switch,
+            tabs: const [
+              ImdTab('unit', 'مرتجع من وحدة', icon: 'users'),
+              ImdTab('supplier', 'مرتجع إلى مورّد', icon: 'truck'),
+              ImdTab('hist', 'سجل المرتجعات', icon: 'file'),
+            ],
+          ),
         ],
       ),
+      if (_suspended.isNotEmpty)
+        ImdDocTabsBar<Map<String, dynamic>>(
+          activeLabel: _activeTabLabel(),
+          suspended: _suspended,
+          onSelect: _switchDocTab,
+          onClose: _closeDocTab,
+        ),
     ];
     if (_tab == 'hist') return ImdPage(children: [...head, const DocLogView(kinds: {DocKind.returnDoc}, embedded: true)]);
     if (!_ready) return ImdPage(children: [...head, const ImdLd('جارٍ التهيئة…')]);
@@ -367,23 +480,25 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
             : 3;
 
     return [
-      ImdSoftCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          ImdWorkflowSteps(
-            const ['اختر الوحدة والمستودع', 'حدد الحالة', 'أضف الأصناف', 'اطبع أو اعتمد'],
-            activeIndex: uStep,
-            hints: const [
-              'اختر الوحدة التي أعادت الأصناف والمستودع المستلم، وتأكد أن التاريخ ليس في المستقبل.',
-              'حدد حالة المرتجع: صالح يعود للمخزون، وتالف يُسجَّل توثيقيًا بلا رصيد.',
-              'أضف صنفًا واحدًا على الأقل وحدد وحدته وكميته.',
-              'اكتمل التحقق. اطبع المرتجع أو اعتمده.',
-            ],
-          ),
-          ImdQuickGrid([('المستودعات', nf(_whs.length)), ('الوحدات', nf(_units.length)), ('الأصناف', nf(_items.length))]),
-          const ImdPrintTip('الأصناف الصالحة تُعاد للرصيد. الأصناف التالفة تُسجل توثيقيًا فقط بدون إضافة مخزون.'),
-        ]),
+      ImdGuidePanel(
+        child: ImdSoftCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ImdWorkflowSteps(
+              const ['اختر الوحدة والمستودع', 'حدد الحالة', 'أضف الأصناف', 'اطبع أو اعتمد'],
+              activeIndex: uStep,
+              hints: const [
+                'اختر الوحدة التي أعادت الأصناف والمستودع المستلم، وتأكد أن التاريخ ليس في المستقبل.',
+                'حدد حالة المرتجع: صالح يعود للمخزون، وتالف يُسجَّل توثيقيًا بلا رصيد.',
+                'أضف صنفًا واحدًا على الأقل وحدد وحدته وكميته.',
+                'اكتمل التحقق. اطبع المرتجع أو اعتمده.',
+              ],
+            ),
+            ImdQuickGrid([('المستودعات', nf(_whs.length)), ('الوحدات', nf(_units.length)), ('الأصناف', nf(_items.length))]),
+            const ImdPrintTip('الأصناف الصالحة تُعاد للرصيد. الأصناف التالفة تُسجل توثيقيًا فقط بدون إضافة مخزون.'),
+          ]),
+        ),
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: 8),
       ImdICard(
         title: 'بيانات مرتجع الوحدة',
         icon: 'clipboard',
@@ -439,23 +554,25 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
             : 3;
 
     return [
-      ImdSoftCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          ImdWorkflowSteps(
-            const ['اختر المورد والمستودع', 'اربط السند الأصلي إن وجد', 'أضف الأصناف', 'اطبع واعتمد الخصم'],
-            activeIndex: sStep,
-            hints: const [
-              'اختر الجهة الموردة والمستودع الذي سيخرج منه المرتجع، وتأكد أن التاريخ ليس في المستقبل.',
-              'اكتب مرجع سند التوريد الأصلي وسبب الإرجاع — غير إلزاميين لكنهما يسهّلان التتبع.',
-              'أضف الأصناف وتأكد أن رصيد المستودع يكفي للخصم.',
-              'اكتمل التحقق. الاعتماد يخصم الكميات من الرصيد الحالي.',
-            ],
-          ),
-          ImdQuickGrid([('الموردون', nf(_sups.length)), ('المستودعات', nf(_whs.length)), ('الأصناف', nf(_items.length))]),
-          const ImdPrintTip('اعتماد مرتجع المورد يخصم الكميات من الرصيد الحالي، فراجِع المرجع الأصلي والسبب قبل التنفيذ.'),
-        ]),
+      ImdGuidePanel(
+        child: ImdSoftCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ImdWorkflowSteps(
+              const ['اختر المورد والمستودع', 'اربط السند الأصلي إن وجد', 'أضف الأصناف', 'اطبع واعتمد الخصم'],
+              activeIndex: sStep,
+              hints: const [
+                'اختر الجهة الموردة والمستودع الذي سيخرج منه المرتجع، وتأكد أن التاريخ ليس في المستقبل.',
+                'اكتب مرجع سند التوريد الأصلي وسبب الإرجاع — غير إلزاميين لكنهما يسهّلان التتبع.',
+                'أضف الأصناف وتأكد أن رصيد المستودع يكفي للخصم.',
+                'اكتمل التحقق. الاعتماد يخصم الكميات من الرصيد الحالي.',
+              ],
+            ),
+            ImdQuickGrid([('الموردون', nf(_sups.length)), ('المستودعات', nf(_whs.length)), ('الأصناف', nf(_items.length))]),
+            const ImdPrintTip('اعتماد مرتجع المورد يخصم الكميات من الرصيد الحالي، فراجِع المرجع الأصلي والسبب قبل التنفيذ.'),
+          ]),
+        ),
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: 8),
       ImdICard(
         title: 'بيانات مرتجع المورّد',
         icon: 'clipboard',

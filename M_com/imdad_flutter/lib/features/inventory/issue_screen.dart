@@ -106,6 +106,11 @@ class _IssueScreenState extends State<IssueScreen> {
   DateTime? _autosavedAt;
   bool _restoringAutosave = false;
 
+  // سندات معلّقة داخل الجلسة (تبويب «سند جديد»)
+  final List<ImdDocTab<Map<String, dynamic>>> _suspended = [];
+  int _tabSeq = 1;
+  int _activeTabId = 0;
+
   String get _autosaveKey =>
       'imdad.issue.recovery.${context.read<AuthService>().currentUser?.id ?? 'local'}';
 
@@ -198,35 +203,109 @@ class _IssueScreenState extends State<IssueScreen> {
   Future<void> _saveAutosave() async {
     if (!_ready || _restoringAutosave || _busy || _tab != 'form') return;
     final prefs = await SharedPreferences.getInstance();
-    final snapshot = <String, dynamic>{
-      'type': _type,
-      'warehouse': _wh,
-      'date': _date,
-      'parent': _parent,
-      'beneficiary': _ben,
-      'facility': _fac,
-      'custom': _custom.text,
-      'strengthDate': _strDate,
-      'days': _days.text,
-      'notes': _notes.text,
-      'strength': _strength,
-      'rows': [
-        for (final row in _rows)
-          {
-            'item': row.itemId,
-            'unit': row.unit,
-            'qty': row.qty.text,
-            'notes': row.notes.text,
-            'beneficiary': row.benUnit,
-            'cylinder': row.cy,
-            'noAuto': row.noAuto,
-          },
-      ],
-      'savedAt': DateTime.now().toIso8601String(),
-    };
+    final snapshot = {..._captureDocSnapshot(), 'savedAt': DateTime.now().toIso8601String()};
     await prefs.setString(_autosaveKey, jsonEncode(snapshot));
     if (mounted) setState(() => _autosavedAt = DateTime.now());
   }
+
+  /// لقطة بيانات سند الصرف الحالي — للحفظ التلقائي وتعليق السند في تبويب.
+  Map<String, dynamic> _captureDocSnapshot() => {
+        'type': _type,
+        'ref': _ref,
+        'warehouse': _wh,
+        'date': _date,
+        'parent': _parent,
+        'beneficiary': _ben,
+        'facility': _fac,
+        'custom': _custom.text,
+        'strengthDate': _strDate,
+        'days': _days.text,
+        'notes': _notes.text,
+        'strength': _strength,
+        'rows': [
+          for (final row in _rows)
+            {
+              'item': row.itemId,
+              'unit': row.unit,
+              'qty': row.qty.text,
+              'notes': row.notes.text,
+              'beneficiary': row.benUnit,
+              'cylinder': row.cy,
+              'noAuto': row.noAuto,
+            },
+        ],
+      };
+
+  /// يكتب لقطةً محفوظةً (تلقائية أو من تبويبٍ معلّق) رجوعًا إلى حقول النموذج.
+  void _applySnapshot(Map<String, dynamic> data) {
+    setState(() {
+      _type = (data['type'] as num?)?.toInt() ?? _type;
+      _ref = '${data['ref'] ?? _ref}';
+      _wh = '${data['warehouse'] ?? _wh}';
+      _date = '${data['date'] ?? _date}';
+      _parent = '${data['parent'] ?? ''}';
+      _ben = '${data['beneficiary'] ?? ''}';
+      _fac = '${data['facility'] ?? ''}';
+      imdSetText(_custom, '${data['custom'] ?? ''}');
+      _strDate = '${data['strengthDate'] ?? _date}';
+      imdSetText(_days, '${data['days'] ?? '1'}');
+      imdSetText(_notes, '${data['notes'] ?? ''}');
+      _strength = (data['strength'] as num?)?.toDouble() ?? 0;
+      for (final row in _rows) {
+        row.dispose();
+      }
+      final savedRows = data['rows'];
+      _rows
+        ..clear()
+        ..addAll(savedRows is List
+            ? [
+                for (final value in savedRows.whereType<Map>())
+                  _newRow(
+                    itemId: '${value['item'] ?? ''}',
+                    unit: '${value['unit'] ?? ''}',
+                    qty: double.tryParse('${value['qty'] ?? ''}'),
+                    notes: '${value['notes'] ?? ''}',
+                    benUnit: '${value['beneficiary'] ?? ''}',
+                    noAuto: value['noAuto'] == true,
+                  )..cy = '${value['cylinder'] ?? 'EXCHANGE'}',
+              ]
+            : <_Row>[]);
+      if (_rows.isEmpty) _rows.add(_newRow());
+    });
+  }
+
+  // ─────────────────────── تبويبات السندات المعلّقة ───────────────────────
+  String _activeTabLabel() => _ref.isNotEmpty ? _ref : 'سند بلا رقم';
+
+  /// زر «سند جديد»: يعلّق السند الحالي في تبويبٍ جانبي ويفتح سندًا فارغًا.
+  void _openNewTab() {
+    final snap = _captureDocSnapshot();
+    setState(() {
+      _suspended.add(ImdDocTab<Map<String, dynamic>>(id: _activeTabId, label: _activeTabLabel(), snapshot: snap));
+      _activeTabId = _tabSeq++;
+      _tab = 'form';
+    });
+    _form();
+  }
+
+  void _switchDocTab(int id) {
+    if (id == _activeTabId) return;
+    final idx = _suspended.indexWhere((t) => t.id == id);
+    if (idx == -1) return;
+    final target = _suspended.removeAt(idx);
+    final current = ImdDocTab<Map<String, dynamic>>(id: _activeTabId, label: _activeTabLabel(), snapshot: _captureDocSnapshot());
+    setState(() {
+      _suspended
+        ..removeWhere((t) => t.id == target.id)
+        ..add(current);
+      _activeTabId = target.id;
+      _tab = 'form';
+    });
+    _applySnapshot(target.snapshot);
+    _refreshBal();
+  }
+
+  void _closeDocTab(int id) => setState(() => _suspended.removeWhere((t) => t.id == id));
 
   /// يكشف [_isPristine] للاختبار — سباق الاستعادة الحقيقي يتوقف على زمن قراءة
   /// `SharedPreferences` عبر قناة المنصّة، وهذا زمنٌ لا تملك بيئة الاختبار
@@ -270,39 +349,7 @@ class _IssueScreenState extends State<IssueScreen> {
     if (!_isPristine()) return;
     _restoringAutosave = true;
     try {
-      setState(() {
-        _type = (data['type'] as num?)?.toInt() ?? _type;
-        _wh = '${data['warehouse'] ?? _wh}';
-        _date = '${data['date'] ?? _date}';
-        _parent = '${data['parent'] ?? ''}';
-        _ben = '${data['beneficiary'] ?? ''}';
-        _fac = '${data['facility'] ?? ''}';
-        imdSetText(_custom, '${data['custom'] ?? ''}');
-        _strDate = '${data['strengthDate'] ?? _date}';
-        imdSetText(_days, '${data['days'] ?? '1'}');
-        imdSetText(_notes, '${data['notes'] ?? ''}');
-        _strength = (data['strength'] as num?)?.toDouble() ?? 0;
-        for (final row in _rows) {
-          row.dispose();
-        }
-        final savedRows = data['rows'];
-        _rows
-          ..clear()
-          ..addAll(savedRows is List
-              ? [
-                  for (final value in savedRows.whereType<Map>())
-                    _newRow(
-                      itemId: '${value['item'] ?? ''}',
-                      unit: '${value['unit'] ?? ''}',
-                      qty: double.tryParse('${value['qty'] ?? ''}'),
-                      notes: '${value['notes'] ?? ''}',
-                      benUnit: '${value['beneficiary'] ?? ''}',
-                      noAuto: value['noAuto'] == true,
-                    )..cy = '${value['cylinder'] ?? 'EXCHANGE'}',
-                ]
-              : <_Row>[]);
-        if (_rows.isEmpty) _rows.add(_newRow());
-      });
+      _applySnapshot(data);
       await _refreshBal();
       final savedAt = DateTime.tryParse('${data['savedAt'] ?? ''}');
       if (mounted) {
@@ -788,20 +835,30 @@ class _IssueScreenState extends State<IssueScreen> {
   @override
   Widget build(BuildContext context) {
     final head = <Widget>[
-      const ImdPageTitle(
+      ImdPageTitle(
         title: 'صرف بضاعة',
         icon: 'upload',
         subtitle: 'سندات الصرف للوحدات والمطابخ والجهات المستفيدة والتحقق الآلي من الاستحقاق والمخزون',
-      ),
-      ImdItabs(
-        value: _tab,
-        onChanged: _switch,
-        tabs: const [
-          ImdTab('form', 'سند صرف جديد', icon: 'file'),
-          ImdTab('drafts', 'المسودات والأوامر', icon: 'save'),
-          ImdTab('hist', 'سجل الصادرات', icon: 'file'),
+        actions: [
+          ImdButton.outline(label: 'سند جديد', icon: 'plus-square', small: true, onPressed: _openNewTab),
+          ImdItabs(
+            value: _tab,
+            onChanged: _switch,
+            tabs: const [
+              ImdTab('form', 'سند صرف جديد', icon: 'file'),
+              ImdTab('drafts', 'المسودات والأوامر', icon: 'save'),
+              ImdTab('hist', 'سجل الصادرات', icon: 'file'),
+            ],
+          ),
         ],
       ),
+      if (_suspended.isNotEmpty)
+        ImdDocTabsBar<Map<String, dynamic>>(
+          activeLabel: _activeTabLabel(),
+          suspended: _suspended,
+          onSelect: _switchDocTab,
+          onClose: _closeDocTab,
+        ),
     ];
     if (_tab != 'form') {
       return ImdPage(children: [
@@ -907,23 +964,25 @@ class _IssueScreenState extends State<IssueScreen> {
     Widget lab(String l, Widget f) => ImdLabeled(l, f, size: 11);
 
     return [
-      ImdSoftCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          ImdWorkflowSteps(
-            const ['حدد الجهة المستفيدة', 'اختر الأصناف', 'راجع الاستحقاق', 'اطبع أو نفّذ أو احفظ مسودة'],
-            activeIndex: activeStep,
-            hints: nextSteps,
-          ),
-          ImdQuickGrid([
-            ('الأصناف', nf(_items.length)),
-            ('الوحدات', nf(_units.length)),
-            ('المستودعات', nf(_whs.length)),
-            ('المطابخ/الأفران', nf(_facs.length)),
+      ImdGuidePanel(
+        child: ImdSoftCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ImdWorkflowSteps(
+              const ['حدد الجهة المستفيدة', 'اختر الأصناف', 'راجع الاستحقاق', 'اطبع أو نفّذ أو احفظ مسودة'],
+              activeIndex: activeStep,
+              hints: nextSteps,
+            ),
+            ImdQuickGrid([
+              ('الأصناف', nf(_items.length)),
+              ('الوحدات', nf(_units.length)),
+              ('المستودعات', nf(_whs.length)),
+              ('المطابخ/الأفران', nf(_facs.length)),
+            ]),
+            const ImdPrintTip('لو محتاج موافقة تشغيلية قبل الخصم الفعلي، استخدم «إشعار للمستودع» أو «مسودة» بدل التنفيذ المباشر.'),
           ]),
-          const ImdPrintTip('لو محتاج موافقة تشغيلية قبل الخصم الفعلي، استخدم «إشعار للمستودع» أو «مسودة» بدل التنفيذ المباشر.'),
-        ]),
+        ),
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: 8),
       ImdICard(
         title: 'نوع التوجيه والجهة المستفيدة',
         icon: 'target',

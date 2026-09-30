@@ -151,31 +151,179 @@ class ImdQuickGrid extends StatelessWidget {
   }
 }
 
-/// سطر إرشادٍ عن الطباعة أسفل بطاقة السند.
-class ImdPrintTip extends StatelessWidget {
+/// سطر إرشادٍ عن الطباعة أسفل بطاقة السند — مطويٌّ افتراضيًّا خلف زر
+/// "إظهار التعليمات"، وعند الفتح يظهر بعرضٍ كامل.
+class ImdPrintTip extends StatefulWidget {
   const ImdPrintTip(this.text, {super.key});
   final String text;
 
   @override
+  State<ImdPrintTip> createState() => _ImdPrintTipState();
+}
+
+class _ImdPrintTipState extends State<ImdPrintTip> {
+  bool _open = false;
+
+  @override
   Widget build(BuildContext context) {
     final c = context.imd;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: c.infoSoft,
-        border: Border.all(
-            color:
-                c.isDark ? const Color(0x5984ADFF) : const Color(0xFFB2CCFF)),
-        borderRadius: BorderRadius.circular(ImdSizes.radius),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: () => setState(() => _open = !_open),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            icon: ImdIcon(_open ? 'chevron-up' : 'info', size: 14, color: c.accent),
+            label: Text(_open ? 'إخفاء التعليمات' : 'إظهار التعليمات',
+                style: TextStyle(
+                    fontSize: 12.5, fontWeight: FontWeight.w600, color: c.accent)),
+          ),
+        ),
+        if (_open)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: SizedBox(
+              width: double.infinity,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: c.infoSoft,
+                  border: Border.all(
+                      color: c.isDark
+                          ? const Color(0x5984ADFF)
+                          : const Color(0xFFB2CCFF)),
+                  borderRadius: BorderRadius.circular(ImdSizes.radius),
+                ),
+                child: Text(widget.text,
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                        height: 1.6,
+                        color: c.isDark
+                            ? const Color(0xFFB2CCFF)
+                            : const Color(0xFF1849A9))),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// غلافٌ يطوي خطوات العمل والإحصاءات السريعة خلف زر «إظهار» — مطويٌّ
+/// افتراضيًّا كي لا يشغل مساحةً رأسية، ويُفتح بعرضٍ كامل عند الحاجة.
+class ImdGuidePanel extends StatefulWidget {
+  const ImdGuidePanel({super.key, required this.child, this.label = 'خطوات العمل والإحصاءات'});
+  final Widget child;
+  final String label;
+
+  @override
+  State<ImdGuidePanel> createState() => _ImdGuidePanelState();
+}
+
+class _ImdGuidePanelState extends State<ImdGuidePanel> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.imd;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _open = !_open),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(children: [
+              ImdIcon('info', size: 13, color: c.muted),
+              const SizedBox(width: 6),
+              Text(_open ? 'إخفاء ${widget.label}' : 'إظهار ${widget.label}',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.muted)),
+              const SizedBox(width: 4),
+              ImdIcon(_open ? 'chevron-up' : 'chevron-down', size: 13, color: c.muted),
+            ]),
+          ),
+        ),
+        if (_open) Padding(padding: const EdgeInsets.only(top: 6), child: widget.child),
+      ],
+    );
+  }
+}
+
+/// سندٌ معلّقٌ داخل الجلسة الحالية: لقطة بيانات [T] بانتظار العودة إليها.
+/// (لا يُحفظ فعليًا؛ يضيع بإغلاق الشاشة أو البرنامج.)
+class ImdDocTab<T> {
+  ImdDocTab({required this.id, required this.label, required this.snapshot});
+  final int id;
+  final String label;
+  final T snapshot;
+}
+
+/// شريط تبويبات السندات المفتوحة/المعلّقة داخل الجلسة — يظهر فقط عند وجود
+/// أكثر من سندٍ واحد؛ كل تبويبٍ معلّق له زرّ إغلاقٍ لتجاهله.
+class ImdDocTabsBar<T> extends StatelessWidget {
+  const ImdDocTabsBar({
+    super.key,
+    required this.activeLabel,
+    required this.suspended,
+    required this.onSelect,
+    required this.onClose,
+  });
+  final String activeLabel;
+  final List<ImdDocTab<T>> suspended;
+  final ValueChanged<int> onSelect;
+  final ValueChanged<int> onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    if (suspended.isEmpty) return const SizedBox.shrink();
+    final c = context.imd;
+    Widget chip({required bool active, required String label, VoidCallback? onTap, VoidCallback? onClose}) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          margin: const EdgeInsets.only(left: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: active ? c.accentSoft : c.surface,
+            border: Border.all(color: active ? c.accent : c.faint),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            ImdIcon('file', size: 12, color: active ? c.accent : c.muted),
+            const SizedBox(width: 5),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: active ? c.accent : c.text2)),
+            if (onClose != null) ...[
+              const SizedBox(width: 6),
+              InkWell(onTap: onClose, child: ImdIcon('x', size: 11, color: c.muted)),
+            ],
+          ]),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: [
+          chip(active: true, label: activeLabel),
+          for (final t in suspended)
+            chip(active: false, label: t.label, onTap: () => onSelect(t.id), onClose: () => onClose(t.id)),
+        ]),
       ),
-      child: Text(text,
-          style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w500,
-              height: 1.6,
-              color: c.isDark
-                  ? const Color(0xFFB2CCFF)
-                  : const Color(0xFF1849A9))),
     );
   }
 }

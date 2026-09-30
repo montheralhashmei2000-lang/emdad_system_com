@@ -45,6 +45,25 @@ class _Row {
 
 String _num(double v) => v == v.roundToDouble() ? v.toInt().toString() : v.toString();
 
+/// لقطة بيانات سند الوارد الكاملة — تُستخدم لتعليق السند الحالي عند فتح
+/// سندٍ جديد، والعودة إليه لاحقًا داخل نفس الجلسة.
+class _ReceiveSnapshot {
+  _ReceiveSnapshot({
+    required this.wh,
+    required this.sup,
+    required this.date,
+    required this.ref,
+    required this.c1,
+    required this.c2,
+    required this.c3,
+    required this.inv,
+    required this.notes,
+    required this.rows,
+  });
+  final String wh, sup, date, ref, c1, c2, c3, inv, notes;
+  final List<Map<String, Object>> rows;
+}
+
 class _ReceiveScreenState extends State<ReceiveScreen> {
   late final AppDatabase _db = context.read<AppDatabase>();
   late final CatalogRepo _catalog = CatalogRepo(_db);
@@ -79,6 +98,11 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
   // المسودات والسجل
   List<Receipt>? _drafts;
 
+  // سندات معلّقة داخل الجلسة (تبويب «سند جديد»)
+  final List<ImdDocTab<_ReceiveSnapshot>> _suspended = [];
+  int _tabSeq = 1;
+  int _activeTabId = 0;
+
   @override
   void initState() {
     super.initState();
@@ -107,6 +131,93 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     if (t == 'form') _form();
     if (t == 'drafts') _loadDrafts();
   }
+
+  // ─────────────────────── تبويبات السندات المعلّقة ───────────────────────
+  String _activeTabLabel() => _ref.isNotEmpty ? _ref : 'سند بلا رقم';
+
+  _ReceiveSnapshot _captureSnapshot() => _ReceiveSnapshot(
+        wh: _wh,
+        sup: _sup,
+        date: _date,
+        ref: _ref,
+        c1: _c1.text,
+        c2: _c2.text,
+        c3: _c3.text,
+        inv: _inv.text,
+        notes: _notes.text,
+        rows: [
+          for (final r in _rows)
+            {
+              'itemId': r.itemId,
+              'unit': r.unit,
+              'qty': r.qty.text,
+              'cy': r.cy,
+              'expiry': r.expiry,
+              'noAuto': r.noAuto,
+            },
+        ],
+      );
+
+  void _restoreSnapshot(_ReceiveSnapshot s) {
+    for (final r in _rows) {
+      r.qty.dispose();
+    }
+    setState(() {
+      _wh = s.wh;
+      _sup = s.sup;
+      _date = s.date;
+      _ref = s.ref;
+      _c1.text = s.c1;
+      _c2.text = s.c2;
+      _c3.text = s.c3;
+      _inv.text = s.inv;
+      _notes.text = s.notes;
+      _loadedDraftRef = '';
+      _rows
+        ..clear()
+        ..addAll([
+          for (final r in s.rows)
+            _Row(
+              itemId: r['itemId'] as String,
+              unit: r['unit'] as String,
+              qty: double.tryParse(r['qty'] as String),
+              cy: r['cy'] as String,
+              expiry: r['expiry'] as String,
+              noAuto: r['noAuto'] as bool,
+            ),
+        ]);
+    });
+    _refreshBal();
+  }
+
+  /// زر «سند جديد»: يعلّق السند الحالي في تبويبٍ جانبي ويفتح سندًا فارغًا.
+  void _openNewTab() {
+    final snap = _captureSnapshot();
+    setState(() {
+      _suspended.add(ImdDocTab<_ReceiveSnapshot>(id: _activeTabId, label: _activeTabLabel(), snapshot: snap));
+      _activeTabId = _tabSeq++;
+      _tab = 'form';
+    });
+    _form();
+  }
+
+  void _switchDocTab(int id) {
+    if (id == _activeTabId) return;
+    final idx = _suspended.indexWhere((t) => t.id == id);
+    if (idx == -1) return;
+    final target = _suspended.removeAt(idx);
+    final current = ImdDocTab<_ReceiveSnapshot>(id: _activeTabId, label: _activeTabLabel(), snapshot: _captureSnapshot());
+    setState(() {
+      _suspended
+        ..removeWhere((t) => t.id == target.id)
+        ..add(current);
+      _activeTabId = target.id;
+      _tab = 'form';
+    });
+    _restoreSnapshot(target.snapshot);
+  }
+
+  void _closeDocTab(int id) => setState(() => _suspended.removeWhere((t) => t.id == id));
 
   // ───────────────────────── النموذج ─────────────────────────
   /// `rcFetchAll()` + `rcForm()`
@@ -444,20 +555,30 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
   @override
   Widget build(BuildContext context) {
     final head = <Widget>[
-      const ImdPageTitle(
+      ImdPageTitle(
         title: 'استلام بضاعة',
         icon: 'download',
         subtitle: 'سند توريد مخزني — اعتماد فوري أو مسودة + سجل الواردات السابقة',
-      ),
-      ImdItabs(
-        value: _tab,
-        onChanged: _switch,
-        tabs: const [
-          ImdTab('form', 'سند الوارد الجديد', icon: 'file'),
-          ImdTab('drafts', 'المسودات', icon: 'save'),
-          ImdTab('hist', 'السجل', icon: 'file'),
+        actions: [
+          ImdButton.outline(label: 'سند جديد', icon: 'plus-square', small: true, onPressed: _openNewTab),
+          ImdItabs(
+            value: _tab,
+            onChanged: _switch,
+            tabs: const [
+              ImdTab('form', 'سند الوارد الجديد', icon: 'file'),
+              ImdTab('drafts', 'المسودات', icon: 'save'),
+              ImdTab('hist', 'السجل', icon: 'file'),
+            ],
+          ),
         ],
       ),
+      if (_suspended.isNotEmpty)
+        ImdDocTabsBar<_ReceiveSnapshot>(
+          activeLabel: _activeTabLabel(),
+          suspended: _suspended,
+          onSelect: _switchDocTab,
+          onClose: _closeDocTab,
+        ),
     ];
     if (_tab == 'form') {
       final w = Perm.of(context).writable('receive');
@@ -544,27 +665,29 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                 : 3;
 
     return [
-      ImdSoftCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          ImdWorkflowSteps(
-            const ['بيانات السند', 'إضافة الأصناف', 'مراجعة وطباعة', 'حفظ مسودة أو اعتماد نهائي'],
-            activeIndex: activeStep,
-            hints: const [
-              'حدد المستودع والجهة الموردة، وتأكد أن تاريخ التوريد ليس في المستقبل.',
-              'أضف صنفًا واحدًا على الأقل وحدد وحدته وكميته.',
-              'راجع الكميات وتواريخ الصلاحية والتكرارات قبل الحفظ.',
-              'اكتمل التحقق. احفظ كمسودة، أو اعتمد السند نهائيًا لإدخال الكميات للمخزون.',
-            ],
-          ),
-          ImdQuickGrid([
-            ('الأصناف المتاحة', nf(_items.length)),
-            ('الموردون', nf(_sups.length)),
-            ('المستودعات', nf(_whs.length)),
+      ImdGuidePanel(
+        child: ImdSoftCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ImdWorkflowSteps(
+              const ['بيانات السند', 'إضافة الأصناف', 'مراجعة وطباعة', 'حفظ مسودة أو اعتماد نهائي'],
+              activeIndex: activeStep,
+              hints: const [
+                'حدد المستودع والجهة الموردة، وتأكد أن تاريخ التوريد ليس في المستقبل.',
+                'أضف صنفًا واحدًا على الأقل وحدد وحدته وكميته.',
+                'راجع الكميات وتواريخ الصلاحية والتكرارات قبل الحفظ.',
+                'اكتمل التحقق. احفظ كمسودة، أو اعتمد السند نهائيًا لإدخال الكميات للمخزون.',
+              ],
+            ),
+            ImdQuickGrid([
+              ('الأصناف المتاحة', nf(_items.length)),
+              ('الموردون', nf(_sups.length)),
+              ('المستودعات', nf(_whs.length)),
+            ]),
+            const ImdPrintTip('لو السند لسه غير مكتمل: احفظه كمسودة الأول. ولو جاهز للمخزون الفعلي: استخدم الاعتماد النهائي مرة واحدة فقط.'),
           ]),
-          const ImdPrintTip('لو السند لسه غير مكتمل: احفظه كمسودة الأول. ولو جاهز للمخزون الفعلي: استخدم الاعتماد النهائي مرة واحدة فقط.'),
-        ]),
+        ),
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: 8),
       ImdICard(
         title: 'بيانات السند الرئيسية',
         icon: 'clipboard',

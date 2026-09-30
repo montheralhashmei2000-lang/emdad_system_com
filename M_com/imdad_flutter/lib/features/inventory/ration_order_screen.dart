@@ -102,6 +102,11 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
   bool _loading = true;
   bool _busy = false;
 
+  // طلبيات معلّقة داخل الجلسة (زر «طلبية جديدة»)
+  final List<ImdDocTab<Map<String, dynamic>>> _suspended = [];
+  int _tabSeq = 1;
+  int _activeTabId = 0;
+
   @override
   void initState() {
     super.initState();
@@ -174,6 +179,86 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
       _priority = RationPriority.normal;
     });
   }
+
+  /// لقطة بيانات الطلبية الجاري تحريرها — لتعليقها في تبويبٍ جانبي.
+  Map<String, dynamic> _captureDocSnapshot() => {
+        'editId': _editId,
+        'kind': _kind,
+        'authorityId': _authorityId,
+        'requesting': _requesting,
+        'supplying': _supplying,
+        'date': _date,
+        'requiredDate': _requiredDate,
+        'priority': _priority,
+        'notes': _notes.text,
+        'lines': [
+          for (final l in _lines)
+            {'itemId': l.itemId, 'qty': l.qty.text, 'unit': l.unit, 'notes': l.notes.text},
+        ],
+      };
+
+  /// يكتب لقطةً محفوظةً من تبويبٍ معلّق رجوعًا إلى حقول النموذج.
+  void _applySnapshot(Map<String, dynamic> data) {
+    for (final l in _lines) {
+      l.dispose();
+    }
+    setState(() {
+      _editId = data['editId'] as String?;
+      _kind = '${data['kind'] ?? RationKind.branch}';
+      _authorityId = '${data['authorityId'] ?? ''}';
+      _requesting = '${data['requesting'] ?? ''}';
+      _supplying = '${data['supplying'] ?? ''}';
+      _date = '${data['date'] ?? _date}';
+      _requiredDate = '${data['requiredDate'] ?? ''}';
+      _priority = '${data['priority'] ?? RationPriority.normal}';
+      imdSetText(_notes, '${data['notes'] ?? ''}');
+      final savedLines = data['lines'];
+      _lines
+        ..clear()
+        ..addAll(savedLines is List
+            ? [
+                for (final v in savedLines.whereType<Map>())
+                  _LineDraft(
+                    itemId: '${v['itemId'] ?? ''}',
+                    qty: double.tryParse('${v['qty'] ?? ''}') ?? 0,
+                    unit: '${v['unit'] ?? ''}',
+                    notes: '${v['notes'] ?? ''}',
+                  ),
+              ]
+            : <_LineDraft>[]);
+    });
+    _loadSupplyBalances();
+  }
+
+  // ─────────────────────── تبويبات الطلبيات المعلّقة ───────────────────────
+  String _activeTabLabel() => _requesting.isNotEmpty ? _requesting : 'طلبية بلا جهة';
+
+  /// زر «طلبية جديدة»: يعلّق الطلبية الحالية في تبويبٍ جانبي ويفتح طلبية فارغة.
+  void _openNewTab() {
+    final snap = _captureDocSnapshot();
+    setState(() {
+      _suspended.add(ImdDocTab<Map<String, dynamic>>(id: _activeTabId, label: _activeTabLabel(), snapshot: snap));
+      _activeTabId = _tabSeq++;
+    });
+    _resetForm();
+  }
+
+  void _switchDocTab(int id) {
+    if (id == _activeTabId) return;
+    final idx = _suspended.indexWhere((t) => t.id == id);
+    if (idx == -1) return;
+    final target = _suspended.removeAt(idx);
+    final current = ImdDocTab<Map<String, dynamic>>(id: _activeTabId, label: _activeTabLabel(), snapshot: _captureDocSnapshot());
+    setState(() {
+      _suspended
+        ..removeWhere((t) => t.id == target.id)
+        ..add(current);
+      _activeTabId = target.id;
+    });
+    _applySnapshot(target.snapshot);
+  }
+
+  void _closeDocTab(int id) => setState(() => _suspended.removeWhere((t) => t.id == id));
 
   Future<void> _edit(RationOrder o) async {
     final full = await _repo.byId(o.id);
@@ -595,43 +680,58 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
         .length;
 
     return ImdPage(children: [
-      const ImdPageTitle(
+      ImdPageTitle(
         title: 'طلبيات الإعاشة',
         icon: 'clipboard',
         subtitle: 'الطلبية طلبٌ لا حركة: لا تمسّ المخزون. '
             'وما يحرّكه سندُ التحويل أو التوريد الذي تُربط به بعد الاعتماد',
+        actions: [
+          if (can)
+            ImdButton.outline(label: 'طلبية جديدة', icon: 'plus-square', small: true, onPressed: _openNewTab),
+        ],
       ),
-      const ImdWorkflowSteps([
-        'يبني الطالب المسودة: المخزن الرئيسي من جهة، وغيره من المخزن الرئيسي',
-        'يرسلها فتُرفع إلى ركن الإمداد',
-        'يعتمدها ركن الإمداد كاملةً أو مقلَّصة',
-        'الفرعية تُسحب في شاشة التحويل، والرئيسية تُطابَق بسند توريد',
-      ]),
-      ImdKpis(children: [
-        ImdKpi(label: 'إجمالي الطلبيات', value: nf(_orders.length)),
-        ImdKpi(label: 'مسودات', value: nf(counts[RationStatus.draft] ?? 0)),
-        ImdKpi(
-          label: 'بانتظار الاعتماد',
-          value: nf(counts[RationStatus.pending] ?? 0),
-          extra: (counts[RationStatus.pending] ?? 0) == 0
-              ? null
-              : const ImdChip('يحتاج إجراء', tone: ImdTone.pend),
+      if (_suspended.isNotEmpty)
+        ImdDocTabsBar<Map<String, dynamic>>(
+          activeLabel: _activeTabLabel(),
+          suspended: _suspended,
+          onSelect: _switchDocTab,
+          onClose: _closeDocTab,
         ),
-        ImdKpi(
-          label: 'معتمدة بانتظار التنفيذ',
-          value: nf(counts[RationStatus.approved] ?? 0),
-          extra: (counts[RationStatus.approved] ?? 0) == 0
-              ? null
-              : const ImdChip('تحويل أو توريد', tone: ImdTone.info),
-        ),
-        ImdKpi(
-          label: 'عاجلة مفتوحة',
-          value: nf(urgent),
-          extra:
-              urgent == 0 ? null : const ImdChip('عاجل', tone: ImdTone.err),
-        ),
-        ImdKpi(label: 'منفَّذة', value: nf(counts[RationStatus.received] ?? 0)),
-      ]),
+      ImdGuidePanel(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const ImdWorkflowSteps([
+            'يبني الطالب المسودة: المخزن الرئيسي من جهة، وغيره من المخزن الرئيسي',
+            'يرسلها فتُرفع إلى ركن الإمداد',
+            'يعتمدها ركن الإمداد كاملةً أو مقلَّصة',
+            'الفرعية تُسحب في شاشة التحويل، والرئيسية تُطابَق بسند توريد',
+          ]),
+          ImdKpis(children: [
+            ImdKpi(label: 'إجمالي الطلبيات', value: nf(_orders.length)),
+            ImdKpi(label: 'مسودات', value: nf(counts[RationStatus.draft] ?? 0)),
+            ImdKpi(
+              label: 'بانتظار الاعتماد',
+              value: nf(counts[RationStatus.pending] ?? 0),
+              extra: (counts[RationStatus.pending] ?? 0) == 0
+                  ? null
+                  : const ImdChip('يحتاج إجراء', tone: ImdTone.pend),
+            ),
+            ImdKpi(
+              label: 'معتمدة بانتظار التنفيذ',
+              value: nf(counts[RationStatus.approved] ?? 0),
+              extra: (counts[RationStatus.approved] ?? 0) == 0
+                  ? null
+                  : const ImdChip('تحويل أو توريد', tone: ImdTone.info),
+            ),
+            ImdKpi(
+              label: 'عاجلة مفتوحة',
+              value: nf(urgent),
+              extra:
+                  urgent == 0 ? null : const ImdChip('عاجل', tone: ImdTone.err),
+            ),
+            ImdKpi(label: 'منفَّذة', value: nf(counts[RationStatus.received] ?? 0)),
+          ]),
+        ]),
+      ),
       ImdICard(
         child: ImdF2(children: [
           ImdLabeled(
@@ -657,13 +757,6 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
                   icon: 'refresh',
                   small: true,
                   onPressed: _render),
-              if (can)
-                ImdButton.outline(
-                  label: 'طلبية جديدة',
-                  icon: 'plus-square',
-                  small: true,
-                  onPressed: _resetForm,
-                ),
             ]),
             size: 11,
           ),
