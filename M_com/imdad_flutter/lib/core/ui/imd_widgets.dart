@@ -330,6 +330,17 @@ class _ImdButtonState extends State<ImdButton> {
                 color: bg,
                 borderRadius: BorderRadius.circular(widget.small ? 8 : 10),
                 border: border == null ? null : Border.all(color: border),
+                // رفعٌ خفيف عند تمرير الفأرة، ويزول عند الضغط — إحساس زرٍّ
+                // مادّي لا مسطّحٍ كصفحات الويب.
+                boxShadow: enabled && _hover && !_down
+                    ? [
+                        BoxShadow(
+                          color: c.isDark ? const Color(0x99000000) : const Color(0x26101828),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ]
+                    : null,
               ),
               child: content,
             )),
@@ -493,7 +504,7 @@ class ImdSegmented<T> extends StatelessWidget {
 enum ImdTone { ok, off, pend, code, err, info }
 
 /// شارة حالة: نصٌّ قصير بخلفيةٍ ولونٍ يحدّدهما [ImdTone].
-class ImdChip extends StatelessWidget {
+class ImdChip extends StatefulWidget {
   const ImdChip(this.label,
       {super.key, this.tone = ImdTone.off, this.icon, this.onTap, this.deriveBackgroundFromText = false});
 
@@ -523,17 +534,26 @@ class ImdChip extends StatelessWidget {
   }
 
   @override
+  State<ImdChip> createState() => _ImdChipState();
+}
+
+class _ImdChipState extends State<ImdChip> {
+  bool _hover = false;
+
+  @override
   Widget build(BuildContext context) {
-    final (soft, fg) = colors(context.imd, tone);
-    final bg = deriveBackgroundFromText ? fg.withValues(alpha: .15) : soft;
+    final (soft, fg) = ImdChip.colors(context.imd, widget.tone);
+    final bg = widget.deriveBackgroundFromText ? fg.withValues(alpha: .15) : soft;
+    final hoverBg = widget.onTap != null && _hover ? Color.alphaBlend(fg.withValues(alpha: .1), bg) : bg;
     // الشارة لا يلتفّ نصّها، فأصغر عرضٍ لها هو عرض نصّها كاملًا،
     // فلا يضغطها عمود الجدول إلى ما دونه (IntrinsicWidth يجعل الأصغر = الأكبر).
     final chip = IntrinsicWidth(
-        child: Container(
+        child: AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+      decoration: BoxDecoration(color: hoverBg, borderRadius: BorderRadius.circular(999)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (icon != null) ...[ImdIcon(icon!, size: 13, color: fg), const SizedBox(width: 6)],
+        if (widget.icon != null) ...[ImdIcon(widget.icon!, size: 13, color: fg), const SizedBox(width: 6)],
         // الرموز التعبيرية داخل الشارات تُحوَّل أيقوناتٍ من مكتبة النظام.
         //
         // و[Flexible] هنا ليس زينة: [IntrinsicWidth] أعلاه يجعل أصغر عرضٍ
@@ -541,7 +561,7 @@ class ImdChip extends StatelessWidget {
         // عمودٍ ثابت العرض مثلًا — رسمت نفسها خارجه بفارق العرض بالضبط.
         // فبه يتقلّص النص ويُقصّ بنقاط بدل أن يفيض على جاره.
         Flexible(
-          child: ImdEmojiText(label,
+          child: ImdEmojiText(widget.label,
               iconSize: 13,
               gap: 4,
               maxLines: 1,
@@ -551,8 +571,13 @@ class ImdChip extends StatelessWidget {
         ),
       ]),
     ));
-    if (onTap == null) return chip;
-    return MouseRegion(cursor: SystemMouseCursors.click, child: GestureDetector(onTap: onTap, child: chip));
+    if (widget.onTap == null) return chip;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(onTap: widget.onTap, child: chip),
+    );
   }
 }
 
@@ -1002,6 +1027,7 @@ class ImdTable extends StatefulWidget {
 
 class _ImdTableState extends State<ImdTable> {
   int _hover = -1;
+  int _headerHover = -1;
   int _page = 0;
   final _hScroll = ScrollController();
   final _vScroll = ScrollController();
@@ -1069,12 +1095,24 @@ class _ImdTableState extends State<ImdTable> {
             ],
           );
     if (widget.onHeaderTap == null) return text;
+    final hovered = _headerHover == index;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _headerHover = index),
+      onExit: (_) => setState(() => _headerHover = -1),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => widget.onHeaderTap!(index),
-        child: text,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          margin: const EdgeInsets.symmetric(horizontal: -4, vertical: -2),
+          decoration: BoxDecoration(
+            color: hovered ? (c.isDark ? const Color(0xFF26262A) : c.hover) : null,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: text,
+        ),
       ),
     );
   }
@@ -1116,8 +1154,12 @@ class _ImdTableState extends State<ImdTable> {
         fields.add(_labeledCell(context, cols[j].label, cell));
       }
     }
-    final bg = widget.rowColor?.call(i) ?? (widget.zebra && i.isOdd ? _zebraColor(context) : c.surface);
-    final card = Container(
+    final hoverBg = c.isDark ? const Color(0xFF26262A) : c.tableHead;
+    final bg = widget.onRowTap != null && _hover == i
+        ? hoverBg
+        : widget.rowColor?.call(i) ?? (widget.zebra && i.isOdd ? _zebraColor(context) : c.surface);
+    final card = AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: bg,
@@ -1142,6 +1184,8 @@ class _ImdTableState extends State<ImdTable> {
     if (widget.onRowTap == null) return card;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = i),
+      onExit: (_) => setState(() => _hover = -1),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => widget.onRowTap!(i),
@@ -1486,14 +1530,22 @@ Future<T?> showImdModal<T>(
   required Widget Function(BuildContext) builder,
   List<Widget> Function(BuildContext)? actions,
   double maxWidth = 560,
+
+  /// يُبنى بسياق الحوار الداخلي (كـ[actions]) ويُستدعى عند Enter/Numpad Enter
+  /// — لحوارات التأكيد البسيطة ذات إجراءٍ أساسيٍّ واحد لا لبس فيه. يُترك
+  /// `null` (الافتراضي) لحوارات النماذج التي قد تحوي حقول نصٍّ متعددة
+  /// الأسطر، فلا يُصادَر Enter منها.
+  VoidCallback Function(BuildContext)? onEnter,
 }) {
   return showDialog<T>(
     context: context,
     barrierColor: const Color(0x73111111),
     builder: (ctx) {
       final c = ctx.imd;
-      return Dialog(
+      Widget dialog = Dialog(
         backgroundColor: c.surface,
+        elevation: 10,
+        shadowColor: c.isDark ? Colors.black : const Color(0xFF101828),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth, maxHeight: MediaQuery.sizeOf(ctx).height * .9),
@@ -1521,6 +1573,17 @@ Future<T?> showImdModal<T>(
           ),
         ),
       );
+      if (onEnter != null) {
+        final enterAction = onEnter(ctx);
+        dialog = CallbackShortcuts(
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.enter): enterAction,
+            const SingleActivator(LogicalKeyboardKey.numpadEnter): enterAction,
+          },
+          child: Focus(autofocus: true, child: dialog),
+        );
+      }
+      return dialog;
     },
   );
 }
@@ -1547,6 +1610,7 @@ Future<bool> imdConfirm(
         onPressed: () => Navigator.of(ctx).pop(true),
       ),
     ],
+    onEnter: (ctx) => () => Navigator.of(ctx).pop(true),
   );
   return r ?? false;
 }

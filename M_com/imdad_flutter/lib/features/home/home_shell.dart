@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +14,7 @@ import '../../data/repos/settings_repo.dart';
 import '../../main.dart' show ImdTheme;
 import '../../core/ui/imd_empty_state.dart';
 import '../../core/ui/imd_icon.dart';
+import '../../core/ui/imd_menu_bar.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_window.dart';
 import '../../core/ui/imd_widgets.dart';
@@ -245,6 +247,22 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   String _page = 'dash';
   String? _openSec = 'basic';
 
+  static const double _sideMin = 220;
+  static const double _sideMax = 420;
+  static const String _sideKey = 'imdad.sideWidth';
+  double _sideWidth = ImdSizes.sideWidth;
+
+  Future<void> _loadSideWidth() async {
+    final prefs = await SharedPreferences.getInstance();
+    final w = prefs.getDouble(_sideKey);
+    if (w != null && mounted) setState(() => _sideWidth = w.clamp(_sideMin, _sideMax));
+  }
+
+  Future<void> _saveSideWidth() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_sideKey, _sideWidth);
+  }
+
   /// مساحة العمل الحالية — `null` تعني أن المستخدم يملك الاثنتين ولم يختر.
   String? _space;
   bool _spaceReady = false;
@@ -260,6 +278,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _sessionTimer =
         Timer.periodic(const Duration(minutes: 5), (_) => _checkSession());
     WidgetsBinding.instance.addPostFrameCallback((_) => _restoreSpace());
+    _loadSideWidth();
   }
 
   /// مفتاح الاختيار لكل مستخدم على حدة: جهازٌ يتشاركه أمين المستودع وأمين
@@ -606,6 +625,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       onToggle: (sec) =>
           setState(() => _openSec = _openSec == sec ? null : sec),
       onLogout: widget.onSignOut,
+      width: _sideWidth,
     );
 
     final shell = Provider<ImdNav>.value(
@@ -681,6 +701,15 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (!handheld) side,
+                    if (!handheld && !rail)
+                      _SideSplitter(
+                        onDrag: (dx) => setState(() {
+                          // القائمة على الطرف البدئي: السحب نحو المحتوى يوسّعها.
+                          final rtl = Directionality.of(context) == ui.TextDirection.rtl;
+                          _sideWidth = (_sideWidth + (rtl ? -dx : dx)).clamp(_sideMin, _sideMax);
+                        }),
+                        onEnd: _saveSideWidth,
+                      ),
                     Expanded(
                       child: KeyedSubtree(key: ValueKey(_page), child: body),
                     ),
@@ -769,7 +798,9 @@ class _Topbar extends StatelessWidget {
         height: ImdSizes.topbarHeight,
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
         decoration: BoxDecoration(
-          color: c.isDark ? const Color(0xEB171717) : const Color(0xEBFFFFFF),
+          color: ImdWindow.micaActive.value
+              ? (c.isDark ? const Color(0x99171717) : const Color(0x99FFFFFF))
+              : (c.isDark ? const Color(0xEB171717) : const Color(0xEBFFFFFF)),
           border: Border(bottom: BorderSide(color: c.line)),
         ),
         child: Row(
@@ -796,6 +827,10 @@ class _Topbar extends StatelessWidget {
                       color: c.text2),
                 ),
               ),
+            if (showTitle) ...[
+              const SizedBox(width: 10),
+              const ImdMenuBar(),
+            ],
             const SizedBox(width: 10),
             // تبديل القسم: أيقونةٌ دائمًا، واسمه معها ما اتّسع الشريط. من
             // يملك مساحةً واحدة يبقى الاسم معروضًا له لكن بلا تفاعل — لا
@@ -970,7 +1005,11 @@ class _Sidebar extends StatelessWidget {
     required this.onToggle,
     required this.onLogout,
     this.rail = false,
+    this.width = ImdSizes.sideWidth,
   });
+
+  /// عرض القائمة الكاملة — يسحبه المستخدم بفاصلٍ قابلٍ للسحب.
+  final double width;
 
   /// أيقوناتٌ بلا أسماء — لشاشةٍ لا تتسع لـ٢٩٠ بكسل من قائمة.
   final bool rail;
@@ -1007,13 +1046,17 @@ class _Sidebar extends StatelessWidget {
     if (rail) return _rail(context);
     final c = context.imd;
     return Container(
-      width: ImdSizes.sideWidth,
+      width: width,
       decoration: BoxDecoration(
         // تدرّج خفيف من لون الشريط إلى أغمق منه أسفلًا.
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [c.side, Color.lerp(c.side, Colors.black, .22)!],
+          colors: [
+            c.side.withValues(alpha: ImdWindow.micaActive.value ? .82 : 1),
+            Color.lerp(c.side, Colors.black, .22)!
+                .withValues(alpha: ImdWindow.micaActive.value ? .82 : 1),
+          ],
         ),
         border: BorderDirectional(start: BorderSide(color: c.sideLine)),
       ),
@@ -1122,7 +1165,11 @@ class _Sidebar extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [c.side, Color.lerp(c.side, Colors.black, .22)!],
+          colors: [
+            c.side.withValues(alpha: ImdWindow.micaActive.value ? .82 : 1),
+            Color.lerp(c.side, Colors.black, .22)!
+                .withValues(alpha: ImdWindow.micaActive.value ? .82 : 1),
+          ],
         ),
         border: BorderDirectional(start: BorderSide(color: c.sideLine)),
       ),
@@ -1492,6 +1539,54 @@ class _Soon extends StatelessWidget {
             icon: 'alert',
             subtitle: 'هذه الشاشة ستُبنى في خطوة قادمة'),
       ],
+    );
+  }
+}
+
+
+/// فاصلٌ رأسيّ رفيع بين القائمة الجانبية والمحتوى يُسحب لتغيير عرضها —
+/// مؤشّر تغيير الحجم وخطٌّ بلون العلامة عند المرور، كنوافذ سطح المكتب.
+class _SideSplitter extends StatefulWidget {
+  const _SideSplitter({required this.onDrag, required this.onEnd});
+
+  final ValueChanged<double> onDrag;
+  final VoidCallback onEnd;
+
+  @override
+  State<_SideSplitter> createState() => _SideSplitterState();
+}
+
+class _SideSplitterState extends State<_SideSplitter> {
+  bool _hover = false;
+  bool _drag = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.imd;
+    final on = _hover || _drag;
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (_) => setState(() => _drag = true),
+        onHorizontalDragUpdate: (d) => widget.onDrag(d.delta.dx),
+        onHorizontalDragEnd: (_) {
+          setState(() => _drag = false);
+          widget.onEnd();
+        },
+        child: SizedBox(
+          width: 6,
+          child: Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              width: on ? 3 : 1,
+              color: on ? c.accent : Colors.transparent,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

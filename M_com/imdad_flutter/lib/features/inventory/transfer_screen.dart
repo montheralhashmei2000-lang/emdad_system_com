@@ -9,6 +9,7 @@ import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_layout.dart';
+import '../../core/ui/imd_screen_actions.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/repos/documents_repo.dart';
@@ -152,14 +153,28 @@ class _TransferScreenState extends State<TransferScreen> {
   int _tabSeq = 1;
   int _activeTabId = 0;
 
+  ImdScreenActions? _screenActions;
+
   @override
   void initState() {
     super.initState();
     _form();
+    _screenActions = ImdScreenActions.maybeOf(context)
+      ?..register(
+        onSave: () {
+          if (!_busy) _send();
+        },
+        onPrint: () {
+          if (!_busy) _print();
+        },
+        onNewDoc: _openNewTab,
+        onRefresh: _refreshBal,
+      );
   }
 
   @override
   void dispose() {
+    _screenActions?.clear();
     for (final c in [_notes, _acHead, _acDays]) {
       c.dispose();
     }

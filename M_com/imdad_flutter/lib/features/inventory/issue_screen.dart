@@ -14,6 +14,7 @@ import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_layout.dart';
+import '../../core/ui/imd_screen_actions.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/repos/documents_repo.dart';
@@ -111,6 +112,8 @@ class _IssueScreenState extends State<IssueScreen> {
   int _tabSeq = 1;
   int _activeTabId = 0;
 
+  ImdScreenActions? _screenActions;
+
   String get _autosaveKey =>
       'imdad.issue.recovery.${context.read<AuthService>().currentUser?.id ?? 'local'}';
 
@@ -125,10 +128,22 @@ class _IssueScreenState extends State<IssueScreen> {
       controller.addListener(_scheduleAutosave);
     }
     _form();
+    _screenActions = ImdScreenActions.maybeOf(context)
+      ?..register(
+        onSave: () {
+          if (!_busy) _submit('DRAFT');
+        },
+        onPrint: () {
+          if (!_busy) _print(false);
+        },
+        onNewDoc: _openNewTab,
+        onRefresh: _refreshBal,
+      );
   }
 
   @override
   void dispose() {
+    _screenActions?.clear();
     _autosaveTimer?.cancel();
     for (final c in [_custom, _days, _notes]) {
       c.removeListener(_scheduleAutosave);

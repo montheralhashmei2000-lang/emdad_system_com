@@ -6,6 +6,7 @@ import '../../core/security/auth_service.dart';
 import '../../core/security/perm.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
+import '../../core/ui/imd_screen_actions.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/repos/documents_repo.dart';
@@ -78,14 +79,33 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
   int _tabSeq = 1;
   int _activeTabId = 0;
 
+  ImdScreenActions? _screenActions;
+
   @override
   void initState() {
     super.initState();
     _fetch();
+    _screenActions = ImdScreenActions.maybeOf(context)
+      ?..register(
+        onSave: () {
+          if (_busy) return;
+          if (_tab == 'unit') {
+            _saveUnit();
+          } else if (_tab == 'supplier') {
+            _saveSupplier();
+          }
+        },
+        onPrint: () {
+          if (!_busy && _tab != 'hist') _print(_tab == 'unit');
+        },
+        onNewDoc: _openNewTab,
+        onRefresh: _refreshBal,
+      );
   }
 
   @override
   void dispose() {
+    _screenActions?.clear();
     for (final c in [_uNotes, _sOrig, _sNotes]) {
       c.dispose();
     }

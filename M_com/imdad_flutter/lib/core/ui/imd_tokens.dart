@@ -273,3 +273,13 @@ List<BoxShadow> imdShadow(ImdColors c) => [
         offset: const Offset(0, 1),
       ),
     ];
+
+/// ظل القوائم المنسدلة والنوافذ الطافية فوق الصفحة — أعمق من [imdShadow]
+/// لأن ما يحمله يطفو فوق المحتوى لا يستقر عليه، فيحتاج فصلًا بصريًّا أوضح.
+List<BoxShadow> imdShadowOverlay(ImdColors c) => [
+      BoxShadow(
+        color: c.isDark ? const Color(0x8A000000) : const Color(0x24101828),
+        blurRadius: 28,
+        offset: const Offset(0, 12),
+      ),
+    ];

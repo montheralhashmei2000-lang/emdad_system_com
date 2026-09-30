@@ -1,7 +1,9 @@
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/widgets.dart';
+import 'package:flutter_acrylic/flutter_acrylic.dart' show Window, WindowEffect;
 import 'package:window_manager/window_manager.dart';
 
 /// وضعا نافذة سطح المكتب (ويندوز فقط؛ على غيره لا يفعل شيئًا).
@@ -18,6 +20,38 @@ class ImdWindow {
   const ImdWindow._();
 
   static bool get supported => !kIsWeb && Platform.isWindows;
+
+  /// `true` حين فُعّل تأثير Mica فعلًا — الشريطان العلوي والجانبي يخفّفان
+  /// عتمتهما حينئذٍ ليظهر خلفهما، وتبقى بقية الواجهة معتمةً للقراءة.
+  static final ValueNotifier<bool> micaActive = ValueNotifier(false);
+
+  /// Mica لا يدعمه إلا ويندوز 11 (البناء 22000 فما فوق).
+  static bool get _isWindows11 {
+    final m = RegExp(r'Build (\d+)').firstMatch(Platform.operatingSystemVersion);
+    return m != null && (int.tryParse(m.group(1)!) ?? 0) >= 22000;
+  }
+
+  /// يفعّل Mica خلف النافذة على ويندوز 11 وحده؛ غير ذلك لا يفعل شيئًا، وفشله
+  /// لا يمسّ الواجهة (أسطحها معتمة أصلًا فتبدو كما كانت).
+  static Future<void> syncMica(ThemeMode mode) async {
+    if (!supported || !_isWindows11) return;
+    try {
+      if (!_micaReady) {
+        await Window.initialize();
+        _micaReady = true;
+      }
+      final dark = mode == ThemeMode.dark ||
+          (mode == ThemeMode.system &&
+              PlatformDispatcher.instance.platformBrightness == Brightness.dark);
+      await Window.setEffect(effect: WindowEffect.mica, dark: dark);
+      micaActive.value = true;
+    } catch (e) {
+      micaActive.value = false;
+      debugPrint('ImdWindow: تعذّر تفعيل Mica — $e');
+    }
+  }
+
+  static bool _micaReady = false;
 
   /// مقاس نافذة الدخول (منطقي).
   static const Size loginSize = Size(440, 460);

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
@@ -9,6 +10,7 @@ import 'package:window_manager/window_manager.dart';
 import 'core/print/print_preview.dart';
 import 'core/security/auth_service.dart';
 import 'core/ui/imd_fonts.dart';
+import 'core/ui/imd_screen_actions.dart';
 import 'core/ui/imd_widgets.dart';
 import 'core/ui/imd_window.dart';
 import 'core/theme/app_theme.dart';
@@ -52,6 +54,7 @@ Future<void> main() async {
         await windowManager.focus();
       },
     );
+    await ImdWindow.syncMica(ImdTheme.parse(identity.themePref));
   }
 
   runApp(ImdadApp(
@@ -126,6 +129,10 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
   /// يفتح تلك الشاشة شهرًا كاملًا، والمقصود أن يزامن بلا أن يفتحها أحد.
   late final AutoSyncService _autoSync = AutoSyncService(widget.db);
 
+  /// سجلّ إجراءات الشاشة النشطة لاختصارات لوحة المفاتيح — انظر
+  /// [ImdScreenActions].
+  final _screenActions = ImdScreenActions();
+
   @override
   void initState() {
     super.initState();
@@ -145,12 +152,19 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
       windowManager.setPreventClose(true).catchError((_) {});
       // ما يُنهى قبل الإغلاق: مؤقّت المزامنة وخادمها ومقبس اكتشافها.
       ImdWindow.onBeforeExit = _shutdown;
+      // لون Mica يتبع السمة: فاتحٌ أو داكن.
+      _theme.addListener(_syncMica);
     }
   }
 
+  void _syncMica() => ImdWindow.syncMica(_theme.mode);
+
   @override
   void dispose() {
-    if (!kIsWeb && Platform.isWindows) windowManager.removeListener(this);
+    if (!kIsWeb && Platform.isWindows) {
+      windowManager.removeListener(this);
+      _theme.removeListener(_syncMica);
+    }
     _autoSync.dispose();
     super.dispose();
   }
@@ -185,6 +199,7 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
       providers: [
         Provider<AppDatabase>.value(value: widget.db),
         Provider<AuthService>.value(value: widget.auth),
+        Provider<ImdScreenActions>.value(value: _screenActions),
         ChangeNotifierProvider<ImdTheme>.value(value: _theme),
         ChangeNotifierProvider<AutoSyncService>.value(value: _autoSync),
       ],
@@ -204,10 +219,27 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        builder: (context, child) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: child ?? const SizedBox.shrink(),
-        ),
+        builder: (context, child) {
+          final body = child ?? const SizedBox.shrink();
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: ImdShortcuts.supported
+                ? CallbackShortcuts(
+                    bindings: {
+                      const SingleActivator(LogicalKeyboardKey.keyS, control: true): () =>
+                          context.read<ImdScreenActions>().onSave?.call(),
+                      const SingleActivator(LogicalKeyboardKey.keyP, control: true): () =>
+                          context.read<ImdScreenActions>().onPrint?.call(),
+                      const SingleActivator(LogicalKeyboardKey.keyN, control: true): () =>
+                          context.read<ImdScreenActions>().onNewDoc?.call(),
+                      const SingleActivator(LogicalKeyboardKey.f5): () =>
+                          context.read<ImdScreenActions>().onRefresh?.call(),
+                    },
+                    child: Focus(autofocus: true, child: body),
+                  )
+                : body,
+          );
+        },
         home: _signedIn
             ? HomeShell(onSignOut: () async {
                 await widget.auth.logout();

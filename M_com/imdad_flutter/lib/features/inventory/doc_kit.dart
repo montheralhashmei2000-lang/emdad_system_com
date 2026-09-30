@@ -582,9 +582,7 @@ class _ImdTypeAheadState extends State<ImdTypeAhead> {
                   color: c.surface,
                   border: Border.all(color: c.line),
                   borderRadius: BorderRadius.circular(10),
-                  boxShadow: const [
-                    BoxShadow(color: Color(0x24101828), blurRadius: 28, offset: Offset(0, 12)),
-                  ],
+                  boxShadow: imdShadowOverlay(c),
                 ),
                 child: _rows.isEmpty
                     ? Padding(
@@ -867,12 +865,7 @@ class _ImdItemPickerState extends State<ImdItemPicker> {
                     color: c.surface,
                     border: Border.all(color: c.line),
                     borderRadius: BorderRadius.circular(10),
-                    boxShadow: const [
-                      BoxShadow(
-                          color: Color(0x24101828),
-                          blurRadius: 28,
-                          offset: Offset(0, 12))
-                    ],
+                    boxShadow: imdShadowOverlay(c),
                   ),
                   child: _rows.isEmpty
                       ? Padding(

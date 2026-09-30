@@ -8,11 +8,13 @@ import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_scan.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_empty_state.dart';
+import '../../core/ui/imd_screen_actions.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/fuel_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/fuel.dart';
+import '../inventory/doc_kit.dart';
 import 'fuel_print.dart';
 
 /// حركة المحروقات: الصرف والتوريد والتحويل والرصيد الافتتاحي.
@@ -101,6 +103,13 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
   // تحويل
   String _toWarehouse = '';
 
+  // سندات معلّقة داخل الجلسة (زر «سند جديد»)
+  final List<ImdDocTab<Map<String, dynamic>>> _suspended = [];
+  int _tabSeq = 1;
+  int _activeTabId = 0;
+
+  ImdScreenActions? _screenActions;
+
   List<TextEditingController> get _all => [
         _qty,
         _notes,
@@ -120,6 +129,17 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
   void initState() {
     super.initState();
     _load();
+    _screenActions = ImdScreenActions.maybeOf(context)
+      ?..register(
+        onSave: () {
+          if (!_busy) _submit();
+        },
+        onPrint: () {
+          if (!_busy) _printSaved();
+        },
+        onNewDoc: _openNewTab,
+        onRefresh: _load,
+      );
   }
 
   @override
@@ -136,6 +156,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
 
   @override
   void dispose() {
+    _screenActions?.clear();
     for (final c in _all) {
       c.dispose();
     }
@@ -260,6 +281,96 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
       _savedRef = '';
     });
   }
+
+  // ─────────────────────── تبويبات السندات المعلّقة ───────────────────────
+  static String _tabLabel(String tab) => switch (tab) {
+        'issue' => 'صرف',
+        'supply' => 'توريد',
+        'transfer' => 'تحويل',
+        _ => 'رصيد افتتاحي',
+      };
+
+  String _activeTabLabel() =>
+      _savedRef.isNotEmpty ? _savedRef : '${_tabLabel(_tab)} جديد';
+
+  /// لقطة بيانات السند الجاري تعبئته — لتعليقه في تبويبٍ جانبي.
+  Map<String, dynamic> _captureDocSnapshot() => {
+        'tab': _tab,
+        'date': _date,
+        'fuelType': _fuelType,
+        'warehouse': _warehouse,
+        'qty': _qty.text,
+        'notes': _notes.text,
+        'source': _source,
+        'allocationId': _allocationId,
+        'unitId': _unitId,
+        'orderAuthority': _orderAuthority.text,
+        'driver': _driver.text,
+        'vehicle': _vehicle.text,
+        'chassis': _chassis.text,
+        'justification': _justification.text,
+        'purpose': _purpose.text,
+        'beneficiary': _beneficiary.text,
+        'supplier': _supplier.text,
+        'transport': _transport.text,
+        'toWarehouse': _toWarehouse,
+        'savedRef': _savedRef,
+      };
+
+  /// يكتب لقطةً محفوظةً من تبويبٍ معلّق رجوعًا إلى حقول النموذج — بلا
+  /// المرور بـ[_clearForm] حتى لا تُمحى اللقطة المُستعادة نفسها.
+  void _applySnapshot(Map<String, dynamic> data) {
+    setState(() {
+      _tab = '${data['tab'] ?? _tab}';
+      _date = '${data['date'] ?? _date}';
+      _fuelType = '${data['fuelType'] ?? _fuelType}';
+      _warehouse = '${data['warehouse'] ?? _warehouse}';
+      imdSetText(_qty, '${data['qty'] ?? ''}');
+      imdSetText(_notes, '${data['notes'] ?? ''}');
+      _source = '${data['source'] ?? FuelSource.allocation}';
+      _allocationId = '${data['allocationId'] ?? ''}';
+      _unitId = '${data['unitId'] ?? ''}';
+      imdSetText(_orderAuthority, '${data['orderAuthority'] ?? ''}');
+      imdSetText(_driver, '${data['driver'] ?? ''}');
+      imdSetText(_vehicle, '${data['vehicle'] ?? ''}');
+      imdSetText(_chassis, '${data['chassis'] ?? ''}');
+      imdSetText(_justification, '${data['justification'] ?? ''}');
+      imdSetText(_purpose, '${data['purpose'] ?? ''}');
+      imdSetText(_beneficiary, '${data['beneficiary'] ?? ''}');
+      imdSetText(_supplier, '${data['supplier'] ?? ''}');
+      imdSetText(_transport, '${data['transport'] ?? ''}');
+      _toWarehouse = '${data['toWarehouse'] ?? ''}';
+      _savedRef = '${data['savedRef'] ?? ''}';
+    });
+  }
+
+  /// زر «سند جديد»: يعلّق السند الحالي في تبويبٍ جانبي ويفتح سندًا فارغًا
+  /// بنفس التبويبة الحالية (صرف/توريد/تحويل/رصيد).
+  void _openNewTab() {
+    final snap = _captureDocSnapshot();
+    setState(() {
+      _suspended.add(ImdDocTab<Map<String, dynamic>>(id: _activeTabId, label: _activeTabLabel(), snapshot: snap));
+      _activeTabId = _tabSeq++;
+    });
+    _clearForm();
+  }
+
+  void _switchDocTab(int id) {
+    if (id == _activeTabId) return;
+    final idx = _suspended.indexWhere((t) => t.id == id);
+    if (idx == -1) return;
+    final target = _suspended.removeAt(idx);
+    final current = ImdDocTab<Map<String, dynamic>>(id: _activeTabId, label: _activeTabLabel(), snapshot: _captureDocSnapshot());
+    setState(() {
+      _suspended
+        ..removeWhere((t) => t.id == target.id)
+        ..add(current);
+      _activeTabId = target.id;
+    });
+    _applySnapshot(target.snapshot);
+  }
+
+  void _closeDocTab(int id) => setState(() => _suspended.removeWhere((t) => t.id == id));
 
   Future<void> _submit() async {
     final perm = Perm.of(context);
@@ -443,6 +554,24 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
               'الرصيد كافيًا',
           _ => 'أرصدة بداية الفترة لكل مستودع وصنف — تدخل في حساب الجرد',
         },
+        actions: [
+          ImdButton.outline(label: 'سند جديد', icon: 'plus-square', small: true, onPressed: _openNewTab),
+          if (!widget.standalone)
+            ImdItabs(
+              value: _tab,
+              onChanged: (v) => setState(() {
+                _tab = v;
+                _savedRef = '';
+                _clearForm();
+              }),
+              tabs: const [
+                ImdTab('issue', 'صرف', icon: 'upload'),
+                ImdTab('supply', 'توريد', icon: 'download'),
+                ImdTab('transfer', 'تحويل', icon: 'swap'),
+                ImdTab('opening', 'رصيد افتتاحي', icon: 'compass'),
+              ],
+            ),
+        ],
         trailing: can
             ? ImdButton(
                 label: switch (_tab) {
@@ -457,20 +586,12 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
               )
             : null,
       ),
-      if (!widget.standalone)
-        ImdItabs(
-          value: _tab,
-          onChanged: (v) => setState(() {
-            _tab = v;
-            _savedRef = '';
-            _clearForm();
-          }),
-          tabs: const [
-            ImdTab('issue', 'صرف', icon: 'upload'),
-            ImdTab('supply', 'توريد', icon: 'download'),
-            ImdTab('transfer', 'تحويل', icon: 'swap'),
-            ImdTab('opening', 'رصيد افتتاحي', icon: 'compass'),
-          ],
+      if (_suspended.isNotEmpty)
+        ImdDocTabsBar<Map<String, dynamic>>(
+          activeLabel: _activeTabLabel(),
+          suspended: _suspended,
+          onSelect: _switchDocTab,
+          onClose: _closeDocTab,
         ),
       const SizedBox(height: 4),
       if (_savedRef.isNotEmpty) _savedBanner(),

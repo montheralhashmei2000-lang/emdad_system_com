@@ -3,6 +3,24 @@ import 'package:flutter/material.dart';
 import '../ui/imd_fonts.dart';
 import '../ui/imd_tokens.dart';
 
+/// انتقالٌ بتلاشٍ فقط بلا انزلاقٍ جانبي — أقرب لِما تعتاده تطبيقات سطح
+/// المكتب الأصيلة من انزلاق الصفحات في متصفح الويب. يُستعمل لمنصّات سطح
+/// المكتب وحدها؛ الجوّال يبقى على انتقاله الافتراضي المعتاد.
+class _ImdFadePageTransitionsBuilder extends PageTransitionsBuilder {
+  const _ImdFadePageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    return FadeTransition(opacity: animation, child: child);
+  }
+}
+
 /// سمة التطبيق — أخضر مؤسسي على خلفية محايدة فاتحة،
 /// ونسخةٌ داكنة مقابلة لها.
 class AppTheme {
@@ -95,7 +113,10 @@ class AppTheme {
         tokens ??
             (brightness == Brightness.dark ? ImdColors.dark : ImdColors.light),
       ],
-      visualDensity: VisualDensity.standard,
+      // كثافةٌ أعلى على سطح المكتب (مبنيّة على المنصّة كـ[ImdBp.touch] لا عرض
+      // الشاشة): مكثّفة على وندوز/لينكس/ماك، وتبقى معتادة على الجوال بلا أي
+      // أثر — تمامًا كيف تتكثّف تطبيقات سطح المكتب الأصيلة مقارنةً بالجوال.
+      visualDensity: VisualDensity.adaptivePlatformDensity,
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: surface,
@@ -132,6 +153,13 @@ class AppTheme {
         ),
       ),
       dividerTheme: DividerThemeData(color: outline, thickness: 1),
+      // تلاشٍ بلا انزلاقٍ على سطح المكتب وحده — الجوّال يبقى على انتقاله
+      // الافتراضي المعتاد فلا يتغيّر سلوكه.
+      pageTransitionsTheme: const PageTransitionsTheme(builders: {
+        TargetPlatform.windows: _ImdFadePageTransitionsBuilder(),
+        TargetPlatform.linux: _ImdFadePageTransitionsBuilder(),
+        TargetPlatform.macOS: _ImdFadePageTransitionsBuilder(),
+      }),
       // من onSurface لا لونين ثابتين: هذا وحده يعطي داكنًا واضحًا على خلفيةٍ
       // فاتحة وفاتحًا واضحًا على خلفيةٍ داكنة — بلا فرعين يدويين قد
       // ينسيهما أحدٌ عند إضافة سمةٍ ثالثة (كسمة المحروقات هنا).

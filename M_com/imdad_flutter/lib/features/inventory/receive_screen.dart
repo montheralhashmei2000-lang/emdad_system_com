@@ -7,6 +7,7 @@ import '../../core/security/auth_service.dart';
 import '../../core/security/perm.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
+import '../../core/ui/imd_screen_actions.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
@@ -103,11 +104,24 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
   int _tabSeq = 1;
   int _activeTabId = 0;
 
+  ImdScreenActions? _screenActions;
+
   @override
   void initState() {
     super.initState();
     _form();
     _loadPrefs();
+    _screenActions = ImdScreenActions.maybeOf(context)
+      ?..register(
+        onSave: () {
+          if (!_busy) _save(true);
+        },
+        onPrint: () {
+          if (!_busy) _print();
+        },
+        onNewDoc: _openNewTab,
+        onRefresh: () => _form(keepValues: true),
+      );
   }
 
   Future<void> _loadPrefs() async {
@@ -117,6 +131,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
 
   @override
   void dispose() {
+    _screenActions?.clear();
     for (final c in [_c1, _c2, _c3, _inv, _notes]) {
       c.dispose();
     }

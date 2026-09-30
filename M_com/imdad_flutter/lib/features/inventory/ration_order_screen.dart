@@ -8,6 +8,7 @@ import '../../core/security/perm.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_layout.dart';
+import '../../core/ui/imd_screen_actions.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_empty_state.dart';
 import '../../core/ui/imd_widgets.dart';
@@ -107,14 +108,25 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
   int _tabSeq = 1;
   int _activeTabId = 0;
 
+  ImdScreenActions? _screenActions;
+
   @override
   void initState() {
     super.initState();
     _render();
+    _screenActions = ImdScreenActions.maybeOf(context)
+      ?..register(
+        onSave: () {
+          if (!_busy) _save();
+        },
+        onNewDoc: _openNewTab,
+        onRefresh: _render,
+      );
   }
 
   @override
   void dispose() {
+    _screenActions?.clear();
     _notes.dispose();
     for (final l in _lines) {
       l.dispose();
