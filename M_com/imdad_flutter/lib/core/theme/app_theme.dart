@@ -132,6 +132,17 @@ class AppTheme {
         ),
       ),
       dividerTheme: DividerThemeData(color: outline, thickness: 1),
+      // من onSurface لا لونين ثابتين: هذا وحده يعطي داكنًا واضحًا على خلفيةٍ
+      // فاتحة وفاتحًا واضحًا على خلفيةٍ داكنة — بلا فرعين يدويين قد
+      // ينسيهما أحدٌ عند إضافة سمةٍ ثالثة (كسمة المحروقات هنا).
+      scrollbarTheme: ScrollbarThemeData(
+        thumbVisibility: const WidgetStatePropertyAll(true),
+        thickness: const WidgetStatePropertyAll(8),
+        radius: const Radius.circular(4),
+        thumbColor: WidgetStatePropertyAll(onSurface.withValues(alpha: .45)),
+        trackColor: WidgetStatePropertyAll(onSurface.withValues(alpha: .06)),
+        trackBorderColor: const WidgetStatePropertyAll(Colors.transparent),
+      ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: onSurface,
         contentTextStyle: TextStyle(

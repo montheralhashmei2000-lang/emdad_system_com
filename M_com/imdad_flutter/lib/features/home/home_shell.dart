@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -9,7 +7,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/security/auth_service.dart';
+import '../../data/db/app_database.dart';
 import '../../data/repos/reports_repo.dart' show ReportId;
+import '../../data/repos/settings_repo.dart';
+import '../../main.dart' show ImdTheme;
 import '../../core/ui/imd_empty_state.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_tokens.dart';
@@ -596,10 +597,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       page: _page,
       space: space,
       rail: rail,
-      canSwitch: available.length > 1,
-      onSwitchSpace: _switchSpace,
       openSec: _openSec,
-      isAdmin: _isAdmin(auth),
       hasPerm: (p) => _hasPerm(auth, p),
       userName: auth.currentUser?.name.isNotEmpty == true
           ? auth.currentUser!.name
@@ -645,10 +643,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                   child: _Sidebar(
                     page: _page,
                     space: space,
-                    canSwitch: available.length > 1,
-                    onSwitchSpace: _switchSpace,
                     openSec: _openSec,
-                    isAdmin: _isAdmin(auth),
                     hasPerm: (p) => _hasPerm(auth, p),
                     userName: side.userName,
                     onGo: (id) {
@@ -678,6 +673,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                 onBurger: () => _scaffoldKey.currentState?.openEndDrawer(),
                 onOpenPage: _go,
                 space: _space ?? '',
+                canSwitch: available.length > 1,
+                onSwitchSpace: _switchSpace,
               ),
               Expanded(
                 child: Row(
@@ -702,7 +699,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 }
 
-/// الشريط العلوي: عنوان الشاشة، وحالة المزامنة، وحساب المستخدم.
+/// الشريط العلوي: عنوان الشاشة، وتبديل القسم، وتبديل السمة، وحالة
+/// المزامنة، وحساب المستخدم.
+///
+/// تبديل القسم انتقل إليه من الشريط الجانبي: هو إجراءٌ نادر (مرةً في بداية
+/// الجلسة غالبًا) لا يستحقّ ارتفاعًا دائمًا في القائمة، وهنا يبقى في متناول
+/// اليد بلا أن يزاحم أبوابها.
 class _Topbar extends StatelessWidget {
   const _Topbar({
     required this.userName,
@@ -710,6 +712,8 @@ class _Topbar extends StatelessWidget {
     required this.onBurger,
     required this.onOpenPage,
     required this.space,
+    required this.canSwitch,
+    required this.onSwitchSpace,
   });
 
   final String userName;
@@ -719,6 +723,22 @@ class _Topbar extends StatelessWidget {
 
   /// القسم الذي يقف فيه المستخدم — الجرس يخصّ ما بين يديه.
   final String space;
+
+  /// زر التبديل لا يظهر تفاعليًّا لمن يملك مساحةً واحدة: تبديلٌ إلى لا شيء،
+  /// لكن اسم القسم يبقى معروضًا فيعرف من فتحه أين هو.
+  final bool canSwitch;
+  final VoidCallback onSwitchSpace;
+
+  /// يبدّل السمة صراحةً بين فاتحٍ وداكن (لا «تلقائي»): زرٌّ سريعٌ يفترض
+  /// نيّة المستخدم من السطوع الحالي الفعلي — ويحفظها فتبقى بعد إعادة
+  /// التشغيل، بنفس مسار حفظ السمة من شاشة الهوية.
+  Future<void> _toggleTheme(BuildContext context) async {
+    final next = Theme.of(context).brightness == Brightness.dark ? 'light' : 'dark';
+    final settings = SettingsRepo(context.read<AppDatabase>());
+    final id = await settings.identity();
+    await settings.saveIdentity(id.copyWith(themePref: next));
+    if (context.mounted) context.read<ImdTheme>().apply(next);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -776,7 +796,53 @@ class _Topbar extends StatelessWidget {
                       color: c.text2),
                 ),
               ),
+            const SizedBox(width: 10),
+            // تبديل القسم: أيقونةٌ دائمًا، واسمه معها ما اتّسع الشريط. من
+            // يملك مساحةً واحدة يبقى الاسم معروضًا له لكن بلا تفاعل — لا
+            // تبديل إلى لا شيء.
+            MouseRegion(
+              cursor: canSwitch ? SystemMouseCursors.click : MouseCursor.defer,
+              child: GestureDetector(
+                onTap: canSwitch ? onSwitchSpace : null,
+                behavior: HitTestBehavior.opaque,
+                child: Tooltip(
+                  message: canSwitch ? 'تبديل القسم' : AppSpace.label(space),
+                  child: Container(
+                    height: 36,
+                    padding: EdgeInsetsDirectional.fromSTEB(
+                        10, 6, showTitle ? 12 : 10, 6),
+                    decoration: BoxDecoration(
+                      color: c.subtle,
+                      border: Border.all(color: c.line),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      ImdIcon(
+                          canSwitch
+                              ? 'swap'
+                              : (AppSpace.icons[space] ?? 'package'),
+                          size: 13,
+                          color: c.muted),
+                      if (showTitle) ...[
+                        const SizedBox(width: 6),
+                        Text(AppSpace.label(space),
+                            style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                color: c.text2)),
+                      ],
+                    ]),
+                  ),
+                ),
+              ),
+            ),
             const Spacer(),
+            ImdIconButton(
+              icon: c.isDark ? 'sun' : 'moon',
+              tooltip: c.isDark ? 'الوضع الفاتح' : 'الوضع الداكن',
+              onPressed: () => _toggleTheme(context),
+            ),
+            const SizedBox(width: 8),
             NotificationBell(onOpenPage: onOpenPage, space: space),
             const SizedBox(width: 8),
             Container(
@@ -897,10 +963,7 @@ class _Sidebar extends StatelessWidget {
   const _Sidebar({
     required this.page,
     required this.space,
-    required this.canSwitch,
-    required this.onSwitchSpace,
     required this.openSec,
-    required this.isAdmin,
     required this.hasPerm,
     required this.userName,
     required this.onGo,
@@ -932,11 +995,7 @@ class _Sidebar extends StatelessWidget {
   /// مساحة العمل الحالية — تُرشَّح بها بنود القائمة.
   final String space;
 
-  /// زر التبديل لا يظهر لمن يملك مساحةً واحدة: تبديلٌ إلى لا شيء.
-  final bool canSwitch;
-  final VoidCallback onSwitchSpace;
   final String? openSec;
-  final bool isAdmin;
   final bool Function(String page) hasPerm;
   final String userName;
   final ValueChanged<String> onGo;
@@ -947,7 +1006,6 @@ class _Sidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     if (rail) return _rail(context);
     final c = context.imd;
-    final mobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
     return Container(
       width: ImdSizes.sideWidth,
       decoration: BoxDecoration(
@@ -966,64 +1024,6 @@ class _Sidebar extends StatelessWidget {
       child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.only(top: 6, bottom: 12),
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                        border: Border(bottom: BorderSide(color: c.sideLine))),
-                    child: Column(children: [
-                      Text('نظام الإمداد والتموين',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w500,
-                              letterSpacing: .2,
-                              color: c.sideMuted)),
-                      const SizedBox(height: 4),
-                      Text(AppSpace.label(space),
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 19,
-                              fontWeight: FontWeight.w700,
-                              color: c.sideText)),
-                      const SizedBox(height: 10),
-                      // القسم الحالي معروضٌ دائمًا: من يعمل في قسمين يحتاج أن
-                      // يعرف في أيّهما هو قبل أن يكتب سندًا في الخطأ.
-                      MouseRegion(
-                        cursor: canSwitch
-                            ? SystemMouseCursors.click
-                            : MouseCursor.defer,
-                        child: GestureDetector(
-                          onTap: canSwitch ? onSwitchSpace : null,
-                          behavior: HitTestBehavior.opaque,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: c.sideHover,
-                              border: Border.all(color: c.sideBorder),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child:
-                                Row(mainAxisSize: MainAxisSize.min, children: [
-                              ImdIcon(
-                                  canSwitch
-                                      ? 'swap'
-                                      : (AppSpace.icons[space] ?? 'package'),
-                                  size: 12,
-                                  color: c.sideMuted),
-                              const SizedBox(width: 6),
-                              Text(canSwitch ? 'تبديل القسم' : 'قسم واحد',
-                                  style: TextStyle(
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w600,
-                                      color: c.sideMuted)),
-                            ]),
-                          ),
-                        ),
-                      ),
-                    ]),
-                  ),
                   Expanded(
                     child: SingleChildScrollView(
                       physics: const ClampingScrollPhysics(),
@@ -1096,53 +1096,14 @@ class _Sidebar extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 14),
                     decoration: BoxDecoration(
                         border: Border(top: BorderSide(color: c.sideLine))),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          margin: const EdgeInsets.only(bottom: 10),
-                          decoration: BoxDecoration(
-                            color: c.side2,
-                            border: Border.all(color: c.sideBorder),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(children: [
-                            _Avatar(name: userName, size: 40, fontSize: 16),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(userName,
-                                      style: const TextStyle(
-                                          fontSize: 13.5,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.white)),
-                                  Row(children: [
-                                    ImdIcon(mobile ? 'phone' : 'monitor',
-                                        size: 12, color: c.sideMuted),
-                                    const SizedBox(width: 4),
-                                    Flexible(
-                                      child: Text(
-                                        '${mobile ? 'جوال' : 'كمبيوتر'} • ${isAdmin ? 'مدير النظام' : 'مستخدم'}',
-                                        style: TextStyle(
-                                            fontSize: 11, color: c.sideMuted),
-                                      ),
-                                    ),
-                                  ]),
-                                ],
-                              ),
-                            ),
-                          ]),
-                        ),
-                        _SideTile(
-                            icon: 'lock',
-                            label: 'تسجيل خروج',
-                            kind: _SideKind.logout,
-                            onTap: onLogout),
-                      ],
-                    ),
+                    // بلا بطاقة مستخدمٍ هنا: الاسم والصلاحية معروضان في
+                    // الشريط العلوي، وهذا الشريط لا يحمل غير الخروج فيقصر
+                    // ارتفاعه لصالح القائمة.
+                    child: _SideTile(
+                        icon: 'lock',
+                        label: 'تسجيل خروج',
+                        kind: _SideKind.logout,
+                        onTap: onLogout),
                   ),
                 ],
       ),
@@ -1186,13 +1147,6 @@ class _Sidebar extends StatelessWidget {
             ]),
           ),
         ),
-        if (canSwitch)
-          _RailTile(
-            icon: 'swap',
-            label: 'تبديل القسم',
-            on: false,
-            onTap: onSwitchSpace,
-          ),
         _RailTile(
           icon: 'log-out',
           label: 'تسجيل الخروج',

@@ -7,8 +7,10 @@ import 'package:imdad/core/security/perm.dart';
 import 'package:imdad/core/theme/app_theme.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/sync/auto_sync.dart';
+import 'package:imdad/data/repos/settings_repo.dart';
 import 'package:imdad/domain/app_space.dart';
 import 'package:imdad/features/home/home_shell.dart';
+import 'package:imdad/main.dart' show ImdTheme;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -28,11 +30,13 @@ void main() {
   // تُنشأ ولا تُشغَّل: بلا `refresh()` لا مؤقّت ولا منفذ، وحالتها الابتدائية
   // (متوقفة، بلا آخر مزامنة) هي ما يعرضه الشريط.
   late AutoSyncService autoSync;
+  late ImdTheme imdTheme;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     db = AppDatabase.forTesting(NativeDatabase.memory());
     autoSync = AutoSyncService(db);
+    imdTheme = ImdTheme(ThemeMode.light);
     auth = AuthService(db);
     await auth.createAdmin(username: 'admin', password: 'Test@12345');
     await auth.login('admin', 'Test@12345');
@@ -50,13 +54,21 @@ void main() {
           Provider<AppDatabase>.value(value: db),
           Provider<AuthService>.value(value: auth),
           ChangeNotifierProvider<AutoSyncService>.value(value: autoSync),
+          ChangeNotifierProvider<ImdTheme>.value(value: imdTheme),
         ],
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          locale: const Locale('ar'),
-          home: Directionality(
-            textDirection: TextDirection.rtl,
-            child: HomeShell(onSignOut: () async {}),
+        // Consumer لا MaterialApp مباشرةً: زر تبديل السمة يستدعي
+        // ImdTheme.apply، وبلا هذا لا يتبع themeMode تغيّرها فيبقى الفاتح
+        // ظاهرًا مهما تبدّلت — كما في main.dart تمامًا.
+        child: Consumer<ImdTheme>(
+          builder: (context, theme, _) => MaterialApp(
+            theme: AppTheme.light(),
+            darkTheme: AppTheme.dark(),
+            themeMode: theme.mode,
+            locale: const Locale('ar'),
+            home: Directionality(
+              textDirection: TextDirection.rtl,
+              child: HomeShell(onSignOut: () async {}),
+            ),
           ),
         ),
       );
@@ -208,7 +220,10 @@ void main() {
       await pump(tester);
     }
 
-    await click(find.text('تبديل القسم'));
+    // تبديل القسم انتقل إلى الشريط العلوي؛ يُعرض اسم القسم لا نصّ «تبديل
+    // القسم» (ذاك في تلميح الزر وحده، كما تطلب المواصفة: اسم القسم المفتوح
+    // ظاهرٌ دومًا، والتبديل فعلٌ لا عنوان).
+    await click(find.byTooltip('تبديل القسم'));
     final error = tester.takeException();
     expect(error, isNull, reason: '$error');
     // بطاقتا القسمين معروضتان.
@@ -226,5 +241,48 @@ void main() {
     for (final key in Perm.labels.keys) {
       expect(Perm.labels[key]!.trim(), isNotEmpty, reason: key);
     }
+  });
+
+  testWidgets('بطاقة المستخدم أسفل الشريط الجانبي: خروجٌ فقط، بلا صورة ولا اسم ولا دور',
+      (tester) async {
+    wideWindow(tester);
+    await enterSupply(tester);
+    expect(tester.takeException(), isNull);
+
+    // الخروج باقٍ في الشريط الجانبي. والاسم يبقى ظاهرًا مرةً واحدة فقط —
+    // في كبسولة الشريط العلوي التي لم تُمَسّ — لا مكرَّرًا في بطاقةٍ أسفل
+    // القائمة أيضًا. أمّا الجهاز والدور («كمبيوتر»/«مدير النظام») فكانا
+    // حصرًا في تلك البطاقة المحذوفة، فيغيبان كليًّا.
+    expect(find.text('تسجيل خروج'), findsOneWidget);
+    expect(find.text('admin'), findsOneWidget);
+    expect(find.textContaining('مدير النظام'), findsNothing);
+    expect(find.textContaining('كمبيوتر'), findsNothing);
+    expect(find.textContaining('جوال'), findsNothing);
+  });
+
+  testWidgets('الشريط العلوي: اسم القسم ظاهرٌ، وزرّ تبديل السمة موجود',
+      (tester) async {
+    wideWindow(tester);
+    await enterSupply(tester);
+    expect(tester.takeException(), isNull);
+
+    expect(find.text(AppSpace.label(AppSpace.supply)), findsOneWidget);
+    expect(find.byTooltip('الوضع الداكن'), findsOneWidget);
+  });
+
+  testWidgets('زرّ تبديل السمة يبدّل السطوع الفعلي ويحفظه', (tester) async {
+    wideWindow(tester);
+    await enterSupply(tester);
+    expect(Theme.of(tester.element(find.byType(HomeShell))).brightness,
+        Brightness.light);
+
+    await tester.tap(find.byTooltip('الوضع الداكن'));
+    await pump(tester);
+
+    expect(Theme.of(tester.element(find.byType(HomeShell))).brightness,
+        Brightness.dark);
+    expect(imdTheme.mode, ThemeMode.dark);
+    expect((await SettingsRepo(db).identity()).themePref, 'dark');
+    expect(tester.takeException(), isNull);
   });
 }
