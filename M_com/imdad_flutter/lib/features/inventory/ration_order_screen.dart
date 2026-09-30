@@ -42,6 +42,10 @@ class _LineDraft {
   String itemId;
   final TextEditingController qty;
 
+  /// هوية السطر عبر إعادة البناء — بها يبقى متحكّمه وتركيزه لو حُذف سطرٌ
+  /// قبله، بدل أن تُعاد بقية الأسطر من فهارسها الجديدة.
+  final key = UniqueKey();
+
   void dispose() => qty.dispose();
 }
 
@@ -783,44 +787,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
             ),
           )
         else
-          for (final (i, l) in _lines.indexed)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(children: [
-                Expanded(
-                  flex: 5,
-                  // المنتقي بالبحث لا القائمة المنسدلة: أصناف النظام بالمئات،
-                  // والتمرير بينها في كل سطر أبطأ من كتابة حرفين.
-                  child: ImdItemPicker(
-                    items: _items,
-                    value: l.itemId,
-                    labelOf: (it) => _supplying.isEmpty
-                        ? '${it.code} — ${it.name}'
-                        : '${it.code} — ${it.name} '
-                            '(متاح: ${nf(_supplyBal[it.id] ?? 0)})',
-                    onChanged: (v) => setState(() => l.itemId = v),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 2,
-                  child: ImdFld(
-                    controller: l.qty,
-                    number: true,
-                    hint: 'الكمية',
-                    onChanged: (_) => setState(() {}),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ImdIconButton(
-                  icon: 'trash',
-                  tooltip: 'حذف السطر',
-                  onPressed: () => setState(() {
-                    _lines.removeAt(i).dispose();
-                  }),
-                ),
-              ]),
-            ),
+          _linesTableEditor(context),
         const SizedBox(height: 10),
         ImdLabeled('ملاحظات', ImdFld(controller: _notes, maxLines: 2)),
         if (_lines.isNotEmpty || _requesting.isNotEmpty) ...[
@@ -951,6 +918,52 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
             ],
         ],
       );
+
+  /// محرّر أسطر الطلبية — الجدول الكثيف المشترك نفسه في بقية السندات.
+  ///
+  /// الطلبية طلبٌ لا حركة، فلا وحدةَ قياسٍ فيها ولا إجراء أسطوانة: عمودان
+  /// للإدخال وثالثٌ للرصيد المتاح في المخزن المورِّد حين يكون محدَّدًا.
+  Widget _linesTableEditor(BuildContext context) {
+    const cell = ImdEntryTable.cell;
+    return ImdEntryTable(
+      columns: const [
+        ImdCol('الصنف', flex: 4),
+        ImdCol('المتاح', width: 96),
+        ImdCol('الكمية', width: 110),
+        ImdCol('', width: 56),
+      ],
+      rowKeys: [for (final l in _lines) l.key],
+      rows: [
+        for (final l in _lines)
+          [
+            // المنتقي بالبحث لا القائمة المنسدلة: أصناف النظام بالمئات،
+            // والتمرير بينها في كل سطر أبطأ من كتابة حرفين.
+            cell(ImdItemPicker(
+              items: _items,
+              value: l.itemId,
+              onChanged: (v) => setState(() => l.itemId = v),
+            )),
+            cell(ImdEntryBalanceCell(
+              _supplying.isEmpty || l.itemId.isEmpty ? '' : nf(_supplyBal[l.itemId] ?? 0),
+            )),
+            cell(ImdFld(
+              controller: l.qty,
+              number: true,
+              hint: 'الكمية',
+              onChanged: (_) => setState(() {}),
+            )),
+            cell(ImdIconButton(
+              icon: 'trash',
+              tooltip: 'حذف السطر',
+              onPressed: () => setState(() {
+                _lines.remove(l);
+                l.dispose();
+              }),
+            )),
+          ],
+      ],
+    );
+  }
 
   Widget _linesTable(RationOrderFull full) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
