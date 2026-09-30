@@ -1065,7 +1065,10 @@ class _IssueScreenState extends State<IssueScreen> {
         icon: 'tag',
         child: ImdBarcodeInput(hint: 'مرّر قارئ الباركود أو اكتب الكود واضغط Enter…', onSubmit: _scan),
       ),
-      for (final (i, r) in _rows.indexed) KeyedSubtree(key: r.key, child: _rowView(context, i + 1, r)),
+      if (ImdBp.of(context).mobile)
+        for (final (i, r) in _rows.indexed) KeyedSubtree(key: r.key, child: _rowView(context, i + 1, r))
+      else
+        _desktopTable(context),
       ImdValidationBox(title: 'فحص سريع قبل تنفيذ أمر الصرف', items: _validate()),
     ];
   }
@@ -1082,46 +1085,49 @@ class _IssueScreenState extends State<IssueScreen> {
     return ImdRowMeta('= ${nf((qty * f * 1000).round() / 1000)} ${it.baseUnit}');
   }
 
-  Widget _rowView(BuildContext context, int index, _Row r) {
-    final c = context.imd;
+  /// الحقول التفاعلية لسطر صنفٍ واحد — بلا عنوانٍ فوقها ولا تخطيط: المصدر
+  /// الوحيد لمنطق الإدخال، يستهلكه عرض الجوال (بطاقةٌ معنونة) وجدول سطح
+  /// المكتب (خليةٌ عاريةٌ تحت رأسٍ مشترك) بلا تكرار سطرٍ واحد.
+  ({
+    bool refill,
+    Widget balance,
+    Widget picker,
+    Widget ben,
+    Widget unit,
+    Widget qty,
+    Widget notes,
+    Widget cy,
+    Widget delete,
+  }) _rowFields(_Row r) {
     final it = _item(r.itemId);
     final units = it == null ? const <ItemUnit>[] : _catalog.unitsOf(it);
-    final multi = _type == 3;
-    final narrow = ImdBp.of(context).mobile;
-    // الرصيد يُعرض بوحدة العرض المختارة في بطاقة الصنف لا بالأساسية دائمًا.
-    final shown = it == null
-        ? null
-        : displayBalance(it, _whBal[it.id] ?? 0);
-    final meta = it == null
-        ? ''
-        : (_wh.isNotEmpty
-            ? 'رصيد «$_wh»: ${nf(shown!.qty)} ${shown.unit}'
-            : 'المتاح: ${nf(shown!.qty)} ${shown.unit}');
-    final picker = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const ImdRowLabel('الصنف'),
-      ImdItemPicker(
-        items: _items,
-        value: r.itemId,
-        detailOf: (i) => 'رصيد ${nf(_whBal[i.id] ?? 0)}',
-        onChanged: (v) { _onItem(r, v); _scheduleAutosave(); },
-      ),
-      ImdRowMeta(meta),
-    ]);
-    final ben = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const ImdRowLabel('الوحدة المستفيدة'),
-      ImdSelect<String>(
-        value: r.benUnit.isEmpty && _units.isNotEmpty ? _units.first.id : r.benUnit,
-        items: [for (final u in _units) (u.id, '${u.code} — ${u.name}')],
-        onChanged: (v) { setState(() => r.benUnit = v ?? ''); _scheduleAutosave(); },
-      ),
-    ]);
-    final unit = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const ImdRowLabel('الوحدة'),
-      ImdSelect<String>(
-        value: r.unit,
-        items: units.isEmpty ? const [('', '—')] : [for (final u in units) (u.name, u.name)],
-        onChanged: (v) { _scheduleAutosave(); setState(() {
-          final next = v ?? '';
+    final shown = it == null ? null : displayBalance(it, _whBal[it.id] ?? 0);
+    final picker = ImdItemPicker(
+      items: _items,
+      value: r.itemId,
+      detailOf: (i) => 'رصيد ${nf(_whBal[i.id] ?? 0)}',
+      onChanged: (v) {
+        _onItem(r, v);
+        _scheduleAutosave();
+      },
+    );
+    final balance =
+        ImdEntryBalanceCell(shown == null ? '' : '${nf(shown.qty)} ${shown.unit}');
+    final ben = ImdSelect<String>(
+      value: r.benUnit.isEmpty && _units.isNotEmpty ? _units.first.id : r.benUnit,
+      items: [for (final u in _units) (u.id, '${u.code} — ${u.name}')],
+      onChanged: (v) {
+        setState(() => r.benUnit = v ?? '');
+        _scheduleAutosave();
+      },
+    );
+    final unit = ImdUnitPicker(
+      units: [for (final u in units) u.name],
+      value: r.unit,
+      onChanged: (v) {
+        _scheduleAutosave();
+        setState(() {
+          final next = v;
           final previous = r.unit;
           final qty = double.tryParse(r.qty.text.trim()) ?? 0;
           r.unit = next;
@@ -1139,89 +1145,144 @@ class _IssueScreenState extends State<IssueScreen> {
               )),
             );
           }
-        }); },
-      ),
-    ]);
-    final qty = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const ImdRowLabel('الكمية'),
-      // مغادرة الحقل تجمع الأصناف المكررة تلقائيًا وتعيد توزيع الوحدات.
-      Focus(
-        onFocusChange: (has) {
-          if (!has) _autoConsolidate();
-        },
-        child: ImdFld(controller: r.qty, number: true, onChanged: (_) => setState(() {})),
-      ),
-    ]);
-    final del = Padding(
-      padding: const EdgeInsets.only(top: 19),
-      child: ImdIconButton(
-        icon: 'x',
-        kind: ImdBtnKind.danger,
-        onPressed: () {
-          setState(() {
-            _rows.remove(r);
-            r.dispose();
-            if (_rows.isEmpty) _rows.add(_newRow());
-          });
-          _scheduleAutosave();
-        },
-      ),
+        });
+      },
     );
+    // مغادرة الحقل تجمع الأصناف المكررة تلقائيًا وتعيد توزيع الوحدات.
+    final qty = Focus(
+      onFocusChange: (has) {
+        if (!has) _autoConsolidate();
+      },
+      child: ImdFld(controller: r.qty, number: true, onChanged: (_) => setState(() {})),
+    );
+    final notes = Builder(builder: (context) {
+      final c = context.imd;
+      return TextField(
+        controller: r.notes,
+        style: TextStyle(fontSize: 12, color: c.text),
+        decoration: imdFieldDecoration(context, hint: 'ملاحظات على هذا الصنف...', dense: true),
+      );
+    });
     // **نوع العملية في صفّ الصنف لا تحته**: صندوقٌ مستقل يستقطع سطرًا لكل
     // أسطوانة، ويقطع تسلسل `Tab` من الكمية إلى السطر التالي.
     final refill = it != null && it.isRefillable;
-    final cy = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const ImdRowLabel('نوع العملية'),
-      ImdSelect<String>(
-        value: r.cy,
-        items: CylAction.issueOptions,
-        onChanged: (v) { setState(() => r.cy = v ?? r.cy); _scheduleAutosave(); },
-      ),
+    final cy = ImdSelect<String>(
+      value: r.cy,
+      items: CylAction.issueOptions,
+      onChanged: (v) {
+        setState(() => r.cy = v ?? r.cy);
+        _scheduleAutosave();
+      },
+    );
+    final delete = ImdIconButton(
+      icon: 'x',
+      kind: ImdBtnKind.danger,
+      onPressed: () {
+        setState(() {
+          _rows.remove(r);
+          r.dispose();
+          if (_rows.isEmpty) _rows.add(_newRow());
+        });
+        _scheduleAutosave();
+      },
+    );
+    return (
+      refill: refill,
+      balance: balance,
+      picker: picker,
+      ben: ben,
+      unit: unit,
+      qty: qty,
+      notes: notes,
+      cy: cy,
+      delete: delete,
+    );
+  }
+
+  /// عرض سطح المكتب: الجدول الكثيف المشترك — الأسلوب نفسه في كل السندات.
+  ///
+  /// «الوحدة المستفيدة» عمودٌ لا يظهر إلا في التوجيه متعدّد الوحدات، و«نوع
+  /// العملية» يظهر إن كان في الجدول صنفٌ قابلٌ للتعبئة — شرطٌ على مستوى
+  /// الجدول كلّه لا السطر الواحد، فلا تتبدّل الأعمدة وهي تُقرأ.
+  Widget _desktopTable(BuildContext context) {
+    final fields = [for (final r in _rows) _rowFields(r)];
+    final multi = _type == 3;
+    final anyRefill = fields.any((f) => f.refill);
+    const cell = ImdEntryTable.cell;
+
+    return ImdEntryTable(
+      columns: [
+        const ImdCol('الصنف', flex: 3),
+        const ImdCol('الرصيد', width: 96),
+        if (multi) const ImdCol('الوحدة المستفيدة', flex: 2),
+        const ImdCol('الوحدة', width: 112),
+        const ImdCol('الكمية', width: 88),
+        if (anyRefill) const ImdCol('نوع العملية', width: 150),
+        const ImdCol('ملاحظة', flex: 2),
+        const ImdCol('', width: 56),
+      ],
+      rowKeys: [for (final r in _rows) r.key],
+      rows: [
+        for (final f in fields)
+          [
+            cell(f.picker),
+            cell(f.balance),
+            if (multi) cell(f.ben),
+            cell(f.unit),
+            cell(f.qty),
+            if (anyRefill) cell(f.refill ? f.cy : const SizedBox.shrink()),
+            cell(f.notes),
+            cell(f.delete),
+          ],
+      ],
+    );
+  }
+
+  Widget _rowView(BuildContext context, int index, _Row r) {
+    final c = context.imd;
+    final it = _item(r.itemId);
+    final multi = _type == 3;
+    // الرصيد يُعرض بوحدة العرض المختارة في بطاقة الصنف لا بالأساسية دائمًا.
+    final shown = it == null
+        ? null
+        : displayBalance(it, _whBal[it.id] ?? 0);
+    final meta = it == null
+        ? ''
+        : (_wh.isNotEmpty
+            ? 'رصيد «$_wh»: ${nf(shown!.qty)} ${shown.unit}'
+            : 'المتاح: ${nf(shown!.qty)} ${shown.unit}');
+    final f = _rowFields(r);
+    Widget labeled(String label, Widget field) =>
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [ImdRowLabel(label), field]);
+    final picker = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const ImdRowLabel('الصنف'),
+      f.picker,
+      ImdRowMeta(meta),
     ]);
+    final ben = labeled('الوحدة المستفيدة', f.ben);
+    final unit = labeled('الوحدة', f.unit);
+    final qty = labeled('الكمية', f.qty);
+    final del = Padding(padding: const EdgeInsets.only(top: 19), child: f.delete);
+    final refill = f.refill;
+    final cy = labeled('نوع العملية', f.cy);
     const gap = SizedBox(width: ImdSizes.compactGap);
-    Widget grid;
-    if (narrow) {
-      grid = Column(children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(child: picker),
-          gap,
-          Expanded(child: multi ? ben : unit),
-        ]),
-        const SizedBox(height: ImdSizes.compactGap),
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (multi) ...[SizedBox(width: 104, child: unit), gap],
-          SizedBox(width: 92, child: qty),
-          if (refill) ...[gap, Expanded(child: cy)],
-          gap,
-          del,
-        ]),
-      ]);
-    } else if (multi) {
-      grid = Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    // بطاقةٌ معنونة للجوال وحده: الشاشة الضيّقة لا تتّسع لرأس جدولٍ يبقى ذا
+    // معنى، وسطح المكتب يمرّ من `_desktopTable`.
+    final grid = Column(children: [
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(child: picker),
         gap,
-        Expanded(child: ben),
-        gap,
-        SizedBox(width: 104, child: unit),
-        gap,
-        SizedBox(width: 84, child: qty),
-        if (refill) ...[gap, SizedBox(width: 155, child: cy)],
-        gap,
-        del,
-      ]);
-    } else {
-      // العرض يتبع نوع البيانات: الاسم يتمدّد، والوحدة والكمية بقدر نصّهما.
-      grid = Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: picker),
-        gap,
-        SizedBox(width: 112, child: unit),
-        gap,
-        SizedBox(width: 88, child: qty),
-        if (refill) ...[gap, SizedBox(width: 165, child: cy)],
+        Expanded(child: multi ? ben : unit),
+      ]),
+      const SizedBox(height: ImdSizes.compactGap),
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (multi) ...[SizedBox(width: 104, child: unit), gap],
+        SizedBox(width: 92, child: qty),
+        if (refill) ...[gap, Expanded(child: cy)],
         gap,
         del,
-      ]);
-    }
+      ]),
+    ]);
     return ImdRvRow(
       index: index,
       trailing: _baseHint(r),
