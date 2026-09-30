@@ -850,7 +850,7 @@ class ImdEntryTable extends StatelessWidget {
   /// ارتفاع صفّ الجدول — ثابتٌ فلا يتغيّر بتغيّر محتوى خليةٍ واحدة.
   static const double rowHeight = 40;
 
-  /// خليةٌ بارتفاعٍ ثابت: الحقل (٣٤) يتوسّطها، فيبقى الصفّ ٤٠ مهما اختلف
+  /// خليةٌ بارتفاعٍ ثابت: الحقل المدمج يتوسّطها، فيبقى الصفّ ٤٠ مهما اختلف
   /// محتوى الخلايا (حقلٌ نصّي أو قائمةٌ أو زرّان).
   static Widget cell(Widget child) =>
       SizedBox(height: rowHeight, child: Center(child: child));
@@ -868,7 +868,7 @@ class ImdEntryTable extends StatelessWidget {
         maxHeight: ImdSizes.tableMaxHeight(context),
         headerBackground: c.accent,
         headerForeground: c.onAccent,
-        cellPadding: const EdgeInsets.symmetric(horizontal: 6),
+        cellPadding: const EdgeInsets.symmetric(horizontal: ImdSizes.compactGap),
         gridLines: true,
         cellFontSize: 12,
       ),

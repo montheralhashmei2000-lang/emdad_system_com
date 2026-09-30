@@ -220,19 +220,22 @@ class ImdSizes {
   // أقصر وفواصله أضيق — بلا مساسٍ ببقية الشاشات.
 
   /// ارتفاع الحقل المدمج (بدل [touchMin]).
-  static double get compactField => ImdBp.touch ? 40 : 34;
+  static double get compactField => ImdBp.touch ? 40 : 30;
 
-  /// الفاصل الأفقي بين حقلين مترابطين في السطر (بين أعمدة جدول الإدخال).
-  static const double compactGap = 8;
+  /// الفاصل الأفقي بين حقلين مترابطين في السطر (بين أعمدة جدول الإدخال) —
+  /// أضيق من [ImdSizes.mainPadding] وأمثاله عمدًا: يمنع التحام حقلين
+  /// متجاورين بصريًّا بلا إهدار عرضٍ على خمسة أعمدةٍ في سطرٍ واحد.
+  static const double compactGap = 4;
 
-  /// الفاصل الرأسي بين سطرَي صنف.
-  static const double compactRowGap = 4;
+  /// الفاصل الرأسي بين سطرَي صنف (عرض البطاقات على الجوال وحده — جدول
+  /// سطح المكتب يفصل صفوفه بخطوط الشبكة لا بهذه الفجوة).
+  static const double compactRowGap = 2;
 
-  /// حشو الحقل المدمج رأسيًّا.
-  static const double compactPadV = 4;
+  /// حشو الحقل المدمج رأسيًّا — الحدّ الأدنى الذي يبقي نصًّا بخطّ ١٣ مقروءًا.
+  static const double compactPadV = 2;
 
   /// حشو الحقل المدمج أفقيًّا.
-  static const double compactPadH = 6;
+  static const double compactPadH = 4;
 
   /// نصف قطر زوايا الحقل المدمج (بدل [radius] العام).
   static const double compactRadius = 6;

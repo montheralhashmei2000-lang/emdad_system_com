@@ -42,7 +42,7 @@ void main() {
     expect(t.headerForeground, c.onAccent, reason: 'نصُّ الرأس يقابله');
     expect(t.gridLines, isTrue, reason: 'حدٌّ لكل خلية');
     expect(t.cellFontSize, 12);
-    expect(t.cellPadding, const EdgeInsets.symmetric(horizontal: 6));
+    expect(t.cellPadding, const EdgeInsets.symmetric(horizontal: 4));
     expect(t.cards, isFalse, reason: 'جدولٌ دومًا على سطح المكتب');
     expect(t.maxHeight, isNotNull, reason: 'سقفٌ يُثبّت الرأس ويُمرّر الجسم');
   });
@@ -81,9 +81,9 @@ void main() {
     expect(compact, isTrue, reason: 'الكثافة تُعلَن مرةً فوق الجدول لا لكل حقل');
   });
 
-  test('ارتفاع الحقل المدمج ٣٤ على سطح المكتب، و٤٠ على اللمس (حدُّ إتاحة)', () {
+  test('ارتفاع الحقل المدمج ٣٠ على سطح المكتب، و٤٠ على اللمس (حدُّ إتاحة)', () {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
-    expect(ImdSizes.compactField, 34, reason: 'المواصفة ٣٢–٣٦ لسطح المكتب');
+    expect(ImdSizes.compactField, 30, reason: 'المواصفة ٣٠–٣٢ لسطح المكتب');
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     expect(ImdSizes.compactField, 40, reason: 'هدف اللمس لا يُصغَّر تحت ٤٠');
     debugDefaultTargetPlatformOverride = null;
@@ -91,9 +91,9 @@ void main() {
 
   test('مقاسات النمط المدمج تطابق المواصفة', () {
     expect(ImdSizes.compactRadius, 6);
-    expect(ImdSizes.compactPadH, 6);
-    expect(ImdSizes.compactPadV, 4);
-    expect(ImdSizes.compactGap, 8, reason: 'بين الأعمدة');
-    expect(ImdSizes.compactRowGap, 4, reason: 'بين الصفوف');
+    expect(ImdSizes.compactPadH, 4);
+    expect(ImdSizes.compactPadV, 2);
+    expect(ImdSizes.compactGap, 4, reason: 'بين الأعمدة');
+    expect(ImdSizes.compactRowGap, 2, reason: 'بين الصفوف');
   });
 }
