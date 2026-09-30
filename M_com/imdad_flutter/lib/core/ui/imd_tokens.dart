@@ -220,7 +220,7 @@ class ImdSizes {
   // أقصر وفواصله أضيق — بلا مساسٍ ببقية الشاشات.
 
   /// ارتفاع الحقل المدمج (بدل [touchMin]).
-  static double get compactField => ImdBp.touch ? 40 : 30;
+  static double get compactField => ImdBp.touch ? 40 : 34;
 
   /// الفاصل الأفقي بين حقلين مترابطين في السطر (بين أعمدة جدول الإدخال) —
   /// أضيق من [ImdSizes.mainPadding] وأمثاله عمدًا: يمنع التحام حقلين

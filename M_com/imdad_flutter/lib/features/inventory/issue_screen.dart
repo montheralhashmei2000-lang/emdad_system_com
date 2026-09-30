@@ -927,7 +927,7 @@ class _IssueScreenState extends State<IssueScreen> {
       ImdICard(
         title: 'نوع التوجيه والجهة المستفيدة',
         icon: 'target',
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        child: ImdCompact(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ImdTargetPills<int>(
             value: _type,
             onChanged: _setType,
@@ -938,8 +938,8 @@ class _IssueScreenState extends State<IssueScreen> {
               ImdTab(3, 'وحدات متعددة', icon: 'file'),
             ],
           ),
-          // .f4 auto-fit minmax(180px,1fr)
-          ImdAutoGrid(minItem: 180, gap: 12, children: [
+          const SizedBox(height: 10),
+          ImdFormGrid(children: [
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
               lab(
                 'المستودع المصروف منه *',
@@ -973,7 +973,7 @@ class _IssueScreenState extends State<IssueScreen> {
             ),
           ]),
           const SizedBox(height: 10),
-          ImdF2(cols: 3, children: [
+          ImdFormGrid(children: [
             if (_type == 0) ...[
               lab(
                 'المعسكر / الوحدة الرئيسية',
@@ -1015,7 +1015,7 @@ class _IssueScreenState extends State<IssueScreen> {
             Padding(
               padding: const EdgeInsets.only(top: 10),
               child: ImdDashedBox(
-                child: ImdF2(cols: 3, children: [
+                child: ImdFormGrid(children: [
                   lab('تاريخ إلحاق القوة (حصر القوة)', ImdDateField(value: _strDate, onChanged: (v) {
                     setState(() => _strDate = v);
                     _scheduleAutosave();
@@ -1034,8 +1034,11 @@ class _IssueScreenState extends State<IssueScreen> {
               ),
             ),
           const SizedBox(height: 10),
-          lab('ملاحظات السند / الغرض من الصرف', ImdFld(controller: _notes, hint: 'ملاحظات توثيقية حول أمر الصرف...')),
-        ]),
+          ImdCollapsibleSection(
+            title: 'ملاحظات السند / الغرض من الصرف',
+            child: ImdFld(controller: _notes, hint: 'ملاحظات توثيقية حول أمر الصرف...'),
+          ),
+        ])),
       ),
       // نفس أداة «الاحتساب التلقائي» في شاشة التحويل المخزني: المنطق كان
       // موجودًا هنا (يُحدّث الأسطر المضافة يدويًا) وينقصه ملء الجدول دفعة واحدة.
@@ -1155,14 +1158,7 @@ class _IssueScreenState extends State<IssueScreen> {
       },
       child: ImdFld(controller: r.qty, number: true, onChanged: (_) => setState(() {})),
     );
-    final notes = Builder(builder: (context) {
-      final c = context.imd;
-      return TextField(
-        controller: r.notes,
-        style: TextStyle(fontSize: 12, color: c.text),
-        decoration: imdFieldDecoration(context, hint: 'ملاحظات على هذا الصنف...', dense: true),
-      );
-    });
+    final notes = ImdFld(controller: r.notes, hint: 'ملاحظات على هذا الصنف...');
     // **نوع العملية في صفّ الصنف لا تحته**: صندوقٌ مستقل يستقطع سطرًا لكل
     // أسطوانة، ويقطع تسلسل `Tab` من الكمية إلى السطر التالي.
     final refill = it != null && it.isRefillable;
@@ -1239,7 +1235,6 @@ class _IssueScreenState extends State<IssueScreen> {
   }
 
   Widget _rowView(BuildContext context, int index, _Row r) {
-    final c = context.imd;
     final it = _item(r.itemId);
     final multi = _type == 3;
     // الرصيد يُعرض بوحدة العرض المختارة في بطاقة الصنف لا بالأساسية دائمًا.
@@ -1290,12 +1285,7 @@ class _IssueScreenState extends State<IssueScreen> {
         grid,
         Padding(
           padding: const EdgeInsets.only(top: 4),
-          child: TextField(
-            controller: r.notes,
-            style: TextStyle(fontSize: 12, color: c.text),
-            decoration: imdFieldDecoration(context, hint: 'ملاحظات على هذا الصنف...', dense: true)
-                .copyWith(contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
-          ),
+          child: ImdFld(controller: r.notes, hint: 'ملاحظات على هذا الصنف...'),
         ),
       ]),
     );

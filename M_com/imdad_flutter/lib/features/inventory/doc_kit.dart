@@ -476,16 +476,22 @@ class _ImdTypeAheadState extends State<ImdTypeAhead> {
             ),
           ),
         ),
-        child: Focus(
-          onKeyEvent: _key,
-          canRequestFocus: false,
-          skipTraversal: true,
-          child: TextField(
-            controller: _ctrl,
-            focusNode: _focus,
-            onChanged: _open,
-            style: TextStyle(fontSize: ImdCompact.of(context) ? 13 : 14, color: c.text),
-            decoration: imdFieldDecoration(context, hint: widget.hint),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+              minHeight: ImdCompact.of(context)
+                  ? ImdSizes.compactField
+                  : ImdSizes.touchMin),
+          child: Focus(
+            onKeyEvent: _key,
+            canRequestFocus: false,
+            skipTraversal: true,
+            child: TextField(
+              controller: _ctrl,
+              focusNode: _focus,
+              onChanged: _open,
+              style: TextStyle(fontSize: ImdCompact.of(context) ? 13 : 14, color: c.text),
+              decoration: imdFieldDecoration(context, hint: widget.hint),
+            ),
           ),
         ),
       ),
@@ -805,20 +811,23 @@ class _ImdItemPickerState extends State<ImdItemPicker> {
             ),
           );
         },
-        child: Focus(
-          onKeyEvent: _key,
-          canRequestFocus: false,
-          skipTraversal: true,
-          child: TextField(
-            controller: _ctrl,
-            focusNode: _focus,
-            onChanged: _open,
-            style: TextStyle(fontSize: 14, color: c.text),
-            decoration:
-                imdFieldDecoration(context, hint: 'اكتب اسم الصنف أو الكود…')
-                    .copyWith(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+              minHeight: ImdCompact.of(context)
+                  ? ImdSizes.compactField
+                  : ImdSizes.touchMin),
+          child: Focus(
+            onKeyEvent: _key,
+            canRequestFocus: false,
+            skipTraversal: true,
+            child: TextField(
+              controller: _ctrl,
+              focusNode: _focus,
+              onChanged: _open,
+              style: TextStyle(
+                  fontSize: ImdCompact.of(context) ? 13 : 14, color: c.text),
+              decoration:
+                  imdFieldDecoration(context, hint: 'اكتب اسم الصنف أو الكود…'),
             ),
           ),
         ),
@@ -895,6 +904,74 @@ class ImdEntryBalanceCell extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
       style: TextStyle(fontSize: 11, color: empty ? c.faint : c.muted),
     );
+  }
+}
+
+/// شبكة حقول بيانات السند: أعمدةٌ متجاوبة — أربعةٌ على سطح المكتب (>900px)
+/// وعمودان على الجوال، بفجوةٍ ضيقة كفجوة جدول الإدخال ([ImdSizes.compactGap]
+/// و[ImdSizes.compactRowGap]). الفورمة كثيفةٌ لا فسيحة، فلا تُنافس الجدول
+/// نفسه على مساحة الشاشة.
+class ImdFormGrid extends StatelessWidget {
+  const ImdFormGrid({super.key, required this.children});
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final cols = ImdBp.of(context).mobile ? 2 : 4;
+    return LayoutBuilder(builder: (ctx, cons) {
+      const gap = ImdSizes.compactGap;
+      final w = (cons.maxWidth - gap * (cols - 1)) / cols;
+      return Wrap(
+        spacing: gap,
+        runSpacing: ImdSizes.compactRowGap,
+        children: [for (final ch in children) SizedBox(width: w, child: ch)],
+      );
+    });
+  }
+}
+
+/// قسمٌ قابلٌ للطي لتعليمات/ملاحظات السند — مطويٌّ افتراضيًّا فلا يشغل
+/// مساحةً رأسية، وعند التوسيع يظهر بعرضٍ كامل أسفل رأسه.
+class ImdCollapsibleSection extends StatefulWidget {
+  const ImdCollapsibleSection({
+    super.key,
+    required this.title,
+    required this.child,
+    this.icon = 'file',
+  });
+  final String title;
+  final Widget child;
+  final String icon;
+
+  @override
+  State<ImdCollapsibleSection> createState() => _ImdCollapsibleSectionState();
+}
+
+class _ImdCollapsibleSectionState extends State<ImdCollapsibleSection> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.imd;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      InkWell(
+        onTap: () => setState(() => _open = !_open),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(children: [
+            ImdIcon(widget.icon, size: 14, color: c.muted),
+            const SizedBox(width: 6),
+            Text(widget.title,
+                style: TextStyle(
+                    fontSize: 12.5, fontWeight: FontWeight.w700, color: c.text2)),
+            const Spacer(),
+            ImdIcon(_open ? 'chevron-up' : 'chevron-down', size: 14, color: c.muted),
+          ]),
+        ),
+      ),
+      if (_open) Padding(padding: const EdgeInsets.only(top: 4), child: widget.child),
+    ]);
   }
 }
 
@@ -1452,13 +1529,21 @@ class ImdReadonlyField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
-    return InputDecorator(
-      decoration: imdFieldDecoration(context).copyWith(
-          fillColor: bg ?? (c.isDark ? c.bg : const Color(0xFFEEF1EE))),
-      child: Text(text,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-              fontSize: 14, fontWeight: weight, color: color ?? c.muted)),
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+          minHeight: ImdCompact.of(context)
+              ? ImdSizes.compactField
+              : ImdSizes.touchMin),
+      child: InputDecorator(
+        decoration: imdFieldDecoration(context).copyWith(
+            fillColor: bg ?? (c.isDark ? c.bg : const Color(0xFFEEF1EE))),
+        child: Text(text,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                fontSize: ImdCompact.of(context) ? 13 : 14,
+                fontWeight: weight,
+                color: color ?? c.muted)),
+      ),
     );
   }
 }

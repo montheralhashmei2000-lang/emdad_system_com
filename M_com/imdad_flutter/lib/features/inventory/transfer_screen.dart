@@ -689,7 +689,7 @@ class _TransferScreenState extends State<TransferScreen> {
       ImdICard(
         title: 'بيانات التحويل',
         icon: 'clipboard',
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        child: ImdCompact(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           lab(
             '🏕️ المعسكر المستفيد (اختياري — للصرف الرئيسي عبر تحويل مخزني)',
             ImdSelect<String>(
@@ -706,46 +706,26 @@ class _TransferScreenState extends State<TransferScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          if (mobile) ...[
+          ImdFormGrid(children: [
             lab('من مستودع (المصدر) *', _whSelect(_from, _whs, (v) {
               setState(() => _from = v);
               _refreshBal();
               _loadReady();
             })),
-            const SizedBox(height: 8),
-            lab('إلى مستودع (الهدف) *', _whSelect(_to, toOpts, (v) => setState(() => _to = v))),
-            const SizedBox(height: 8),
-            lab('التاريخ', ImdDateField(value: _date, onChanged: (v) => setState(() => _date = v))),
-            const SizedBox(height: 8),
-            lab('المرجع', ImdReadonlyField(text: _ref)),
-          ] else
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(
-                child: lab('من مستودع (المصدر) *', _whSelect(_from, _whs, (v) {
-                  setState(() => _from = v);
-                  _refreshBal();
-                  _loadReady();
-                })),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-                  lab('إلى مستودع (الهدف) *', _whSelect(_to, toOpts, (v) => setState(() => _to = v))),
-                  if (note.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 3),
-                      child: ImdEmojiText(note, iconSize: 11, style: TextStyle(fontSize: 11, color: c.muted)),
-                    ),
-                ]),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(width: 192, child: lab('التاريخ', ImdDateField(value: _date, onChanged: (v) => setState(() => _date = v)))),
-              const SizedBox(width: 8),
-              SizedBox(width: 192, child: lab('المرجع', ImdReadonlyField(text: _ref))),
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+              lab('إلى مستودع (الهدف) *', _whSelect(_to, toOpts, (v) => setState(() => _to = v))),
+              if (note.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: ImdEmojiText(note, iconSize: 11, style: TextStyle(fontSize: 11, color: c.muted)),
+                ),
             ]),
+            lab('التاريخ', ImdDateField(value: _date, onChanged: (v) => setState(() => _date = v))),
+            lab('المرجع', ImdReadonlyField(text: _ref)),
+          ]),
           const SizedBox(height: 10),
-          lab('مبررات التحويل / ملاحظات', ImdFld(controller: _notes)),
-        ]),
+          ImdCollapsibleSection(title: 'مبررات التحويل / ملاحظات', child: ImdFld(controller: _notes)),
+        ])),
       ),
       if (_from.isNotEmpty && (_readyOrders.isNotEmpty || _orderId.isNotEmpty))
         _pullCard(mobile),

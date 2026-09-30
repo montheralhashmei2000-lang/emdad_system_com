@@ -798,30 +798,35 @@ class ImdSelect<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
+    final compact = ImdCompact.of(context);
     final has = items.any((e) => e.$1 == value);
-    return DropdownButtonFormField<T>(
-      initialValue: has ? value : null,
-      isExpanded: true,
-      icon: ImdIcon('chevron-down', size: 16, color: c.muted),
-      dropdownColor: c.surface,
-      borderRadius: BorderRadius.circular(10),
-      // الخط من القالب لا ثابتًا: المستخدم يختاره من الإعدادات.
-      style: TextStyle(
-          fontSize: ImdCompact.of(context) ? 13 : 14,
-          color: c.text,
-          fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily),
-      hint: hint == null
-          ? null
-          : Text(hint!,
-              style: TextStyle(
-                  color: c.faint,
-                  fontSize: ImdCompact.of(context) ? 12.5 : 14)),
-      decoration: imdFieldDecoration(context, dense: dense),
-      items: [
-        for (final e in items)
-          DropdownMenuItem<T>(value: e.$1, child: Text(e.$2, overflow: TextOverflow.ellipsis)),
-      ],
-      onChanged: onChanged,
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+          minHeight: compact ? ImdSizes.compactField : ImdSizes.touchMin),
+      child: DropdownButtonFormField<T>(
+        initialValue: has ? value : null,
+        isExpanded: true,
+        icon: ImdIcon('chevron-down', size: 16, color: c.muted),
+        dropdownColor: c.surface,
+        borderRadius: BorderRadius.circular(10),
+        // الخط من القالب لا ثابتًا: المستخدم يختاره من الإعدادات.
+        style: TextStyle(
+            fontSize: compact ? 13 : 14,
+            color: c.text,
+            fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily),
+        hint: hint == null
+            ? null
+            : Text(hint!,
+                style: TextStyle(
+                    color: c.faint,
+                    fontSize: compact ? 12.5 : 14)),
+        decoration: imdFieldDecoration(context, dense: dense),
+        items: [
+          for (final e in items)
+            DropdownMenuItem<T>(value: e.$1, child: Text(e.$2, overflow: TextOverflow.ellipsis)),
+        ],
+        onChanged: onChanged,
+      ),
     );
   }
 }

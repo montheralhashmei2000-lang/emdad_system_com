@@ -568,48 +568,18 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
       ImdICard(
         title: 'بيانات السند الرئيسية',
         icon: 'clipboard',
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (mobile) ...[
-            whField,
-            const SizedBox(height: 8),
-            supField,
-            const SizedBox(height: 8),
-            dateField,
-            const SizedBox(height: 8),
-            refField,
-          ] else ...[
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(flex: 2, child: whField),
-              const SizedBox(width: 8),
-              Expanded(flex: 2, child: supField),
-              const SizedBox(width: 8),
-              SizedBox(width: 192, child: dateField),
-            ]),
-            const SizedBox(height: 8),
-            Align(alignment: AlignmentDirectional.centerStart, child: SizedBox(width: 353, child: refField)),
-          ],
+        child: ImdCompact(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ImdFormGrid(children: [whField, supField, dateField, refField]),
           const SizedBox(height: 10),
-          if (mobile) ...[
+          ImdFormGrid(children: [
             fld('لجنة الفحص (رقابة)', _c1),
-            const SizedBox(height: 8),
             fld('المراجعة والتفتيش', _c2),
-            const SizedBox(height: 8),
             fld('التدقيق', _c3),
-            const SizedBox(height: 8),
             fld('رقم الفاتورة/التاجر', _inv),
-          ] else
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(child: fld('لجنة الفحص (رقابة)', _c1)),
-              const SizedBox(width: 8),
-              Expanded(child: fld('المراجعة والتفتيش', _c2)),
-              const SizedBox(width: 8),
-              Expanded(child: fld('التدقيق', _c3)),
-              const SizedBox(width: 8),
-              Expanded(flex: 2, child: fld('رقم الفاتورة/التاجر', _inv)),
-            ]),
+          ]),
           const SizedBox(height: 10),
-          fld('ملاحظات', _notes),
-        ]),
+          ImdCollapsibleSection(title: 'ملاحظات', child: ImdFld(controller: _notes)),
+        ])),
       ),
       ImdICard(
         title: 'ماسح الباركود / الإضافة السريعة',

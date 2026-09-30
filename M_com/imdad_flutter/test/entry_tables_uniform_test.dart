@@ -81,9 +81,9 @@ void main() {
     expect(compact, isTrue, reason: 'الكثافة تُعلَن مرةً فوق الجدول لا لكل حقل');
   });
 
-  test('ارتفاع الحقل المدمج ٣٠ على سطح المكتب، و٤٠ على اللمس (حدُّ إتاحة)', () {
+  test('ارتفاع الحقل المدمج ٣٤ على سطح المكتب، و٤٠ على اللمس (حدُّ إتاحة)', () {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
-    expect(ImdSizes.compactField, 30, reason: 'المواصفة ٣٠–٣٢ لسطح المكتب');
+    expect(ImdSizes.compactField, 34, reason: 'مطابقةً لحقل الصنف');
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     expect(ImdSizes.compactField, 40, reason: 'هدف اللمس لا يُصغَّر تحت ٤٠');
     debugDefaultTargetPlatformOverride = null;

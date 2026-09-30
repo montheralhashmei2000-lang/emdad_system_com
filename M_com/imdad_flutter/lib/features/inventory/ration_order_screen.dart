@@ -689,10 +689,10 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
 
   Widget _form() {
     final checks = _checks();
-    return Column(
+    return ImdCompact(child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ImdF2(children: [
+        ImdFormGrid(children: [
           ImdLabeled(
             'نوع الطلبية *',
             ImdSelect<String>(
@@ -812,7 +812,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
         else
           _linesTableEditor(context),
         const SizedBox(height: 10),
-        ImdLabeled('ملاحظات', ImdFld(controller: _notes, maxLines: 2)),
+        ImdCollapsibleSection(title: 'ملاحظات', child: ImdFld(controller: _notes, maxLines: 2)),
         if (_lines.isNotEmpty || _requesting.isNotEmpty) ...[
           const SizedBox(height: 12),
           ImdValidationBox(title: 'مراجعة الطلبية', items: checks),
@@ -829,7 +829,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
             ImdButton.outline(label: 'إلغاء', icon: 'x', onPressed: _resetForm),
         ]),
       ],
-    );
+    ));
   }
 
   Widget _table(bool can) => ImdTable(

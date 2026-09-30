@@ -446,23 +446,29 @@ class ImdDateField extends StatelessWidget {
                 );
                 if (d != null) onChanged(isoDay(d));
               },
-        child: InputDecorator(
-          decoration: imdFieldDecoration(context, readOnly: !enabled).copyWith(
-            suffixIcon: Padding(
-              padding: const EdgeInsetsDirectional.only(end: 10),
-              child: ImdIcon('calendar', size: 16, color: c.muted),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+              minHeight: ImdCompact.of(context)
+                  ? ImdSizes.compactField
+                  : ImdSizes.touchMin),
+          child: InputDecorator(
+            decoration: imdFieldDecoration(context, readOnly: !enabled).copyWith(
+              suffixIcon: Padding(
+                padding: const EdgeInsetsDirectional.only(end: 10),
+                child: ImdIcon('calendar', size: 16, color: c.muted),
+              ),
+              suffixIconConstraints:
+                  const BoxConstraints(minWidth: 0, minHeight: 0),
             ),
-            suffixIconConstraints:
-                const BoxConstraints(minWidth: 0, minHeight: 0),
+            // عرض حقل date في كروم بالعربية: يوم/شهر/سنة بأرقام هندية.
+            child: Text(_display(value),
+                textAlign: TextAlign.start,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: ImdCompact.of(context) ? 12.5 : 14,
+                    color: value.isEmpty ? c.faint : c.text)),
           ),
-          // عرض حقل date في كروم بالعربية: يوم/شهر/سنة بأرقام هندية.
-          child: Text(_display(value),
-              textAlign: TextAlign.start,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: ImdCompact.of(context) ? 12.5 : 14,
-                  color: value.isEmpty ? c.faint : c.text)),
         ),
       ),
     );

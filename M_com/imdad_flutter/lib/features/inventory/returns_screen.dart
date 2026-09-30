@@ -341,7 +341,6 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
       );
 
   List<Widget> _unitForm(BuildContext context) {
-    final mobile = ImdBp.of(context).mobile;
     final fields = [
       _lab('المستودع المستلم *', _whSelect(_uWh, (v) {
         setState(() => _uWh = v);
@@ -388,19 +387,8 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
       ImdICard(
         title: 'بيانات مرتجع الوحدة',
         icon: 'clipboard',
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (mobile)
-            for (final f in fields) Padding(padding: const EdgeInsets.only(bottom: 8), child: f)
-          else
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(child: fields[0]),
-              const SizedBox(width: 8),
-              Expanded(child: fields[1]),
-              const SizedBox(width: 8),
-              SizedBox(width: 192, child: fields[2]),
-              const SizedBox(width: 8),
-              SizedBox(width: 192, child: fields[3]),
-            ]),
+        child: ImdCompact(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ImdFormGrid(children: fields),
           const SizedBox(height: 10),
           const ImdRowLabel('حالة الأصناف المرتجعة'),
           ImdTargetPills<String>(
@@ -411,8 +399,9 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
               ImdTab('DAMAGED', '💥 تالفة — تُسجَّل إتلافًا (بدون إضافة للرصيد)'),
             ],
           ),
-          _lab('ملاحظات', ImdFld(controller: _uNotes)),
-        ]),
+          const SizedBox(height: 10),
+          ImdCollapsibleSection(title: 'ملاحظات', child: ImdFld(controller: _uNotes)),
+        ])),
       ),
       if (ImdBp.of(context).mobile)
         for (final (i, r) in _uRows.indexed)
@@ -424,7 +413,6 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
   }
 
   List<Widget> _supplierForm(BuildContext context) {
-    final mobile = ImdBp.of(context).mobile;
     final fields = [
       _lab('المستودع المرسل منه *', _whSelect(_sWh, (v) {
         setState(() => _sWh = v);
@@ -471,35 +459,16 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
       ImdICard(
         title: 'بيانات مرتجع المورّد',
         icon: 'clipboard',
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (mobile)
-            for (final f in fields) Padding(padding: const EdgeInsets.only(bottom: 8), child: f)
-          else
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(child: fields[0]),
-              const SizedBox(width: 8),
-              Expanded(child: fields[1]),
-              const SizedBox(width: 8),
-              SizedBox(width: 192, child: fields[2]),
-              const SizedBox(width: 8),
-              SizedBox(width: 192, child: fields[3]),
-            ]),
+        child: ImdCompact(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ImdFormGrid(children: fields),
           const SizedBox(height: 8),
-          if (mobile) ...[
-            _lab('مرجع سند التوريد الأصلي', ImdFld(controller: _sOrig, hint: 'مثال: و-000012')),
-            const SizedBox(height: 8),
-            _lab('سبب الإرجاع / ملاحظات', ImdFld(controller: _sNotes, hint: 'مواصفات غير مطابقة، تلف بالنقل...أو غيره', onChanged: (_) => setState(() {}))),
-          ] else
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(child: _lab('مرجع سند التوريد الأصلي', ImdFld(controller: _sOrig, hint: 'مثال: و-000012', onChanged: (_) => setState(() {})))),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 2,
-                child: _lab('سبب الإرجاع / ملاحظات',
-                    ImdFld(controller: _sNotes, hint: 'مواصفات غير مطابقة، تلف بالنقل...أو غيره', onChanged: (_) => setState(() {}))),
-              ),
-            ]),
-        ]),
+          _lab('مرجع سند التوريد الأصلي', ImdFld(controller: _sOrig, hint: 'مثال: و-000012', onChanged: (_) => setState(() {}))),
+          const SizedBox(height: 8),
+          ImdCollapsibleSection(
+            title: 'سبب الإرجاع / ملاحظات',
+            child: ImdFld(controller: _sNotes, hint: 'مواصفات غير مطابقة، تلف بالنقل...أو غيره', onChanged: (_) => setState(() {})),
+          ),
+        ])),
       ),
       if (ImdBp.of(context).mobile)
         for (final (i, r) in _sRows.indexed)
