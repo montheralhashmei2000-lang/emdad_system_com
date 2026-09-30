@@ -2,6 +2,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/core/security/auth_service.dart';
+import 'package:imdad/core/ui/imd_widgets.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/repos/settings_repo.dart';
 import 'package:imdad/domain/print_layout.dart';
@@ -60,8 +61,11 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// أيقونات الشاشة رسوم SVG، فيُعثر على الأزرار عبر تلميحاتها.
-  Finder buttonsByTip(String tip) => find.byTooltip(tip);
+  /// أيقونات الشاشة رسوم SVG، فيُعثر على الأزرار بحقل `tooltip` في
+  /// `ImdIconButton` أو بتسمية `Semantics` (Tooltip حُذف من الاثنين).
+  Finder buttonsByTip(String tip) => find.byWidgetPredicate((w) =>
+      (w is ImdIconButton && w.tooltip == tip) ||
+      (w is Semantics && w.properties.label == tip));
 
   Future<PrintLayout> saved() => SettingsRepo(db).printLayout();
 

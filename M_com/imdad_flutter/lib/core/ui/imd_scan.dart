@@ -139,19 +139,16 @@ class ImdScanButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: 'مسح الباركود بالكاميرا',
-      child: ImdButton.outline(
-        label: '',
-        icon: 'camera',
-        small: true,
-        onPressed: () async {
-          final v = await ImdScanner.scan(context);
-          if (v == null || v.isEmpty) return;
-          controller.text = v;
-          onScanned?.call(v);
-        },
-      ),
+    return ImdButton.outline(
+      label: '',
+      icon: 'camera',
+      small: true,
+      onPressed: () async {
+        final v = await ImdScanner.scan(context);
+        if (v == null || v.isEmpty) return;
+        controller.text = v;
+        onScanned?.call(v);
+      },
     );
   }
 }

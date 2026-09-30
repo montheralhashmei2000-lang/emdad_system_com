@@ -64,7 +64,10 @@ void main() {
     }
   }
 
-  Finder copyBtn() => find.byTooltip('دفعة أخرى من هذا الصنف');
+  // Tooltip حُذف من ImdIconButton (كان يُعيد إنتاج عطل التخطيط أثناء
+  // postFrameCallbacks)؛ العثور على الزر الآن بحقل `tooltip` نفسه لا بشجرة Tooltip.
+  Finder copyBtn() => find.byWidgetPredicate(
+      (w) => w is ImdIconButton && w.tooltip == 'دفعة أخرى من هذا الصنف');
   Finder rows() => find.byType(ImdItemPicker);
 
   /// حقول السطر الأول نصًّا بترتيبها: ٠ الصنف، ١ الوحدة، ٢ الكمية — صارت

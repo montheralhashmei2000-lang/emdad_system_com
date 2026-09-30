@@ -805,8 +805,8 @@ class _Topbar extends StatelessWidget {
               child: GestureDetector(
                 onTap: canSwitch ? onSwitchSpace : null,
                 behavior: HitTestBehavior.opaque,
-                child: Tooltip(
-                  message: canSwitch ? 'تبديل القسم' : AppSpace.label(space),
+                child: Semantics(
+                  label: canSwitch ? 'تبديل القسم' : AppSpace.label(space),
                   child: Container(
                     height: 36,
                     padding: EdgeInsetsDirectional.fromSTEB(
@@ -925,7 +925,7 @@ class _StatusPill extends StatelessWidget {
       ]),
     );
     final tappable = onTap == null ? pill : InkWell(onTap: onTap, borderRadius: BorderRadius.circular(999), child: pill);
-    return tooltip == null || tooltip!.isEmpty ? tappable : Tooltip(message: tooltip!, child: tappable);
+    return tooltip == null || tooltip!.isEmpty ? tappable : Semantics(label: tooltip!, child: tappable);
   }
 }
 
@@ -1180,9 +1180,8 @@ class _RailTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.imd;
     final fg = danger ? c.danger : (on ? c.sideText : c.sideMuted);
-    return Tooltip(
-      message: label,
-      waitDuration: const Duration(milliseconds: 300),
+    return Semantics(
+      label: label,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),

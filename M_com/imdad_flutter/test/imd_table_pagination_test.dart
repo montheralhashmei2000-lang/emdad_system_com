@@ -20,9 +20,13 @@ void main() {
 
   /// ٥٠ صفًّا داخل `SingleChildScrollView` تدفع شريط الترقيم خارج نافذة
   /// الاختبار الافتراضية (٦٠٠ ارتفاعًا)، فيُمرَّر إليه أولًا قبل نقره.
+  // Tooltip حُذف من ImdIconButton؛ العثور على الزر بحقل `tooltip` نفسه.
+  Finder pagerBtn(String tooltip) =>
+      find.byWidgetPredicate((w) => w is ImdIconButton && w.tooltip == tooltip);
+
   Future<void> tapPager(WidgetTester tester, String tooltip) async {
-    await tester.ensureVisible(find.byTooltip(tooltip));
-    await tester.tap(find.byTooltip(tooltip));
+    await tester.ensureVisible(pagerBtn(tooltip));
+    await tester.tap(pagerBtn(tooltip));
     await tester.pump();
   }
 

@@ -740,8 +740,8 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
     required VoidCallback onTap,
   }) {
     final c = context.imd;
-    return Tooltip(
-      message: tip,
+    return Semantics(
+      label: tip,
       child: MouseRegion(
         cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
         child: GestureDetector(

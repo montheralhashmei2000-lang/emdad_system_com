@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/core/security/auth_service.dart';
 import 'package:imdad/core/security/perm.dart';
 import 'package:imdad/core/theme/app_theme.dart';
+import 'package:imdad/core/ui/imd_widgets.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/sync/auto_sync.dart';
 import 'package:imdad/data/repos/settings_repo.dart';
@@ -150,10 +151,10 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('العمليات المخزنية'), findsNothing,
           reason: 'القضيب أيقوناتٌ لا أسماء');
-      // والاسم يبقى في التلميح لمن يبحث.
+      // والاسم يبقى في تسمية Semantics لمن يبحث (Tooltip حُذف من القضيب).
       expect(
           find.byWidgetPredicate(
-              (w) => w is Tooltip && w.message == 'استلام'),
+              (w) => w is Semantics && w.properties.label == 'استلام'),
           findsWidgets);
     });
 
@@ -223,7 +224,8 @@ void main() {
     // تبديل القسم انتقل إلى الشريط العلوي؛ يُعرض اسم القسم لا نصّ «تبديل
     // القسم» (ذاك في تلميح الزر وحده، كما تطلب المواصفة: اسم القسم المفتوح
     // ظاهرٌ دومًا، والتبديل فعلٌ لا عنوان).
-    await click(find.byTooltip('تبديل القسم'));
+    await click(find.byWidgetPredicate(
+        (w) => w is Semantics && w.properties.label == 'تبديل القسم'));
     final error = tester.takeException();
     expect(error, isNull, reason: '$error');
     // بطاقتا القسمين معروضتان.
@@ -267,7 +269,10 @@ void main() {
     expect(tester.takeException(), isNull);
 
     expect(find.text(AppSpace.label(AppSpace.supply)), findsOneWidget);
-    expect(find.byTooltip('الوضع الداكن'), findsOneWidget);
+    expect(
+        find.byWidgetPredicate(
+            (w) => w is ImdIconButton && w.tooltip == 'الوضع الداكن'),
+        findsOneWidget);
   });
 
   testWidgets('زرّ تبديل السمة يبدّل السطوع الفعلي ويحفظه', (tester) async {
@@ -276,7 +281,8 @@ void main() {
     expect(Theme.of(tester.element(find.byType(HomeShell))).brightness,
         Brightness.light);
 
-    await tester.tap(find.byTooltip('الوضع الداكن'));
+    await tester.tap(find.byWidgetPredicate(
+        (w) => w is ImdIconButton && w.tooltip == 'الوضع الداكن'));
     await pump(tester);
 
     expect(Theme.of(tester.element(find.byType(HomeShell))).brightness,

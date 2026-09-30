@@ -146,8 +146,8 @@ class _UnitsScreenState extends State<UnitsScreen> {
             ImdF2(children: [
               ImdLabeled(
                 'كود الوحدة *',
-                Tooltip(
-                  message: 'يتم توليد الكود تلقائيًا',
+                Semantics(
+                  label: 'يتم توليد الكود تلقائيًا',
                   child: TextField(
                     controller: _code,
                     readOnly: true,

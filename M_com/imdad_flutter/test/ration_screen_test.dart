@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/core/ids.dart';
 import 'package:imdad/core/security/auth_service.dart';
 import 'package:imdad/core/theme/app_theme.dart';
+import 'package:imdad/core/ui/imd_widgets.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/repos/catalog_repo.dart';
 import 'package:imdad/data/repos/ration_repo.dart';
@@ -68,7 +69,9 @@ void main() {
   /// يفتح ورقة الاعتماد. الزر في آخر الصفحة، فيُمرَّر إليه أولًا: نقرةٌ على
   /// ما هو خارج إطار الاختبار لا تصيب هدفها.
   Future<void> openApprove(WidgetTester tester) async {
-    final btn = find.byTooltip('اعتماد بالكميات');
+    // Tooltip حُذف من ImdIconButton؛ العثور على الزر بحقل `tooltip` نفسه.
+    final btn = find.byWidgetPredicate(
+        (w) => w is ImdIconButton && w.tooltip == 'اعتماد بالكميات');
     await tester.ensureVisible(btn);
     await tester.pumpAndSettle();
     await tester.tap(btn, warnIfMissed: false);
@@ -127,7 +130,10 @@ void main() {
     await seedPending();
     await show(tester);
     expect(tester.takeException(), isNull);
-    expect(find.byTooltip('اعتماد بالكميات'), findsOneWidget);
+    expect(
+        find.byWidgetPredicate(
+            (w) => w is ImdIconButton && w.tooltip == 'اعتماد بالكميات'),
+        findsOneWidget);
   });
 
   testWidgets('ورقة الاعتماد تفتح بالمطلوب وتُظهر رصيد المورِّد',

@@ -350,10 +350,8 @@ class ImdIconButton extends StatelessWidget {
   final ImdBtnKind kind;
 
   @override
-  Widget build(BuildContext context) {
-    final b = ImdButton(label: '', icon: icon, onPressed: onPressed, kind: kind, small: true);
-    return tooltip == null ? b : Tooltip(message: tooltip!, child: b);
-  }
+  Widget build(BuildContext context) =>
+      ImdButton(label: '', icon: icon, onPressed: onPressed, kind: kind, small: true);
 }
 
 /// تبويبات كبسولية؛ النشط أسود.

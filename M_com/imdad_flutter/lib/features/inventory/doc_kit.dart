@@ -797,11 +797,9 @@ class _ImdItemPickerState extends State<ImdItemPicker> {
                             );
                             return detail.isEmpty
                                 ? row
-                                : Tooltip(
-                                    message: '${it.code} — ${it.name}'
+                                : Semantics(
+                                    label: '${it.code} — ${it.name}'
                                         '\n$detail',
-                                    waitDuration:
-                                        const Duration(milliseconds: 400),
                                     child: row,
                                   );
                           },

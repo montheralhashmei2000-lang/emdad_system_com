@@ -418,27 +418,24 @@ class _EyeBtnState extends State<_EyeBtn> {
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
-    return Tooltip(
-      message: widget.on ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور',
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: GestureDetector(
-          onTap: widget.onTap,
-          child: Container(
-            width: 36,
-            height: 36,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: _hover ? c.hover : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: ImdIcon(
-              'eye',
-              size: 18,
-              color: widget.on ? c.accent : (_hover ? c.text : c.muted),
-            ),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          width: 36,
+          height: 36,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: _hover ? c.hover : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: ImdIcon(
+            'eye',
+            size: 18,
+            color: widget.on ? c.accent : (_hover ? c.text : c.muted),
           ),
         ),
       ),
@@ -579,8 +576,8 @@ class _ExitBtnState extends State<_ExitBtn> {
   Widget build(BuildContext context) {
     final c = context.imd;
     final fg = _hover ? c.danger : c.text2;
-    return Tooltip(
-      message: 'إغلاق النظام',
+    return Semantics(
+      label: 'إغلاق النظام',
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hover = true),

@@ -113,9 +113,7 @@ class _NotificationBellState extends State<NotificationBell> {
     final unread = NotifyRules.unreadOf(_items);
     final danger = _items.any((n) => !n.read && n.severity == NotifySeverity.danger);
     final c = context.imd;
-    return Tooltip(
-      message: unread == 0 ? 'لا تنبيهات جديدة' : '$unread تنبيهًا جديدًا',
-      child: Stack(
+    return Stack(
         clipBehavior: Clip.none,
         children: [
           ImdIconButton(icon: 'bell', onPressed: _open),
@@ -143,8 +141,7 @@ class _NotificationBellState extends State<NotificationBell> {
               ),
             ),
         ],
-      ),
-    );
+      );
   }
 }
 
