@@ -67,13 +67,15 @@ void main() {
   Finder copyBtn() => find.byTooltip('دفعة أخرى من هذا الصنف');
   Finder rows() => find.byType(ImdItemPicker);
 
-  /// حقول السطر الأول نصًّا: الأول حقل المنتقي والثاني الكمية (الوحدة قائمة
-  /// منسدلة لا حقل نص). مُقيَّدٌ بجدول سطح المكتب لا الشجرة كلها — حقول رأس
+  /// حقول السطر الأول نصًّا بترتيبها: ٠ الصنف، ١ الوحدة، ٢ الكمية — صارت
+  /// الوحدة حقلًا يُكتب فيه أو يُختار (ImdUnitPicker) بدل قائمةٍ منسدلة،
+  /// فدخلت في العدّ. مُقيَّدٌ بجدول سطح المكتب لا الشجرة كلها: حقول رأس
   /// النموذج (لجنة الفحص، الملاحظات…) تستخدم TextField أيضًا، وهذا الاختبار
   /// يعمل بعرض سطح مكتب دومًا (١٥٠٠) فجدول الأصناف هو ImdTable الوحيد.
   Finder fieldInFirstRow(int i) => find
       .descendant(of: find.byType(ImdTable), matching: find.byType(TextField))
       .at(i);
+  const qtyField = 2;
 
   /// المنتقي يفتح قائمته بالكتابة، وEnter يختار أول نتيجة.
   Future<void> pickFirstItem(WidgetTester tester) async {
@@ -112,7 +114,7 @@ void main() {
     await pump(tester);
     await pickFirstItem(tester);
 
-    await tester.enterText(fieldInFirstRow(1), '5');
+    await tester.enterText(fieldInFirstRow(qtyField), '5');
     await tester.pump();
     final before = tester.widgetList(rows()).length;
 

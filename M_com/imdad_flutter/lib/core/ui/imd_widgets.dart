@@ -897,6 +897,8 @@ class ImdTable extends StatefulWidget {
     this.headerForeground,
     this.headerPadding,
     this.cellPadding,
+    this.gridLines = false,
+    this.cellFontSize,
   }) : assert(rowKeys == null || rowKeys.length == rows.length,
             'rowKeys.length يجب أن يساوي rows.length — مفتاحٌ واحدٌ لكل صفّ');
 
@@ -980,6 +982,16 @@ class ImdTable extends StatefulWidget {
   /// حشوة خلايا الجسم — `null` (الافتراضي) ⇒ 12 أفقيًّا و9 رأسيًّا كالمعتاد.
   /// جداول الإدخال الكثيفة تُضيّقها لتوفير المساحة على عشرات الأسطر.
   final EdgeInsets? cellPadding;
+
+  /// خطوط شبكةٍ بين الخلايا رأسيًّا وأفقيًّا، وإطارٌ خارجيٌّ أغمق قليلًا.
+  ///
+  /// جدول القراءة يفصل صفوفه بخطٍّ أفقيٍّ وحده — أهدأ للعين حين يُمسح
+  /// عموديًّا. أمّا جدول الإدخال فخلاياه حقولٌ تُملأ واحدةً واحدة، فحدُّ
+  /// كل خليةٍ يبيّن أين تبدأ وأين تنتهي.
+  final bool gridLines;
+
+  /// حجم خطّ خلايا الجسم — `null` (الافتراضي) ⇒ 13.5 كالمعتاد.
+  final double? cellFontSize;
 
   @override
   State<ImdTable> createState() => _ImdTableState();
@@ -1255,8 +1267,9 @@ class _ImdTableState extends State<ImdTable> {
                   ? (c.isDark ? const Color(0xFF26262A) : c.tableHead)
                   : (widget.rowColor?.call(i) ?? (widget.zebra && i.isOdd ? _zebraColor(context) : null)),
               // آخر صفٍّ من الصفحة **المعروضة** لا آخر صفٍّ في القائمة كلها،
-              // وإلا بقي خط الفاصل تحت كل الصفحات إلا الأخيرة.
-              border: (i == pageEnd - 1 && widget.footer == null)
+              // وإلا بقي خط الفاصل تحت كل الصفحات إلا الأخيرة. ومع
+              // [gridLines] يرسمها `TableBorder` فلا تُزدوج هنا.
+              border: (widget.gridLines || (i == pageEnd - 1 && widget.footer == null))
                   ? null
                   : Border(bottom: BorderSide(color: c.tableRowLine)),
             ),
@@ -1265,7 +1278,8 @@ class _ImdTableState extends State<ImdTable> {
                 _cell(
                   cols[j],
                   DefaultTextStyle.merge(
-                    style: TextStyle(fontSize: 13.5, color: c.text, height: 1.5),
+                    style: TextStyle(
+                        fontSize: widget.cellFontSize ?? 13.5, color: c.text, height: 1.5),
                     child: j < rows[i].length ? rows[i][j] : const SizedBox.shrink(),
                   ),
                   row: i,
@@ -1288,21 +1302,35 @@ class _ImdTableState extends State<ImdTable> {
             ],
           ),
       ];
+      // الشبكة من `TableBorder` لا من زخرفة كل خلية: هي وحدها تعرف حدود
+      // الأعمدة بعد توزيع العرض، فلا ينزاح خطٌّ عن عموده.
+      final grid = !widget.gridLines
+          ? null
+          : TableBorder(
+              verticalInside: BorderSide(color: c.line),
+              horizontalInside: BorderSide(color: c.tableRowLine),
+            );
       if (!sticky) {
-        body = Table(columnWidths: widths, children: [headerRow, ...bodyRows]);
+        body = Table(columnWidths: widths, border: grid, children: [headerRow, ...bodyRows]);
       } else {
         // `Flexible` لا `Expanded`: جدولٌ أقصر من السقف يأخذ ارتفاعه لا السقف،
         // فلا يبقى تحته فراغٌ أبيض.
         body = Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Table(columnWidths: widths, children: [headerRow]),
+            // الرأس بلا شبكةٍ أفقية: حدّه السفلي هو الفاصل بينه وبين الجسم،
+            // ورسمُهما معًا يُثخّن الخط.
+            Table(
+              columnWidths: widths,
+              border: grid == null ? null : TableBorder(verticalInside: grid.verticalInside),
+              children: [headerRow],
+            ),
             Flexible(
               child: Scrollbar(
                 controller: _vScroll,
                 child: SingleChildScrollView(
                   controller: _vScroll,
-                  child: Table(columnWidths: widths, children: bodyRows),
+                  child: Table(columnWidths: widths, border: grid, children: bodyRows),
                 ),
               ),
             ),
@@ -1314,7 +1342,9 @@ class _ImdTableState extends State<ImdTable> {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: c.surface,
-        border: Border.all(color: c.line),
+        // إطارٌ خارجيٌّ أغمق قليلًا مع الشبكة، فيُقرأ الجدول كتلةً واحدة
+        // لا شبكةً سائبة.
+        border: Border.all(color: widget.gridLines ? c.lineStrong : c.line),
         borderRadius: BorderRadius.circular(ImdBp.of(context).mobile ? 10 : ImdSizes.radius),
       ),
       child: body,

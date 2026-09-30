@@ -643,6 +643,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     bool refill,
     bool hasExpiry,
     String meta,
+    Widget balance,
     Widget picker,
     Widget unit,
     Widget qty,
@@ -674,13 +675,21 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
         return 'رصيد ${nf(b.qty)} ${b.unit}';
       },
     );
-    final unit = ImdSelect<String>(
+    // رصيد المستودع المختار — عمودٌ في الجدول لا سطرٌ تحت اسم الصنف: العين
+    // تمسحه في عمودٍ واحد مع بقية الأرقام. ثانويٌّ فخطّه أصغر ولونه أهدأ.
+    final balance = ImdEntryBalanceCell(
+      it == null ? '' : () {
+        final b = displayBalance(it, _whBal[it.id] ?? 0);
+        return '${nf(b.qty)} ${b.unit}';
+      }(),
+    );
+    final unit = ImdUnitPicker(
+      units: [for (final u in units) u.name],
       value: r.unit,
-      items: units.isEmpty ? const [('', '—')] : [for (final u in units) (u.name, u.name)],
       onChanged: (v) => setState(() {
         // تغيير الوحدة يعيد احتساب الكمية بثبات الكمية بالوحدة الأساسية:
         // ١١٠٠ كجم ⇒ ٢٧٫٥ كيسًا، لا ١١٠٠ كيسًا.
-        final next = v ?? '';
+        final next = v;
         final item = _item(r.itemId);
         final qty = double.tryParse(r.qty.text.trim()) ?? 0;
         if (item != null && qty > 0 && r.unit.isNotEmpty && next.isNotEmpty && next != r.unit) {
@@ -737,6 +746,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     return (
       refill: refill,
       hasExpiry: hasExpiry,
+      balance: balance,
       meta: meta,
       picker: picker,
       unit: unit,
@@ -795,15 +805,15 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
   /// الواحد: يظهر العمود إن احتاجه **أي** صفٍّ حاليًّا، وتبقى خليته فارغةً
   /// فيما عداه من الصفوف — فلا تتغيّر أعمدة الجدول وهي تُقرأ.
   Widget _desktopTable(BuildContext context) {
-    final c = context.imd;
     final fields = [for (final r in _rows) _rowFields(r)];
     final anyRefill = fields.any((f) => f.refill);
     final anyExpiry = fields.any((f) => f.hasExpiry);
-    Widget cell(Widget child) => SizedBox(height: 40, child: Center(child: child));
+    const cell = ImdEntryTable.cell;
 
-    return ImdTable(
+    return ImdEntryTable(
       columns: [
         const ImdCol('الصنف', flex: 3),
+        const ImdCol('الرصيد', width: 96),
         const ImdCol('الوحدة', width: 112),
         const ImdCol('الكمية', width: 88),
         if (anyRefill) const ImdCol('نوع العملية', width: 150),
@@ -813,15 +823,11 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
         const ImdCol('', width: 96),
       ],
       rowKeys: [for (final r in _rows) r.key],
-      cards: false,
-      maxHeight: ImdSizes.tableMaxHeight(context),
-      headerBackground: c.accent,
-      headerForeground: c.onAccent,
-      cellPadding: const EdgeInsets.symmetric(horizontal: 6),
       rows: [
         for (final f in fields)
           [
             cell(f.picker),
+            cell(f.balance),
             cell(f.unit),
             cell(f.qty),
             if (anyRefill) cell(f.refill ? f.cy : const SizedBox.shrink()),

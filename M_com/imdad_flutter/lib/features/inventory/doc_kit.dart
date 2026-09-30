@@ -297,6 +297,233 @@ class _DashedRRect extends CustomPainter {
   bool shouldRepaint(covariant _DashedRRect old) => old.color != color;
 }
 
+/// حقلٌ يُكتب فيه أو يُختار من قائمةٍ منسدلة — نصوصٌ بسيطة لا كائنات.
+///
+/// يتقاسم عقد التفاعل مع [ImdItemPicker] حرفيًّا (كتابةٌ تُصفّي، أسهمٌ
+/// وEnter وEsc، إغلاقٌ بفقد التركيز)، ومعه الاحترازان نفساهما: الإبراز
+/// عبر `ValueNotifier` لا `setState` (نداء المرور يقع في
+/// `postFrameCallbacks`)، وعرض القائمة من `LayerLink.leaderSize` لا من
+/// قراءة تخطيطٍ أثناء البناء.
+class ImdTypeAhead extends StatefulWidget {
+  const ImdTypeAhead({
+    super.key,
+    required this.options,
+    required this.value,
+    required this.onChanged,
+    this.hint,
+    this.empty = 'لا نتائج',
+  });
+
+  final List<String> options;
+  final String value;
+  final ValueChanged<String> onChanged;
+  final String? hint;
+  final String empty;
+
+  @override
+  State<ImdTypeAhead> createState() => _ImdTypeAheadState();
+}
+
+class _ImdTypeAheadState extends State<ImdTypeAhead> {
+  final _ctrl = TextEditingController();
+  final _focus = FocusNode();
+  final _link = LayerLink();
+  final _portal = OverlayPortalController();
+  final _idx = ValueNotifier<int>(-1);
+  List<String> _rows = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _sync();
+    _focus.addListener(() {
+      if (_focus.hasFocus) {
+        _open('');
+      } else {
+        Future.delayed(const Duration(milliseconds: 150), () {
+          if (!mounted || _focus.hasFocus) return;
+          _close();
+          _sync();
+        });
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant ImdTypeAhead old) {
+    super.didUpdateWidget(old);
+    if (old.value != widget.value || old.options != widget.options) _sync();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    _idx.dispose();
+    super.dispose();
+  }
+
+  void _sync() => imdSetText(_ctrl, widget.value);
+
+  void _open(String q) {
+    if (!mounted) return;
+    final nq = _ImdItemPickerState.norm(q);
+    _rows = nq.isEmpty
+        ? widget.options
+        : widget.options.where((o) => _ImdItemPickerState.norm(o).contains(nq)).toList();
+    _idx.value = -1;
+    if (!_portal.isShowing) _portal.show();
+    setState(() {});
+  }
+
+  void _close() {
+    if (!mounted) return;
+    if (_portal.isShowing) _portal.hide();
+    _idx.value = -1;
+    setState(() {});
+  }
+
+  void _pick(String v) {
+    if (!mounted) return;
+    widget.onChanged(v);
+    imdSetText(_ctrl, v);
+    _close();
+  }
+
+  KeyEventResult _key(FocusNode _, KeyEvent e) {
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+    if (e.logicalKey == LogicalKeyboardKey.arrowDown ||
+        e.logicalKey == LogicalKeyboardKey.arrowUp) {
+      if (!_portal.isShowing) _open(_ctrl.text);
+      _idx.value = (_idx.value + (e.logicalKey == LogicalKeyboardKey.arrowDown ? 1 : -1))
+          .clamp(0, _rows.isEmpty ? 0 : _rows.length - 1);
+      return KeyEventResult.handled;
+    }
+    if (e.logicalKey == LogicalKeyboardKey.enter && _portal.isShowing && _rows.isNotEmpty) {
+      _pick(_rows[_idx.value >= 0 ? _idx.value : 0]);
+      return KeyEventResult.handled;
+    }
+    if (e.logicalKey == LogicalKeyboardKey.escape) {
+      _close();
+      _sync();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.imd;
+    return CompositedTransformTarget(
+      link: _link,
+      child: OverlayPortal(
+        controller: _portal,
+        overlayChildBuilder: (ctx) => CompositedTransformFollower(
+          link: _link,
+          targetAnchor: Alignment.bottomRight,
+          followerAnchor: Alignment.topRight,
+          offset: const Offset(0, 2),
+          child: Align(
+            alignment: Alignment.topRight,
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: _link.leaderSize?.width ?? 160,
+                constraints: const BoxConstraints(maxHeight: 220),
+                decoration: BoxDecoration(
+                  color: c.surface,
+                  border: Border.all(color: c.line),
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x24101828), blurRadius: 28, offset: Offset(0, 12)),
+                  ],
+                ),
+                child: _rows.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Text(widget.empty, style: TextStyle(fontSize: 12, color: c.muted)),
+                      )
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        padding: EdgeInsets.zero,
+                        itemCount: _rows.length,
+                        itemBuilder: (ctx, i) => MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          onEnter: (_) => _idx.value = i,
+                          child: GestureDetector(
+                            onTapDown: (_) => _pick(_rows[i]),
+                            child: ValueListenableBuilder<int>(
+                              valueListenable: _idx,
+                              builder: (context, idx, child) => Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: i == idx ? c.accentSoft : null,
+                                  border: i == _rows.length - 1
+                                      ? null
+                                      : Border(bottom: BorderSide(color: c.line)),
+                                ),
+                                child: child,
+                              ),
+                              child: Text(_rows[i],
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: 12.5, color: c.text)),
+                            ),
+                          ),
+                        ),
+                      ),
+              ),
+            ),
+          ),
+        ),
+        child: Focus(
+          onKeyEvent: _key,
+          canRequestFocus: false,
+          skipTraversal: true,
+          child: TextField(
+            controller: _ctrl,
+            focusNode: _focus,
+            onChanged: _open,
+            style: TextStyle(fontSize: ImdCompact.of(context) ? 13 : 14, color: c.text),
+            decoration: imdFieldDecoration(context, hint: widget.hint),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// منتقي وحدة القياس: يُكتب أو يُختار.
+///
+/// كانت قائمةً منسدلة وحدها، فمن يعرف وحدته يفتح القائمة ويبحث عنها بعينه.
+/// وهي قائمةٌ قصيرة (وحدات الصنف الواحد)، فالكتابة أسرع من الفتح والمسح.
+/// السلوك نفسه في المنتقيات كلها: كتابةٌ تُصفّي، أسهمٌ وEnter وEsc.
+///
+/// **لا يقبل إلا وحدةً معرَّفة**: الكتابة تصفيةٌ لا إدخالٌ حرّ، فلا تدخل
+/// وحدةٌ لا معامل تحويلٍ لها فتُفسد حساب الكمية بوحدة الأساس.
+class ImdUnitPicker extends StatelessWidget {
+  const ImdUnitPicker({
+    super.key,
+    required this.units,
+    required this.value,
+    required this.onChanged,
+  });
+
+  /// أسماء الوحدات المتاحة لهذا الصنف.
+  final List<String> units;
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) => ImdTypeAhead(
+        options: units,
+        value: value,
+        onChanged: onChanged,
+        hint: 'الوحدة…',
+        empty: 'لا وحدات لهذا الصنف',
+      );
+}
+
 /// منتقي الصنف بالكتابة: بحث بالاسم أو الكود مع توحيد الحروف العربية،
 /// قائمة منسدلة بحد 60 نتيجة (الاسم + الكود صغيرًا)، أسهم وEnter وEsc.
 class ImdItemPicker extends StatefulWidget {
@@ -596,6 +823,77 @@ class _ImdItemPickerState extends State<ImdItemPicker> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// جدول إدخال الأصناف على سطح المكتب — الأسلوب البصري موحَّدٌ **بالبناء**:
+/// كل شاشات السندات تمرّ من هنا، فلا تتفق على تمرير المعاملات نفسها بل
+/// ترثها. ومن أراد تبديل الأسلوب بدّله هنا مرةً واحدة.
+///
+/// رأسٌ ثابتٌ بلون التمييز، خطوط شبكة، خطٌّ ١٢، وحشوةٌ ضيّقة. أمّا الحقول
+/// نفسها فتُصغَّر تلقائيًّا: [ImdCompact] يعلنها فوق الجدول كلّه.
+class ImdEntryTable extends StatelessWidget {
+  const ImdEntryTable({
+    super.key,
+    required this.columns,
+    required this.rows,
+    required this.rowKeys,
+    this.empty = 'لم يُضف صنف بعد',
+  });
+
+  final List<ImdCol> columns;
+  final List<List<Widget>> rows;
+  final List<LocalKey> rowKeys;
+  final String empty;
+
+  /// ارتفاع صفّ الجدول — ثابتٌ فلا يتغيّر بتغيّر محتوى خليةٍ واحدة.
+  static const double rowHeight = 40;
+
+  /// خليةٌ بارتفاعٍ ثابت: الحقل (٣٤) يتوسّطها، فيبقى الصفّ ٤٠ مهما اختلف
+  /// محتوى الخلايا (حقلٌ نصّي أو قائمةٌ أو زرّان).
+  static Widget cell(Widget child) =>
+      SizedBox(height: rowHeight, child: Center(child: child));
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.imd;
+    return ImdCompact(
+      child: ImdTable(
+        columns: columns,
+        rows: rows,
+        rowKeys: rowKeys,
+        empty: empty,
+        cards: false,
+        maxHeight: ImdSizes.tableMaxHeight(context),
+        headerBackground: c.accent,
+        headerForeground: c.onAccent,
+        cellPadding: const EdgeInsets.symmetric(horizontal: 6),
+        gridLines: true,
+        cellFontSize: 12,
+      ),
+    );
+  }
+}
+
+/// خلية «الرصيد» في جدول الإدخال — قراءةٌ لا إدخال.
+///
+/// خطُّها ١١ لا ١٢ ولونها أهدأ: هي سياقٌ يُطمئن قبل كتابة الكمية، لا رقمٌ
+/// يُنافس الحقول على الانتباه. وبلا صنفٍ مختار تبقى شرطةً لا فراغًا، فيُعرف
+/// أن العمود موجودٌ وأن قيمته لم تُعرف بعد.
+class ImdEntryBalanceCell extends StatelessWidget {
+  const ImdEntryBalanceCell(this.text, {super.key});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.imd;
+    final empty = text.trim().isEmpty;
+    return Text(
+      empty ? '—' : text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(fontSize: 11, color: empty ? c.faint : c.muted),
     );
   }
 }

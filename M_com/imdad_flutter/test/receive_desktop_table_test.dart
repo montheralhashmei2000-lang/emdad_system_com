@@ -85,7 +85,7 @@ void main() {
     await pump(tester);
     final table = tester.widget<ImdTable>(deskTable());
     final titles = [for (final c in table.columns) c.label];
-    expect(titles, ['الصنف', 'الوحدة', 'الكمية', '']);
+    expect(titles, ['الصنف', 'الرصيد', 'الوحدة', 'الكمية', '']);
     expect(tester.takeException(), isNull);
   });
 
