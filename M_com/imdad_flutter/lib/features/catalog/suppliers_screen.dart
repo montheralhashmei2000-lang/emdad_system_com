@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/security/auth_service.dart';
 import '../../core/security/perm.dart';
+import '../../core/ui/imd_context_menu.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_layout.dart';
@@ -251,6 +252,19 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
           pageSize: 50,
           maxHeight: ImdSizes.tableMaxHeight(context),
           cards: true,
+          rowMenu: !can
+              ? null
+              : (i) => [
+                    ImdMenuItem(
+                      label: 'تعديل',
+                      icon: 'edit',
+                      onTap: () {
+                        _editId = rows[i].id;
+                        _render();
+                      },
+                    ),
+                    ImdMenuItem(label: 'حذف', icon: 'trash', danger: true, onTap: () => _delete(rows[i])),
+                  ],
           rows: [
             for (final x in rows)
               () {

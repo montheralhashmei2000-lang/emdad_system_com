@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -146,7 +145,7 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
     });
     // زر إغلاق النافذة لا يمرّ بـ `PopScope`، فيُعترض هنا ليُسأل عن التأكيد
     // كما يُسأل زر الرجوع على الهاتف.
-    if (!kIsWeb && Platform.isWindows) {
+    if (Platform.isWindows) {
       windowManager.addListener(this);
       // الإضافة غير مُهيّأة في بيئة الاختبار، فالفشل هنا لا يمنع التطبيق.
       windowManager.setPreventClose(true).catchError((_) {});
@@ -161,7 +160,7 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
 
   @override
   void dispose() {
-    if (!kIsWeb && Platform.isWindows) {
+    if (Platform.isWindows) {
       windowManager.removeListener(this);
       _theme.removeListener(_syncMica);
     }

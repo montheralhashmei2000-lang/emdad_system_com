@@ -378,7 +378,7 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
     final description =
         tool == null ? kReports[i].desc : 'أداة ضمن مركز التقارير';
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
+      cursor: ImdCursor.click,
       child: GestureDetector(
         onTap: () {
           setState(() {

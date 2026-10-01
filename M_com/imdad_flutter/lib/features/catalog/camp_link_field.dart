@@ -86,7 +86,7 @@ class _CampLinkFieldState extends State<CampLinkField> {
             controller: _portal,
             overlayChildBuilder: (ctx) => _popup(ctx),
             child: MouseRegion(
-              cursor: widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+              cursor: widget.enabled ? ImdCursor.click : SystemMouseCursors.basic,
               child: GestureDetector(
                 onTap: widget.enabled ? () => _open(!_portal.isShowing) : null,
                 child: Container(
@@ -163,9 +163,9 @@ class _CampLinkFieldState extends State<CampLinkField> {
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: c.surface,
-                  border: Border.all(color: c.isDark ? const Color(0xFF2C3B35) : const Color(0xFFCFDCD6)),
+                  border: Border.all(color: c.popupLine),
                   borderRadius: BorderRadius.circular(10),
-                  boxShadow: const [BoxShadow(color: Color(0x2E0F281E), blurRadius: 28, offset: Offset(0, 10))],
+                  boxShadow: [BoxShadow(color: c.shadowPopup, blurRadius: 28, offset: const Offset(0, 10))],
                 ),
                 child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   if (widget.camps.length > 6)
@@ -182,15 +182,15 @@ class _CampLinkFieldState extends State<CampLinkField> {
                   _opt(ctx, 'جميع المعسكرات', widget.all, (v) => set(v, v ? [] : widget.ids), bold: true),
                   Flexible(
                     child: widget.camps.isEmpty
-                        ? const Padding(
-                            padding: EdgeInsets.all(10),
+                        ? Padding(
+                            padding: const EdgeInsets.all(10),
                             child: Text('لا توجد معسكرات بعد — أضف المعسكرات أولًا من شاشة الوحدات',
-                                style: TextStyle(fontSize: 12, color: Color(0xFF98A8A0))),
+                                style: TextStyle(fontSize: 12, color: c.faint)),
                           )
                         : list.isEmpty
-                            ? const Padding(
-                                padding: EdgeInsets.all(10),
-                                child: Text('لا نتائج مطابقة', style: TextStyle(fontSize: 12, color: Color(0xFF98A8A0))),
+                            ? Padding(
+                                padding: const EdgeInsets.all(10),
+                                child: Text('لا نتائج مطابقة', style: TextStyle(fontSize: 12, color: c.faint)),
                               )
                             : ListView(shrinkWrap: true, children: [
                                 for (final camp in list)

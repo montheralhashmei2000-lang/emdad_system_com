@@ -564,7 +564,7 @@ class _StrengthScreenState extends State<StrengthScreen> {
     final c = context.imd;
     final on = _mode == value;
     return MouseRegion(
-      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      cursor: enabled ? ImdCursor.click : SystemMouseCursors.basic,
       child: GestureDetector(
         onTap: enabled ? () => _setMode(value) : null,
         child: Container(

@@ -5,12 +5,13 @@ import 'package:imdad/core/theme/app_theme.dart';
 /// ثيم شريط التمرير: سميكٌ، ظاهرٌ دومًا، ومتباينٌ مع خلفيته في كل سمة —
 /// داكنٌ على الفاتحة وفاتحٌ على الداكنة، من onSurface نفسه لا لونين ثابتين.
 void main() {
-  test('السماكة ونصف القطر والظهور الدائم كما في المواصفة', () {
+  test('رفيعٌ ساكنًا ومتمدّدٌ عند المرور، ولا ظهور دائم', () {
     for (final theme in [AppTheme.light(), AppTheme.dark(), AppTheme.fuel()]) {
       final s = theme.scrollbarTheme;
-      expect(s.thickness?.resolve({}), 8);
-      expect(s.radius, const Radius.circular(4));
-      expect(s.thumbVisibility?.resolve({}), isTrue);
+      expect(s.thickness?.resolve({}), 6);
+      expect(s.thickness?.resolve({WidgetState.hovered}), 10);
+      expect(s.radius, const Radius.circular(5));
+      expect(s.thumbVisibility?.resolve({}), isFalse);
     }
   });
 

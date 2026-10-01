@@ -181,12 +181,132 @@ class ImdColors extends ThemeExtension<ImdColors> {
     isDark: true,
   );
 
+  /// شبكة الرسوم ونصوص محاورها في الوضع الفاتح (الداكن يشتقّها من `line`/`muted`).
+  static const chartGridLight = Color(0xFFE7EEE9);
+  static const chartTickLight = Color(0xFF66756C);
+
   @override
   ImdColors copyWith() => this;
 
   @override
   ImdColors lerp(ThemeExtension<ImdColors>? other, double t) =>
       (other is ImdColors && t >= .5) ? other : this;
+}
+
+/// ألوانٌ مشتقة تتبّع الوضع (فاتح/داكن) — تحفظ ما كان يُكتب صريحًا في الشاشات
+/// (`c.isDark ? Color(0x…) : Color(0x…)`) فتبقى القيم الصريحة هنا وحدها.
+///
+/// تُقرأ كبقية الرموز من `context.imd`. إضافة لونٍ جديد تكون هنا لا في شاشة.
+extension ImdColorsDerived on ImdColors {
+  // ───── حالات المرور والتحديد
+  /// خلفية رأس عمودٍ قابلٍ للفرز عند المرور.
+  Color get headerHover => isDark ? const Color(0xFF26262A) : hover;
+
+  /// خلفية صفّ/بطاقة عند المرور.
+  Color get rowHover => isDark ? const Color(0xFF26262A) : tableHead;
+
+  /// حدّ زرٍّ ثانويٍّ عند المرور.
+  Color get lineHover => isDark ? const Color(0xFF52525B) : const Color(0xFFB9B9C6);
+
+  /// خلفية زرٍّ هدّامٍ ناعمٍ عند المرور.
+  Color get dangerHover => isDark ? const Color(0x40F97066) : const Color(0xFFFDD5D1);
+
+  // ───── أسطحٌ معكوسة (داكنةٌ في الفاتح، رماديةٌ داكنةٌ في الداكن)
+  Color get inverse => isDark ? const Color(0xFF303036) : text;
+  Color get inverseLine => isDark ? const Color(0xFF3F3F46) : text;
+  Color get onInverse => const Color(0xFFFFFFFF);
+  Color get onInverseSoft => const Color(0x1AFFFFFF);
+  Color get onInverseSoft2 => const Color(0x1FFFFFFF);
+  Color get onInverseText => const Color(0xFFE4E4E7);
+  Color get onInverseMuted => const Color(0xFF9DB3A6);
+
+  /// نصٌّ فوق زرٍّ خلفيّته [text] نفسه (أبيض في الفاتح، داكنٌ في الداكن).
+  Color get onText => isDark ? const Color(0xFF171717) : const Color(0xFFFFFFFF);
+
+  /// أبيض ثابت للنص فوق شارةٍ ملوّنة (عدّاد التنبيهات).
+  Color get onBadge => const Color(0xFFFFFFFF);
+
+  // ───── حقولٌ ولوحات
+  Color get fieldFill => isDark ? bg : const Color(0xFFEEF1EE);
+  Color get panelFill => isDark ? bg : const Color(0xFFF7FAF8);
+  Color get toolbarFill => isDark ? surface : const Color(0xFFF2F7F5);
+  Color get toolbarLine => isDark ? line : const Color(0xFFDFE9E4);
+  Color get popupLine => isDark ? const Color(0xFF2C3B35) : const Color(0xFFCFDCD6);
+
+  /// بطاقة معلوماتٍ زرقاء (حدٌّ ونصّ).
+  Color get infoLine => isDark ? const Color(0x5984ADFF) : const Color(0xFFB2CCFF);
+  Color get infoStrong => isDark ? const Color(0xFFB2CCFF) : const Color(0xFF1849A9);
+
+  // ───── ظلال وحجب
+  Color get shadowXs => isDark ? const Color(0x66000000) : const Color(0x0A101828);
+  Color get shadowSm => isDark ? const Color(0x80000000) : const Color(0x14101828);
+  Color get shadowMd => isDark ? const Color(0x99000000) : const Color(0x26101828);
+  Color get shadowHairline => const Color(0x1A101828);
+  Color get shadowPopup => const Color(0x2E0F281E);
+  Color get shadowBase => isDark ? const Color(0xFF000000) : const Color(0xFF101828);
+  Color get scrim => const Color(0x73111111);
+
+  // ───── الشريط العلوي والجانبي
+  /// خلفية الشريط العلوي: شفّافةٌ أكثر مع Mica.
+  Color topbar({required bool mica}) {
+    if (isDark) return mica ? const Color(0x99171717) : const Color(0xEB171717);
+    return mica ? const Color(0x99FFFFFF) : const Color(0xEBFFFFFF);
+  }
+
+  /// نصٌّ ناصعٌ على الشريط الجانبي (الشريط داكنٌ في كل السمات).
+  Color get sideBright => const Color(0xFFFFFFFF);
+
+  /// أسفل تدرّج الشريط الجانبي: أغمق من [side].
+  Color get sideDeep => Color.lerp(side, const Color(0xFF000000), .22)!;
+
+  /// نسخةٌ من السمة بلون تمييزٍ آخر (يُستعمل لتلوين زر حفظٍ بلونٍ مختلف).
+  ImdColors withAccent({required Color accent, required Color accentHover, required Color onAccent}) =>
+      ImdColors(
+        bg: bg,
+        surface: surface,
+        subtle: subtle,
+        hover: hover,
+        line: line,
+        lineStrong: lineStrong,
+        text: text,
+        text2: text2,
+        muted: muted,
+        faint: faint,
+        accent: accent,
+        accentHover: accentHover,
+        accentSoft: accentSoft,
+        ring: ring,
+        onAccent: onAccent,
+        success: success,
+        successSoft: successSoft,
+        danger: danger,
+        dangerSoft: dangerSoft,
+        warn: warn,
+        warnSoft: warnSoft,
+        info: info,
+        infoSoft: infoSoft,
+        side: side,
+        side2: side2,
+        sideHover: sideHover,
+        sideActive: sideActive,
+        sideText: sideText,
+        sideMuted: sideMuted,
+        sideBorder: sideBorder,
+        sideLine: sideLine,
+        tableHead: tableHead,
+        tableRowLine: tableRowLine,
+        noteBg: noteBg,
+        noteBorder: noteBorder,
+        noteText: noteText,
+        isDark: isDark,
+      );
+
+  /// لون التمييز البرتقالي لأزرار الاستلام.
+  ImdColors get orangeAccent => withAccent(
+        accent: const Color(0xFFF39C12),
+        accentHover: const Color(0xFFE08E0B),
+        onAccent: const Color(0xFFFFFFFF),
+      );
 }
 
 extension ImdThemeX on BuildContext {
@@ -263,6 +383,21 @@ class ImdBp {
   /// `@media (hover:none) and (pointer:coarse)` ⇒ أهداف لمس 46.
   static bool get touch =>
       defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS;
+}
+
+/// مؤشر الفأرة على العناصر القابلة للنقر.
+///
+/// تطبيقات سطح المكتب الأصيلة (ويندوز) تُبقي السهم على الأزرار والصفوف وتحتفظ
+/// بيد الإصبع للروابط وحدها؛ يد الإصبع على كل عنصر علامةُ صفحات الويب. فيبقى
+/// السهم على سطح المكتب، ولا أثر للمؤشر على الجوال أصلًا.
+class ImdCursor {
+  const ImdCursor._();
+
+  /// لعنصر قابل للنقر (زر، صف، بطاقة).
+  static MouseCursor get click => SystemMouseCursors.basic;
+
+  /// لرابط نصّي حقيقي وحده.
+  static MouseCursor get link => SystemMouseCursors.click;
 }
 
 /// ظل البطاقات `--ui-shadow`.

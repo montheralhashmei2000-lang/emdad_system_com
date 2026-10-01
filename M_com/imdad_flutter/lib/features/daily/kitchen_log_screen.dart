@@ -353,6 +353,7 @@ class _KitchenLogScreenState extends State<KitchenLogScreen> {
 
     return ImdRvRow(
       child: LayoutBuilder(builder: (context, cons) {
+        // حاويةٌ لا شاشة: السطر يلتفّ حين يضيق عن ثلاثة حقول متجاورة (لا نقطة فصل جوال).
         final narrow = cons.maxWidth < 680;
         const delW = 46.0;
         final w = narrow ? cons.maxWidth : (cons.maxWidth - delW - 8 * 3) / 3;

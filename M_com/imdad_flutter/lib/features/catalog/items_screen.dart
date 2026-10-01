@@ -9,6 +9,8 @@ import '../../core/ids.dart';
 import '../../core/print/barcode_labels.dart';
 import '../../core/print/barcode128.dart';
 import '../../core/security/perm.dart';
+import '../../core/ui/imd_context_menu.dart';
+import '../../core/ui/imd_drop_zone.dart';
 import '../../core/ui/imd_files.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
@@ -145,7 +147,15 @@ class _ItemsScreenState extends State<ItemsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ImdPage(
+    // إفلات ملف Excel/CSV على الشاشة يستورده، لمن يملك صلاحية الكتابة وفي تبويب
+    // القائمة وحده (حيث زر «استيراد Excel»).
+    final canDrop = _tab == 'list' && _w(context);
+    return ImdDropZone(
+      enabled: canDrop,
+      extensions: const ['xlsx', 'xls', 'csv'],
+      hint: 'أفلت ملف Excel لاستيراد الأصناف',
+      onFile: (path) => _import(path: path),
+      child: ImdPage(
       children: [
         const ImdPageTitle(
           title: 'إدارة الأصناف',
@@ -176,6 +186,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
             _ => _bc(context),
           },
       ],
+      ),
     );
   }
 
@@ -240,6 +251,20 @@ class _ItemsScreenState extends State<ItemsScreen> {
           pageSize: 50,
           maxHeight: ImdSizes.tableMaxHeight(context),
           cards: true,
+          // كليك يمين / ضغطة مطوّلة: نفس إجراءي عمود الأزرار.
+          rowMenu: !w
+              ? null
+              : (i) => [
+                    ImdMenuItem(
+                      label: 'تعديل',
+                      icon: 'edit',
+                      onTap: () {
+                        _editId = rows[i].id;
+                        _switch('form');
+                      },
+                    ),
+                    ImdMenuItem(label: 'حذف', icon: 'trash', danger: true, onTap: () => _delete(rows[i])),
+                  ],
           rows: [
             for (final x in rows)
               [
@@ -274,7 +299,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
   /// `itmUnitsStr`
   Widget _unitsStr(Item x) {
     final us = _unitsRaw(x);
-    if (us.isEmpty) return const Text('—', style: TextStyle(color: Color(0xFF98A8A0)));
+    if (us.isEmpty) return Text('—', style: TextStyle(color: context.imd.faint));
     return Text(us.map((u) => u.name + (u.isBase ? ' (أساسية)' : '')).join(' · '));
   }
 
@@ -326,9 +351,9 @@ class _ItemsScreenState extends State<ItemsScreen> {
       );
 
   /// `importItems(rows)` — يحدّث الصنف بنفس الكود أو يُنشئه.
-  Future<void> _import() async {
+  Future<void> _import({String? path}) async {
     final actor = Perm.of(context).email;
-    final rows = await ImdExcel.pickAndRead(context);
+    final rows = await ImdExcel.pickAndRead(context, path: path);
     if (rows == null) return;
     var ok = 0, skip = 0, qtyPending = 0;
     // الرصيد لا يُحفظ على الصنف: يصير رصيدًا افتتاحيًا في مستودع، مصدر الأرصدة
@@ -551,7 +576,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
         ImdICard(
           title: cur != null ? 'وضع التعديل: ${cur.code} — ${cur.name}' : 'وضع الإضافة: تسجيل صنف جديد',
           icon: cur != null ? 'edit' : 'plus-square',
-          titleColor: const Color(0xFF915E06),
+          titleColor: context.imd.warn,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

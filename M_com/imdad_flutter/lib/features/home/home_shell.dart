@@ -798,9 +798,7 @@ class _Topbar extends StatelessWidget {
         height: ImdSizes.topbarHeight,
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
         decoration: BoxDecoration(
-          color: ImdWindow.micaActive.value
-              ? (c.isDark ? const Color(0x99171717) : const Color(0x99FFFFFF))
-              : (c.isDark ? const Color(0xEB171717) : const Color(0xEBFFFFFF)),
+          color: c.topbar(mica: ImdWindow.micaActive.value),
           border: Border(bottom: BorderSide(color: c.line)),
         ),
         child: Row(
@@ -836,7 +834,7 @@ class _Topbar extends StatelessWidget {
             // يملك مساحةً واحدة يبقى الاسم معروضًا له لكن بلا تفاعل — لا
             // تبديل إلى لا شيء.
             MouseRegion(
-              cursor: canSwitch ? SystemMouseCursors.click : MouseCursor.defer,
+              cursor: canSwitch ? ImdCursor.click : MouseCursor.defer,
               child: GestureDetector(
                 onTap: canSwitch ? onSwitchSpace : null,
                 behavior: HitTestBehavior.opaque,
@@ -987,7 +985,7 @@ class _Avatar extends StatelessWidget {
         style: TextStyle(
             fontSize: fontSize,
             fontWeight: FontWeight.w600,
-            color: c.isDark ? const Color(0xFF0B1F1C) : Colors.white),
+            color: c.onAccent),
       ),
     );
   }
@@ -1054,7 +1052,7 @@ class _Sidebar extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [
             c.side.withValues(alpha: ImdWindow.micaActive.value ? .82 : 1),
-            Color.lerp(c.side, Colors.black, .22)!
+            c.sideDeep
                 .withValues(alpha: ImdWindow.micaActive.value ? .82 : 1),
           ],
         ),
@@ -1167,7 +1165,7 @@ class _Sidebar extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [
             c.side.withValues(alpha: ImdWindow.micaActive.value ? .82 : 1),
-            Color.lerp(c.side, Colors.black, .22)!
+            c.sideDeep
                 .withValues(alpha: ImdWindow.micaActive.value ? .82 : 1),
           ],
         ),
@@ -1417,7 +1415,7 @@ class _SideTileState extends State<_SideTile> {
     switch (widget.kind) {
       case _SideKind.home:
         bg = _hover ? c.sideHover : c.side2;
-        fg = Colors.white;
+        fg = c.sideBright;
         border = Border.all(color: c.sideBorder);
         pad = const EdgeInsets.symmetric(horizontal: 16, vertical: 13);
         margin = const EdgeInsets.only(bottom: 10);
@@ -1426,7 +1424,7 @@ class _SideTileState extends State<_SideTile> {
         radius = 10;
       case _SideKind.header:
         bg = _hover ? c.sideHover : Colors.transparent;
-        fg = (_hover || widget.open) ? Colors.white : c.sideMuted;
+        fg = (_hover || widget.open) ? c.sideBright : c.sideMuted;
         pad = const EdgeInsets.symmetric(horizontal: 14, vertical: 11);
         margin = const EdgeInsets.only(top: 6, bottom: 4);
         fs = 12.5;
@@ -1437,7 +1435,7 @@ class _SideTileState extends State<_SideTile> {
             ? c.sideActive
             : (_hover ? c.sideHover : Colors.transparent);
         fg = (widget.on || _hover)
-            ? Colors.white
+            ? c.sideBright
             : c.sideText.withValues(alpha: .86);
         iconColor = widget.on ? ImdColors.dark.accentHover : null;
         pad = const EdgeInsets.only(left: 10, top: 11, right: 14, bottom: 11);
@@ -1457,7 +1455,7 @@ class _SideTileState extends State<_SideTile> {
     }
     final isItem = widget.kind == _SideKind.item;
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
+      cursor: ImdCursor.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(

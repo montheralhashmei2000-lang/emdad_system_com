@@ -194,10 +194,7 @@ class _ImdPrintTipState extends State<ImdPrintTip> {
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
                   color: c.infoSoft,
-                  border: Border.all(
-                      color: c.isDark
-                          ? const Color(0x5984ADFF)
-                          : const Color(0xFFB2CCFF)),
+                  border: Border.all(color: c.infoLine),
                   borderRadius: BorderRadius.circular(ImdSizes.radius),
                 ),
                 child: Text(widget.text,
@@ -205,9 +202,7 @@ class _ImdPrintTipState extends State<ImdPrintTip> {
                         fontSize: 12.5,
                         fontWeight: FontWeight.w500,
                         height: 1.6,
-                        color: c.isDark
-                            ? const Color(0xFFB2CCFF)
-                            : const Color(0xFF1849A9))),
+                        color: c.infoStrong)),
               ),
             ),
           ),
@@ -594,7 +589,7 @@ class _ImdTypeAheadState extends State<ImdTypeAhead> {
                         padding: EdgeInsets.zero,
                         itemCount: _rows.length,
                         itemBuilder: (ctx, i) => MouseRegion(
-                          cursor: SystemMouseCursors.click,
+                          cursor: ImdCursor.click,
                           onEnter: (_) => _idx.value = i,
                           child: GestureDetector(
                             onTapDown: (_) => _pick(_rows[i]),
@@ -882,7 +877,7 @@ class _ImdItemPickerState extends State<ImdItemPicker> {
                             final it = _rows[i];
                             final detail = widget.detailOf?.call(it) ?? '';
                             final row = MouseRegion(
-                              cursor: SystemMouseCursors.click,
+                              cursor: ImdCursor.click,
                               // لا `setState` هنا: هذا النداء يقع في مرحلة
                               // `postFrameCallbacks`، فيُبنى الإبراز وحده.
                               onEnter: (_) => _idx.value = i,
@@ -1333,7 +1328,7 @@ class ImdStickyActions extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: c.isDark ? const Color(0x80000000) : const Color(0x14101828),
+            color: c.shadowSm,
             blurRadius: 32,
             offset: const Offset(0, 12),
           ),
@@ -1613,7 +1608,7 @@ class ImdTargetPills<T> extends StatelessWidget {
     final c = context.imd;
     final on = t.value == value;
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
+      cursor: ImdCursor.click,
       child: GestureDetector(
         onTap: () => onChanged(t.value),
         child: Container(
@@ -1624,11 +1619,11 @@ class ImdTargetPills<T> extends StatelessWidget {
             color: on ? c.surface : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
             boxShadow: on
-                ? const [
+                ? [
                     BoxShadow(
-                        color: Color(0x1A101828),
+                        color: c.shadowHairline,
                         blurRadius: 3,
-                        offset: Offset(0, 1))
+                        offset: const Offset(0, 1))
                   ]
                 : null,
           ),
@@ -1675,7 +1670,7 @@ class ImdReadonlyField extends StatelessWidget {
               : ImdSizes.touchMin),
       child: InputDecorator(
         decoration: imdFieldDecoration(context).copyWith(
-            fillColor: bg ?? (c.isDark ? c.bg : const Color(0xFFEEF1EE))),
+            fillColor: bg ?? c.fieldFill),
         child: Text(text,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
@@ -1710,7 +1705,7 @@ class ImdDashedBox extends StatelessWidget {
       child: Container(
         padding: padding,
         decoration: BoxDecoration(
-          color: background ?? (c.isDark ? c.bg : const Color(0xFFF7FAF8)),
+          color: background ?? c.panelFill,
           borderRadius: BorderRadius.circular(radius),
         ),
         child: child,

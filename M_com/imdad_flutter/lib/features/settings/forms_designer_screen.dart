@@ -743,7 +743,7 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
     return Semantics(
       label: tip,
       child: MouseRegion(
-        cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+        cursor: enabled ? ImdCursor.click : SystemMouseCursors.basic,
         child: GestureDetector(
           onTap: enabled ? onTap : null,
           child: Container(

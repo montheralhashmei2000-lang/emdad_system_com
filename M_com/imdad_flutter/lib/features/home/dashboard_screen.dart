@@ -669,9 +669,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: ImdLineChart(
               labels: d?.trendLabels ?? const [],
               series: [
-                ImdSeries('وارد', d?.rcv ?? const [], const Color(0xFF159A58)),
-                ImdSeries('صرف', d?.iss ?? const [], const Color(0xFFD97706)),
-                ImdSeries('تحويل', d?.trf ?? const [], const Color(0xFF16527C)),
+                ImdSeries('وارد', d?.rcv ?? const [], c.success),
+                ImdSeries('صرف', d?.iss ?? const [], c.warn),
+                ImdSeries('تحويل', d?.trf ?? const [], c.info),
               ],
             ),
           ),
@@ -725,7 +725,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           Text(nf(bal),
                               style: TextStyle(
                                   fontWeight: FontWeight.w900,
-                                  color: bal <= 0 ? c.danger : const Color(0xFF915E06))),
+                                  color: bal <= 0 ? c.danger : c.warn)),
                           Text(i.minQty > 0 ? nf(i.minQty) : '—'),
                           bal <= 0
                               ? const ImdChip('صفرية', tone: ImdTone.err)

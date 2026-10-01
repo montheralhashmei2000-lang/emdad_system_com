@@ -364,8 +364,11 @@ void main() {
 
     test('لا يُصفّى شهر لم ينتهِ', () async {
       await seed();
+      // الشهر القادم لا ينتهي أبدًا قبل اليوم، في أي يومٍ تُشغَّل الاختبارات؛
+      // الشهر الحالي يصحّ تصفيته في يومه الأخير فلا يصلح لهذا الاختبار.
       final now = DateTime.now();
-      final res = await CampLedgerRepo(db).closeMonth(year: now.year, month: now.month);
+      final next = DateTime(now.year, now.month + 1);
+      final res = await CampLedgerRepo(db).closeMonth(year: next.year, month: next.month);
       expect(res.ok, isFalse);
       expect(res.error, contains('لم ينتهِ'));
     });

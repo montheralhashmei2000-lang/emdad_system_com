@@ -469,7 +469,7 @@ class _IssueScreenState extends State<IssueScreen> {
     if (!due.hasHistory) {
       setState(() {
         _nextDue = 'لا يوجد صرف سابق';
-        _nextDueColor = const Color(0xFF155724);
+        _nextDueColor = context.imd.success;
       });
       return;
     }
@@ -482,10 +482,10 @@ class _IssueScreenState extends State<IssueScreen> {
         _nextDueColor = context.imd.danger;
       } else if (due.dueToday) {
         _nextDue = '📢 اليوم! موعد الصرف $str';
-        _nextDueColor = const Color(0xFFB78103);
+        _nextDueColor = context.imd.warn;
       } else {
         _nextDue = '📅 $str (بعد ${due.daysLeft} يوم)';
-        _nextDueColor = const Color(0xFF155724);
+        _nextDueColor = context.imd.success;
       }
     });
   }
@@ -1041,8 +1041,8 @@ class _IssueScreenState extends State<IssueScreen> {
               ImdReadonlyField(
                 text: _nextDue,
                 weight: FontWeight.w800,
-                bg: c.isDark ? const Color(0x26FDB022) : const Color(0xFFFFF8E1),
-                color: _nextDueColor ?? const Color(0xFFB78103),
+                bg: c.warnSoft,
+                color: _nextDueColor ?? c.warn,
               ),
             ),
           ]),

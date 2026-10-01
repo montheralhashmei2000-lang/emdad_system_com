@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/security/auth_service.dart';
 import '../../core/security/perm.dart';
+import '../../core/ui/imd_context_menu.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_format.dart';
@@ -255,6 +256,13 @@ class _AuthoritiesScreenState extends State<AuthoritiesScreen> {
           ],
           pageSize: 50,
           cards: true,
+          rowMenu: !can
+              ? null
+              : (i) => [
+                    ImdMenuItem(label: 'تعديل', icon: 'edit', onTap: () => _edit(_items[i])),
+                    if ((_usage[_items[i].id] ?? 0) == 0)
+                      ImdMenuItem(label: 'حذف', icon: 'trash', danger: true, onTap: () => _delete(_items[i])),
+                  ],
           rows: [
             for (final a in _items)
               [

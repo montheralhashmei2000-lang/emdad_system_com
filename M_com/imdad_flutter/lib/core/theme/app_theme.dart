@@ -24,75 +24,31 @@ class _ImdFadePageTransitionsBuilder extends PageTransitionsBuilder {
 /// سمة التطبيق — أخضر مؤسسي على خلفية محايدة فاتحة،
 /// ونسخةٌ داكنة مقابلة لها.
 class AppTheme {
-  static const Color accent = Color(0xFF047857);
-  static const Color accentHover = Color(0xFF065F46);
-  static const Color bgLight = Color(0xFFF7F7F8);
-  static const Color surfaceLight = Color(0xFFFFFFFF);
-  static const Color lineLight = Color(0xFFE3E3E8);
-  static const Color textLight = Color(0xFF202123);
-  static const Color mutedLight = Color(0xFF5B5E6B);
+  // لا ألوان هنا: كل سمةٍ تُبنى من لوحتها في [ImdColors] — المصدر الوحيد.
+  static ThemeData light({String font = ImdFonts.defaultFamily}) =>
+      _base(font: font, brightness: Brightness.light, tokens: ImdColors.light);
 
-  static const Color bgDark = Color(0xFF171717);
-  static const Color surfaceDark = Color(0xFF212121);
-  static const Color lineDark = Color(0xFF303036);
-  static const Color textDark = Color(0xFFECECF1);
-  static const Color accentDark = Color(0xFF10B981);
-
-  static ThemeData light({String font = ImdFonts.defaultFamily}) => _base(
-        font: font,
-        brightness: Brightness.light,
-        primary: accent,
-        background: bgLight,
-        surface: surfaceLight,
-        outline: lineLight,
-        onSurface: textLight,
-        muted: mutedLight,
-      );
-
-  static ThemeData dark({String font = ImdFonts.defaultFamily}) => _base(
-        font: font,
-        brightness: Brightness.dark,
-        primary: accentDark,
-        background: bgDark,
-        surface: surfaceDark,
-        outline: lineDark,
-        onSurface: textDark,
-        muted: const Color(0xFFA1A1AA),
-      );
+  static ThemeData dark({String font = ImdFonts.defaultFamily}) =>
+      _base(font: font, brightness: Brightness.dark, tokens: ImdColors.dark);
 
   /// سمة قسم المحروقات — داكنة بلمسة زيتونية، بلوحة [ImdColors.fuel].
   ///
   /// القسم منفصل فعلًا لا اسمًا: هويّته البصرية تُعرّف من يعمل فيه أنه ليس
   /// في شاشات الإعاشة قبل أن يقرأ عنوان الشاشة.
-  static ThemeData fuel({String font = ImdFonts.defaultFamily}) => _base(
-        font: font,
-        brightness: Brightness.dark,
-        primary: fuelAccent,
-        background: fuelBg,
-        surface: fuelSurface,
-        outline: fuelLine,
-        onSurface: fuelText,
-        muted: const Color(0xFF8C9386),
-        tokens: ImdColors.fuel,
-      );
-
-  static const Color fuelBg = Color(0xFF0E100D);
-  static const Color fuelSurface = Color(0xFF151814);
-  static const Color fuelLine = Color(0xFF262B24);
-  static const Color fuelText = Color(0xFFE9ECE5);
-  static const Color fuelAccent = Color(0xFFBFD8A4);
+  static ThemeData fuel({String font = ImdFonts.defaultFamily}) =>
+      _base(font: font, brightness: Brightness.dark, tokens: ImdColors.fuel);
 
   static ThemeData _base({
     required String font,
     required Brightness brightness,
-    required Color primary,
-    required Color background,
-    required Color surface,
-    required Color outline,
-    required Color onSurface,
-    required Color muted,
-    ImdColors? tokens,
+    required ImdColors tokens,
   }) {
+    final primary = tokens.accent;
+    final background = tokens.bg;
+    final surface = tokens.surface;
+    final outline = tokens.line;
+    final onSurface = tokens.text;
+    final muted = tokens.muted;
     final scheme = ColorScheme.fromSeed(
       seedColor: primary,
       brightness: brightness,
@@ -110,13 +66,15 @@ class AppTheme {
       scaffoldBackgroundColor: background,
       fontFamily: ImdFonts.normalize(font),
       extensions: [
-        tokens ??
-            (brightness == Brightness.dark ? ImdColors.dark : ImdColors.light),
+        tokens,
       ],
       // كثافةٌ أعلى على سطح المكتب (مبنيّة على المنصّة كـ[ImdBp.touch] لا عرض
       // الشاشة): مكثّفة على وندوز/لينكس/ماك، وتبقى معتادة على الجوال بلا أي
       // أثر — تمامًا كيف تتكثّف تطبيقات سطح المكتب الأصيلة مقارنةً بالجوال.
       visualDensity: VisualDensity.adaptivePlatformDensity,
+      // لا تموّج Material على سطح المكتب: التطبيقات الأصيلة تكتفي بتلوين الحالة
+      // (hover/pressed). التموّج يبقى على اللمس حيث هو المعتاد.
+      splashFactory: ImdBp.touch ? null : NoSplash.splashFactory,
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: surface,
@@ -138,7 +96,7 @@ class AppTheme {
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: primary,
-          foregroundColor: brightness == Brightness.dark ? const Color(0xFF0B1F1C) : Colors.white,
+          foregroundColor: tokens.onAccent,
           minimumSize: const Size.fromHeight(48),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
@@ -160,21 +118,26 @@ class AppTheme {
         TargetPlatform.linux: _ImdFadePageTransitionsBuilder(),
         TargetPlatform.macOS: _ImdFadePageTransitionsBuilder(),
       }),
-      // من onSurface لا لونين ثابتين: هذا وحده يعطي داكنًا واضحًا على خلفيةٍ
-      // فاتحة وفاتحًا واضحًا على خلفيةٍ داكنة — بلا فرعين يدويين قد
-      // ينسيهما أحدٌ عند إضافة سمةٍ ثالثة (كسمة المحروقات هنا).
+      // شريطٌ رفيع يتمدّد عند المرور أو السحب ويختفي حين لا تمرير — كأشرطة
+      // ويندوز الأصيلة، لا شريطًا سميكًا ثابت الظهور كصفحات الويب. الجداول
+      // العريضة تُظهر شريطها الأفقي صراحةً حيث يلزم التنبيه إلى أعمدة مخفية.
       scrollbarTheme: ScrollbarThemeData(
-        thumbVisibility: const WidgetStatePropertyAll(true),
-        thickness: const WidgetStatePropertyAll(8),
-        radius: const Radius.circular(4),
-        thumbColor: WidgetStatePropertyAll(onSurface.withValues(alpha: .45)),
-        trackColor: WidgetStatePropertyAll(onSurface.withValues(alpha: .06)),
+        thumbVisibility: const WidgetStatePropertyAll(false),
+        interactive: true,
+        thickness: WidgetStateProperty.resolveWith((states) =>
+            states.contains(WidgetState.hovered) || states.contains(WidgetState.dragged) ? 10.0 : 6.0),
+        radius: const Radius.circular(5),
+        // من onSurface لا لونين ثابتين: داكنٌ واضح على الفاتح وفاتحٌ واضح على
+        // الداكن — بلا فرعين يدويين قد ينسيهما أحدٌ عند إضافة سمةٍ ثالثة.
+        thumbColor: WidgetStateProperty.resolveWith((states) => onSurface.withValues(
+            alpha: states.contains(WidgetState.hovered) || states.contains(WidgetState.dragged) ? .55 : .35)),
+        trackColor: const WidgetStatePropertyAll(Colors.transparent),
         trackBorderColor: const WidgetStatePropertyAll(Colors.transparent),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: onSurface,
         contentTextStyle: TextStyle(
-          color: brightness == Brightness.dark ? const Color(0xFF171717) : Colors.white,
+          color: tokens.onText,
           fontWeight: FontWeight.w600,
         ),
         behavior: SnackBarBehavior.floating,

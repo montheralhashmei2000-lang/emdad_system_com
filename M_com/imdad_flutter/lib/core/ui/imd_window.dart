@@ -19,7 +19,7 @@ import 'package:window_manager/window_manager.dart';
 class ImdWindow {
   const ImdWindow._();
 
-  static bool get supported => !kIsWeb && Platform.isWindows;
+  static bool get supported => Platform.isWindows;
 
   /// `true` حين فُعّل تأثير Mica فعلًا — الشريطان العلوي والجانبي يخفّفان
   /// عتمتهما حينئذٍ ليظهر خلفهما، وتبقى بقية الواجهة معتمةً للقراءة.

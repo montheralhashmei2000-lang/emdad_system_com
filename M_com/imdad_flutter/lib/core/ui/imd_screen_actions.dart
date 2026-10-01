@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:provider/provider.dart';
 
@@ -61,5 +60,5 @@ class ImdShortcuts {
   ImdShortcuts._();
 
   static bool get supported =>
-      !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+      (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
 }

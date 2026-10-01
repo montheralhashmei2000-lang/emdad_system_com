@@ -11,8 +11,8 @@ import 'imd_tokens.dart';
 // الشبكة والنصوص تتبع السمة؛ القيمتان أدناه هما لونا الوضع الفاتح فقط، وفي
 // الداكن تُشتقّ من رموز الثيم — بلا ذلك تختفي الشبكة الفاتحة على خلفيةٍ داكنة.
 
-const _gridColor = Color(0xFFE7EEE9);
-const _tickColor = Color(0xFF66756C);
+const _gridColor = ImdColors.chartGridLight;
+const _tickColor = ImdColors.chartTickLight;
 
 class ImdSeries {
   const ImdSeries(this.label, this.values, this.color);

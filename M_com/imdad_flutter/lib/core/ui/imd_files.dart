@@ -23,7 +23,7 @@ class ImdFiles {
       );
       if (path == null) return null;
       // على سطح المكتب يُرجع المسار فقط دون كتابة الملف.
-      if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
         await File(path).writeAsBytes(data, flush: true);
       }
       return path;

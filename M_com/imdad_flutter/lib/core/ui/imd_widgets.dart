@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'imd_context_menu.dart';
 import 'imd_format.dart';
 import 'imd_icon.dart';
 import 'imd_tokens.dart';
@@ -264,9 +265,9 @@ class _ImdButtonState extends State<ImdButton> {
       case ImdBtnKind.outline:
         bg = _hover ? c.hover : c.surface;
         fg = c.text;
-        border = _hover ? (c.isDark ? const Color(0xFF52525B) : const Color(0xFFB9B9C6)) : c.lineStrong;
+        border = _hover ? c.lineHover : c.lineStrong;
       case ImdBtnKind.danger:
-        bg = _hover ? (c.isDark ? const Color(0x40F97066) : const Color(0xFFFDD5D1)) : c.dangerSoft;
+        bg = _hover ? c.dangerHover : c.dangerSoft;
         fg = c.danger;
       case ImdBtnKind.blue:
         bg = c.info;
@@ -279,7 +280,7 @@ class _ImdButtonState extends State<ImdButton> {
         fg = c.isDark ? c.bg : c.surface;
       case ImdBtnKind.dark:
         bg = _hover ? c.text2 : c.text;
-        fg = c.isDark ? const Color(0xFF171717) : Colors.white;
+        fg = c.onText;
     }
     final fs = widget.small ? 12.5 : 13.5;
     final pad = widget.small
@@ -307,7 +308,7 @@ class _ImdButtonState extends State<ImdButton> {
       ],
     );
     return MouseRegion(
-      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      cursor: enabled ? ImdCursor.click : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
@@ -335,7 +336,7 @@ class _ImdButtonState extends State<ImdButton> {
                 boxShadow: enabled && _hover && !_down
                     ? [
                         BoxShadow(
-                          color: c.isDark ? const Color(0x99000000) : const Color(0x26101828),
+                          color: c.shadowMd,
                           blurRadius: 8,
                           offset: const Offset(0, 3),
                         ),
@@ -416,9 +417,9 @@ class _PillTabState extends State<_PillTab> {
   Widget build(BuildContext context) {
     final c = context.imd;
     final on = widget.on;
-    final fg = on ? (c.isDark ? const Color(0xFF171717) : Colors.white) : c.text2;
+    final fg = on ? c.onText : c.text2;
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
+      cursor: ImdCursor.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
@@ -471,14 +472,14 @@ class ImdSegmented<T> extends StatelessWidget {
             GestureDetector(
               onTap: () => onChanged(t.value),
               child: MouseRegion(
-                cursor: SystemMouseCursors.click,
+                cursor: ImdCursor.click,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                   decoration: BoxDecoration(
                     color: t.value == value ? c.surface : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                     boxShadow: t.value == value
-                        ? const [BoxShadow(color: Color(0x1A101828), blurRadius: 3, offset: Offset(0, 1))]
+                        ? [BoxShadow(color: c.shadowHairline, blurRadius: 3, offset: const Offset(0, 1))]
                         : null,
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -573,7 +574,7 @@ class _ImdChipState extends State<ImdChip> {
     ));
     if (widget.onTap == null) return chip;
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
+      cursor: ImdCursor.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(onTap: widget.onTap, child: chip),
@@ -910,6 +911,7 @@ class ImdTable extends StatefulWidget {
     this.rowKeys,
     this.empty = 'لا توجد بيانات',
     this.onRowTap,
+    this.rowMenu,
     this.rowColor,
     this.footer,
     this.minWidth,
@@ -942,6 +944,11 @@ class ImdTable extends StatefulWidget {
 
   final String empty;
   final ValueChanged<int>? onRowTap;
+
+  /// بنود قائمة السياق للصفّ ذي الفهرس المعطى: كليك يمين على سطح المكتب،
+  /// وضغطةٌ مطوّلة على اللمس. `null` أو قائمةٌ فارغة ⇒ لا قائمة. الفهرس مطلقٌ
+  /// (من أول [rows]) حتى مع الترقيم، كـ[onRowTap].
+  final List<ImdMenuItem> Function(int index)? rowMenu;
   final Color? Function(int index)? rowColor;
   final List<Widget>? footer;
 
@@ -1046,6 +1053,11 @@ class _ImdTableState extends State<ImdTable> {
     return Color.alphaBlend(scheme.onSurface.withValues(alpha: .035), scheme.surface);
   }
 
+  void _openMenu(int row, Offset at) {
+    final items = widget.rowMenu?.call(row) ?? const <ImdMenuItem>[];
+    showImdContextMenu(context, at, items);
+  }
+
   Widget _cell(ImdCol col, Widget child, {required int row, EdgeInsets? pad}) {
     Widget w = Padding(
       padding: pad ?? widget.cellPadding ?? const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
@@ -1057,12 +1069,14 @@ class _ImdTableState extends State<ImdTable> {
     );
     if (row >= 0) {
       w = MouseRegion(
-        cursor: widget.onRowTap != null ? SystemMouseCursors.click : MouseCursor.defer,
+        cursor: widget.onRowTap != null ? ImdCursor.click : MouseCursor.defer,
         onEnter: (_) => setState(() => _hover = row),
         onExit: (_) => setState(() => _hover = -1),
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: widget.onRowTap == null ? null : () => widget.onRowTap!(row),
+          onSecondaryTapDown: widget.rowMenu == null ? null : (d) => _openMenu(row, d.globalPosition),
+          onLongPressStart: widget.rowMenu == null ? null : (d) => _openMenu(row, d.globalPosition),
           child: w,
         ),
       );
@@ -1097,7 +1111,7 @@ class _ImdTableState extends State<ImdTable> {
     if (widget.onHeaderTap == null) return text;
     final hovered = _headerHover == index;
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
+      cursor: ImdCursor.click,
       onEnter: (_) => setState(() => _headerHover = index),
       onExit: (_) => setState(() => _headerHover = -1),
       child: GestureDetector(
@@ -1108,7 +1122,7 @@ class _ImdTableState extends State<ImdTable> {
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
           margin: const EdgeInsets.symmetric(horizontal: -4, vertical: -2),
           decoration: BoxDecoration(
-            color: hovered ? (c.isDark ? const Color(0xFF26262A) : c.hover) : null,
+            color: hovered ? c.headerHover : null,
             borderRadius: BorderRadius.circular(4),
           ),
           child: text,
@@ -1154,7 +1168,7 @@ class _ImdTableState extends State<ImdTable> {
         fields.add(_labeledCell(context, cols[j].label, cell));
       }
     }
-    final hoverBg = c.isDark ? const Color(0xFF26262A) : c.tableHead;
+    final hoverBg = c.rowHover;
     final bg = widget.onRowTap != null && _hover == i
         ? hoverBg
         : widget.rowColor?.call(i) ?? (widget.zebra && i.isOdd ? _zebraColor(context) : c.surface);
@@ -1181,14 +1195,16 @@ class _ImdTableState extends State<ImdTable> {
         ),
       ),
     );
-    if (widget.onRowTap == null) return card;
+    if (widget.onRowTap == null && widget.rowMenu == null) return card;
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
+      cursor: widget.onRowTap != null ? ImdCursor.click : MouseCursor.defer,
       onEnter: (_) => setState(() => _hover = i),
       onExit: (_) => setState(() => _hover = -1),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => widget.onRowTap!(i),
+        onTap: widget.onRowTap == null ? null : () => widget.onRowTap!(i),
+        onSecondaryTapDown: widget.rowMenu == null ? null : (d) => _openMenu(i, d.globalPosition),
+        onLongPressStart: widget.rowMenu == null ? null : (d) => _openMenu(i, d.globalPosition),
         child: card,
       ),
     );
@@ -1311,7 +1327,7 @@ class _ImdTableState extends State<ImdTable> {
             key: widget.rowKeys?[i],
             decoration: BoxDecoration(
               color: _hover == i
-                  ? (c.isDark ? const Color(0xFF26262A) : c.tableHead)
+                  ? c.rowHover
                   : (widget.rowColor?.call(i) ?? (widget.zebra && i.isOdd ? _zebraColor(context) : null)),
               // آخر صفٍّ من الصفحة **المعروضة** لا آخر صفٍّ في القائمة كلها،
               // وإلا بقي خط الفاصل تحت كل الصفحات إلا الأخيرة. ومع
@@ -1504,7 +1520,7 @@ void showImdToast(BuildContext context, String message, {bool error = false}) {
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: c.isDark ? const Color(0xFF303036) : c.text,
+      backgroundColor: c.inverse,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       width: 420,
       duration: const Duration(milliseconds: 3200),
@@ -1513,7 +1529,7 @@ void showImdToast(BuildContext context, String message, {bool error = false}) {
         // الإشعار يُعرض في طبقة فوق الشاشة فلا يرث خط التطبيق تلقائيًا،
         // فيُؤخذ من القالب صراحةً ليتبع الخط المختار في الإعدادات.
         style: TextStyle(
-          color: Colors.white,
+          color: c.onInverse,
           fontWeight: FontWeight.w500,
           fontSize: 14,
           fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily,
@@ -1539,13 +1555,13 @@ Future<T?> showImdModal<T>(
 }) {
   return showDialog<T>(
     context: context,
-    barrierColor: const Color(0x73111111),
+    barrierColor: context.imd.scrim,
     builder: (ctx) {
       final c = ctx.imd;
       Widget dialog = Dialog(
         backgroundColor: c.surface,
         elevation: 10,
-        shadowColor: c.isDark ? Colors.black : const Color(0xFF101828),
+        shadowColor: c.shadowBase,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth, maxHeight: MediaQuery.sizeOf(ctx).height * .9),

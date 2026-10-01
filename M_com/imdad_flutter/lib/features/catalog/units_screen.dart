@@ -153,7 +153,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                     readOnly: true,
                     style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: c.text),
                     decoration: imdFieldDecoration(context).copyWith(
-                      fillColor: c.isDark ? c.bg : const Color(0xFFEEF1EE),
+                      fillColor: c.fieldFill,
                     ),
                   ),
                 ),
@@ -293,13 +293,13 @@ class _UnitsScreenState extends State<UnitsScreen> {
 
   Widget _node(BeneficiaryUnit u, bool isCamp, int kids, bool open, bool w) {
     final c = context.imd;
-    final fg = isCamp ? Colors.white : c.text;
+    final fg = isCamp ? c.onInverse : c.text;
     return Container(
       margin: EdgeInsets.only(bottom: isCamp ? 4 : 0),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: isCamp ? (c.isDark ? const Color(0xFF303036) : c.text) : c.surface,
-        border: Border.all(color: isCamp ? (c.isDark ? const Color(0xFF3F3F46) : c.text) : c.line),
+        color: isCamp ? c.inverse : c.surface,
+        border: Border.all(color: isCamp ? c.inverseLine : c.line),
         borderRadius: BorderRadius.circular(10),
       ),
       child: DefaultTextStyle.merge(
@@ -308,15 +308,15 @@ class _UnitsScreenState extends State<UnitsScreen> {
           children: [
             if (isCamp && kids > 0)
               MouseRegion(
-                cursor: SystemMouseCursors.click,
+                cursor: ImdCursor.click,
                 child: GestureDetector(
                   onTap: () => setState(() => _open[u.id] = !open),
                   child: Container(
                     width: 28,
                     height: ImdSizes.touchMin,
                     alignment: Alignment.center,
-                    decoration: BoxDecoration(color: const Color(0x1AFFFFFF), borderRadius: BorderRadius.circular(8)),
-                    child: ImdIcon(open ? 'chevron-down' : 'chevron-left', size: 14, color: Colors.white),
+                    decoration: BoxDecoration(color: c.onInverseSoft, borderRadius: BorderRadius.circular(8)),
+                    child: ImdIcon(open ? 'chevron-down' : 'chevron-left', size: 14, color: c.onInverse),
                   ),
                 ),
               )
@@ -335,7 +335,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                     decoration: BoxDecoration(
-                      color: isCamp ? const Color(0x1FFFFFFF) : c.subtle,
+                      color: isCamp ? c.onInverseSoft2 : c.subtle,
                       borderRadius: BorderRadius.circular(99),
                     ),
                     child: Text(u.category,
@@ -343,13 +343,13 @@ class _UnitsScreenState extends State<UnitsScreen> {
                         style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w500,
-                            color: isCamp ? const Color(0xFFE4E4E7) : c.text2)),
+                            color: isCamp ? c.onInverseText : c.text2)),
                   ),
                 ),
               ],
               ]),
             ),
-            if (isCamp) Text('${nf(kids)} تابعة', style: const TextStyle(fontSize: 11.5, color: Color(0xFF9DB3A6))),
+            if (isCamp) Text('${nf(kids)} تابعة', style: TextStyle(fontSize: 11.5, color: c.onInverseMuted)),
             if (w) ...[
               const SizedBox(width: 8),
               ImdIconButton(

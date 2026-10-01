@@ -1102,50 +1102,10 @@ class _OrangeButtonState extends State<_OrangeButton> {
     return Theme(
       data: Theme.of(context).copyWith(
         extensions: [
-          _orange(context.imd),
+          context.imd.orangeAccent,
         ],
       ),
       child: ImdButton(label: widget.label, icon: 'save', busy: widget.busy, onPressed: widget.onPressed),
     );
   }
-
-  static ImdColors _orange(ImdColors c) => ImdColors(
-        bg: c.bg,
-        surface: c.surface,
-        subtle: c.subtle,
-        hover: c.hover,
-        line: c.line,
-        lineStrong: c.lineStrong,
-        text: c.text,
-        text2: c.text2,
-        muted: c.muted,
-        faint: c.faint,
-        accent: const Color(0xFFF39C12),
-        accentHover: const Color(0xFFE08E0B),
-        accentSoft: c.accentSoft,
-        ring: c.ring,
-        onAccent: Colors.white,
-        success: c.success,
-        successSoft: c.successSoft,
-        danger: c.danger,
-        dangerSoft: c.dangerSoft,
-        warn: c.warn,
-        warnSoft: c.warnSoft,
-        info: c.info,
-        infoSoft: c.infoSoft,
-        side: c.side,
-        side2: c.side2,
-        sideHover: c.sideHover,
-        sideActive: c.sideActive,
-        sideText: c.sideText,
-        sideMuted: c.sideMuted,
-        sideBorder: c.sideBorder,
-        sideLine: c.sideLine,
-        tableHead: c.tableHead,
-        tableRowLine: c.tableRowLine,
-        noteBg: c.noteBg,
-        noteBorder: c.noteBorder,
-        noteText: c.noteText,
-        isDark: c.isDark,
-      );
 }

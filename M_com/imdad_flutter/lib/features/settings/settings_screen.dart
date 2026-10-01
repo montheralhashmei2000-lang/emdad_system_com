@@ -9,6 +9,7 @@ import '../../core/security/auth_service.dart';
 import '../../core/security/esign.dart';
 import '../../core/security/perm.dart';
 import '../../core/ui/imd_charts.dart';
+import '../../core/ui/imd_drop_zone.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_icon.dart';
@@ -248,11 +249,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   /// `IMDAD_BACKUP.restore()` — الاستيراد يدمج فوق الموجود.
-  Future<void> _restoreBackup() async {
+  Future<void> _restoreBackup({String? droppedPath}) async {
     if (!_perm.guard(context, 'settings', PermAction.edit)) return;
-    final picked = await FilePicker.platform
-        .pickFiles(type: FileType.custom, allowedExtensions: const ['json', 'imdbk']);
-    final path = picked?.files.single.path;
+    final String? path;
+    if (droppedPath != null) {
+      path = droppedPath;
+    } else {
+      final picked = await FilePicker.platform
+          .pickFiles(type: FileType.custom, allowedExtensions: const ['json', 'imdbk']);
+      path = picked?.files.single.path;
+    }
     if (path == null || !mounted) return;
 
     // الملف المشفَّر يُعرف من بادئته لا من امتداده، فلا يخدع الاسم.
@@ -285,11 +291,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _importExcel() async {
+  Future<void> _importExcel({String? droppedPath}) async {
     if (!_perm.guard(context, 'settings', PermAction.edit)) return;
-    final picked = await FilePicker.platform
-        .pickFiles(type: FileType.custom, allowedExtensions: const ['xlsx']);
-    final path = picked?.files.single.path;
+    final String? path;
+    if (droppedPath != null) {
+      path = droppedPath;
+    } else {
+      final picked = await FilePicker.platform
+          .pickFiles(type: FileType.custom, allowedExtensions: const ['xlsx']);
+      path = picked?.files.single.path;
+    }
     if (path == null || !mounted) return;
     setState(() => _note = 'جارٍ قراءة الملف…');
     try {
@@ -306,6 +317,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _note = 'تعذّر استيراد الملف: $e');
+    }
+  }
+
+  /// ملفٌّ أُفلت على الشاشة: `.xlsx` استيرادُ بيانات، و`.json`/`.imdbk` استعادةُ
+  /// نسخةٍ احتياطية — وكلاهما يمرّ بالفحوص نفسها (الصلاحية، كلمة مرور النسخة
+  /// المشفّرة، وتأكيد الدمج) كما لو اختيار الملف من الزر.
+  void _onDropped(String path) {
+    if (ImdDropZone.extensionOf(path) == 'xlsx') {
+      _importExcel(droppedPath: path);
+    } else {
+      _restoreBackup(droppedPath: path);
     }
   }
 
@@ -404,7 +426,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         : panels.where((p) => p.$2.contains(q)).toList();
     final current = _sections.firstWhere((s) => s.id == _section, orElse: () => _sections.first);
 
-    return ImdPage(children: [
+    return ImdDropZone(
+      enabled: _perm.writable('settings'),
+      extensions: const ['xlsx', 'json', 'imdbk'],
+      hint: 'أفلت ملف Excel للاستيراد أو نسخةً احتياطية للاستعادة',
+      onFile: _onDropped,
+      child: ImdPage(children: [
       const ImdPageTitle(
         title: 'الإعدادات',
         icon: 'settings',
@@ -420,7 +447,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(width: 16),
           Expanded(child: _body(q, current, visible)),
         ]),
-    ]);
+    ]));
   }
 
   Widget _body(String q, _Section current, List<(String, String, Widget)> visible) {

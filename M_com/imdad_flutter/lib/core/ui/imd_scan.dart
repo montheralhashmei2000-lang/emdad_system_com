@@ -1,6 +1,5 @@
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -13,7 +12,7 @@ import 'imd_widgets.dart';
 /// ماسح الباركود بالكاميرا — يُعرض زرُّه بجوار حقول الباركود على الأجهزة التي
 /// تملك كاميرا مدعومة، ويُخفى على غيرها فتبقى الكتابة أو قارئ USB.
 class ImdScanner {
-  static bool get supported => !kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isMacOS);
+  static bool get supported => (Platform.isAndroid || Platform.isIOS || Platform.isMacOS);
 
   /// يفتح الكاميرا ويُرجع أول قيمة مقروءة.
   static Future<String?> scan(BuildContext context) async {

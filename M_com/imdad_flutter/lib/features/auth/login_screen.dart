@@ -1,6 +1,5 @@
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -43,7 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   /// زر «خروج» حيث يمكن للتطبيق أن يغلق نفسه (ويندوز وأندرويد).
   static bool get _canExit =>
-      LoginScreen.debugShowExit ?? (!kIsWeb && (Platform.isWindows || Platform.isAndroid));
+      LoginScreen.debugShowExit ?? (Platform.isWindows || Platform.isAndroid);
 
   static const _rememberedUserKey = 'imdad.login.rememberedUsername';
 
@@ -141,11 +140,11 @@ class _LoginScreenState extends State<LoginScreen> {
                               borderRadius: BorderRadius.circular(20),
                               boxShadow: [
                                 BoxShadow(
-                                    color: c.isDark ? const Color(0x66000000) : const Color(0x0A101828),
+                                    color: c.shadowXs,
                                     blurRadius: 2,
                                     offset: const Offset(0, 1)),
                                 BoxShadow(
-                                    color: c.isDark ? const Color(0x80000000) : const Color(0x14101828),
+                                    color: c.shadowSm,
                                     blurRadius: 40,
                                     offset: const Offset(0, 16)),
                               ],
@@ -419,7 +418,7 @@ class _EyeBtnState extends State<_EyeBtn> {
   Widget build(BuildContext context) {
     final c = context.imd;
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
+      cursor: ImdCursor.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
@@ -474,7 +473,7 @@ class _PrimaryBtnState extends State<_PrimaryBtn> {
     return Padding(
       padding: EdgeInsets.zero,
       child: MouseRegion(
-        cursor: widget.busy ? SystemMouseCursors.progress : SystemMouseCursors.click,
+        cursor: widget.busy ? SystemMouseCursors.progress : ImdCursor.click,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
         child: GestureDetector(
@@ -536,7 +535,7 @@ class _CornerCloseBtnState extends State<_CornerCloseBtn> {
   Widget build(BuildContext context) {
     final c = context.imd;
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
+      cursor: ImdCursor.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
@@ -579,7 +578,7 @@ class _ExitBtnState extends State<_ExitBtn> {
     return Semantics(
       label: 'إغلاق النظام',
       child: MouseRegion(
-        cursor: SystemMouseCursors.click,
+        cursor: ImdCursor.click,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
         child: GestureDetector(

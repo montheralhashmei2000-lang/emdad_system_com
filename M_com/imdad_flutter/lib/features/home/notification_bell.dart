@@ -132,8 +132,8 @@ class _NotificationBellState extends State<NotificationBell> {
                 child: Text(
                   unread > 99 ? '99+' : '$unread',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: c.onBadge,
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
                   ),

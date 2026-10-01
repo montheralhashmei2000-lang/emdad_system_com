@@ -126,7 +126,7 @@ class _SpaceCardState extends State<_SpaceCard> {
   Widget build(BuildContext context) {
     final c = context.imd;
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
+      cursor: ImdCursor.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(

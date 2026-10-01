@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:excel/excel.dart' hide Border, BorderStyle;
 import 'package:flutter/material.dart';
@@ -118,8 +119,8 @@ class _ImdTableToolbarState extends State<ImdTableToolbar> {
       margin: const EdgeInsets.only(top: 4, bottom: 10),
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
-        color: c.isDark ? c.surface : const Color(0xFFF2F7F5),
-        border: Border.all(color: c.isDark ? c.line : const Color(0xFFDFE9E4)),
+        color: c.toolbarFill,
+        border: Border.all(color: c.toolbarLine),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Wrap(
@@ -183,9 +184,15 @@ class ImdExcel {
     return out;
   }
 
-  /// اختيار ملف وقراءته (`filePick('.xlsx,.xls,.csv')`).
-  static Future<List<Map<String, String>>?> pickAndRead(BuildContext context) async {
-    final f = await ImdFiles.pick();
+  /// اختيار ملف وقراءته (`filePick('.xlsx,.xls,.csv')`). مع [path] (ملفٌ
+  /// أُفلت على الشاشة) يُقرأ هو مباشرةً بلا حوار اختيار.
+  static Future<List<Map<String, String>>?> pickAndRead(BuildContext context, {String? path}) async {
+    final (String, List<int>)? f;
+    if (path != null) {
+      f = (path, await File(path).readAsBytes());
+    } else {
+      f = await ImdFiles.pick();
+    }
     if (f == null) return null;
     try {
       if (f.$1.toLowerCase().endsWith('.csv')) return _csv(utf8.decode(f.$2, allowMalformed: true));

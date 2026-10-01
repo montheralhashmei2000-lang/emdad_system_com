@@ -95,7 +95,8 @@ class ImdF2 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final one = MediaQuery.sizeOf(context).width <= 600;
+    // عمودٌ واحد على الجوال بنقطة الفصل الوحيدة (900) كبقية النظام.
+    final one = ImdBp.of(context).mobile;
     final n = one ? 1 : cols;
     final rows = <Widget>[];
     for (var i = 0; i < children.length; i += n) {
@@ -431,7 +432,7 @@ class ImdDateField extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.imd;
     return MouseRegion(
-      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      cursor: enabled ? ImdCursor.click : SystemMouseCursors.basic,
       child: GestureDetector(
         onTap: !enabled
             ? null
@@ -489,7 +490,7 @@ class ImdCheckbox extends StatelessWidget {
     final c = context.imd;
     final on = onChanged != null;
     return MouseRegion(
-      cursor: on ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      cursor: on ? ImdCursor.click : SystemMouseCursors.basic,
       child: GestureDetector(
         onTap: on ? () => onChanged!(!value) : null,
         behavior: HitTestBehavior.opaque,
