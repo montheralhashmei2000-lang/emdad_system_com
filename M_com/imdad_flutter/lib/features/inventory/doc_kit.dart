@@ -239,8 +239,12 @@ class _ImdGuidePanelState extends State<ImdGuidePanel> {
             child: Row(children: [
               ImdIcon('info', size: 13, color: c.muted),
               const SizedBox(width: 6),
-              Text(_open ? 'إخفاء ${widget.label}' : 'إظهار ${widget.label}',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.muted)),
+              Flexible(
+                child: Text(_open ? 'إخفاء ${widget.label}' : 'إظهار ${widget.label}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.muted)),
+              ),
               const SizedBox(width: 4),
               ImdIcon(_open ? 'chevron-up' : 'chevron-down', size: 13, color: c.muted),
             ]),
@@ -1141,10 +1145,13 @@ class _ImdCollapsibleSectionState extends State<ImdCollapsibleSection> {
           child: Row(children: [
             ImdIcon(widget.icon, size: 14, color: c.muted),
             const SizedBox(width: 6),
-            Text(widget.title,
-                style: TextStyle(
-                    fontSize: 12.5, fontWeight: FontWeight.w700, color: c.text2)),
-            const Spacer(),
+            Expanded(
+              child: Text(widget.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12.5, fontWeight: FontWeight.w700, color: c.text2)),
+            ),
             ImdIcon(_open ? 'chevron-up' : 'chevron-down', size: 14, color: c.muted),
           ]),
         ),

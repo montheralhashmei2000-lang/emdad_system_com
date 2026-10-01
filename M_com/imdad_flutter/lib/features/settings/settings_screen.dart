@@ -473,8 +473,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Row(children: [
             ImdIcon(q.isEmpty ? current.icon : 'search', size: 18, color: c.accent),
             const SizedBox(width: 8),
-            Text(q.isEmpty ? current.name : 'نتائج البحث: $q',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: c.text)),
+            Flexible(
+              child: Text(q.isEmpty ? current.name : 'نتائج البحث: $q',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: c.text)),
+            ),
           ]),
           const SizedBox(height: 2),
           Text(

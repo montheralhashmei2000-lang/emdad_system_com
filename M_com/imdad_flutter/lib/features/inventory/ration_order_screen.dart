@@ -881,20 +881,23 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
         ]),
         const SizedBox(height: 8),
         Row(children: [
+          // `Wrap` لا `Row`: على الهاتف يلتفّ التلميح تحت العنوان بدل أن يفيض.
           Expanded(
-            child: Row(children: [
-              const Text('الأصناف المطلوبة',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-              const SizedBox(width: 8),
-              if (_supplying.isEmpty)
-                Text('اختر المورِّد ليظهر رصيده',
-                    style:
-                        TextStyle(fontSize: 11.5, color: context.imd.muted))
-              else if (_balLoading)
-                Text('⏳ يُقرأ رصيد «$_supplying»…',
-                    style:
-                        TextStyle(fontSize: 11.5, color: context.imd.muted)),
-            ]),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 2,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                const Text('الأصناف المطلوبة',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                if (_supplying.isEmpty)
+                  Text('اختر المورِّد ليظهر رصيده',
+                      style: TextStyle(fontSize: 11.5, color: context.imd.muted))
+                else if (_balLoading)
+                  Text('⏳ يُقرأ رصيد «$_supplying»…',
+                      style: TextStyle(fontSize: 11.5, color: context.imd.muted)),
+              ],
+            ),
           ),
           ImdButton.outline(
             label: 'إضافة صنف',

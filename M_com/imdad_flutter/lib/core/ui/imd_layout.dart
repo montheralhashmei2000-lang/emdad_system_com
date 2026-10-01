@@ -331,3 +331,15 @@ class ImdAutoGrid extends StatelessWidget {
     );
   }
 }
+
+
+/// أعلى تكبيرٍ للخط يتحمّله التخطيط.
+///
+/// المستخدم يضبط حجم الخط من إعدادات الهاتف فيُضرب كل نصٍّ فيه، والجداول
+/// والأزرار والحقول ذات الارتفاع الثابت لا تتّسع لأكثر من ذلك: الاختبار على
+/// ٣٦٠ بكسل يمرّ بلا فيضٍ حتى ١٫٣. ما فوقه يُقصّ إلى السقف بدل أن يتكسّر
+/// التخطيط، وما دونه (بما فيه تصغير الخط) يُترك كما اختاره المستخدم.
+const double kImdMaxTextScale = 1.3;
+
+MediaQueryData imdClampedMediaQuery(MediaQueryData mq) =>
+    mq.copyWith(textScaler: mq.textScaler.clamp(maxScaleFactor: kImdMaxTextScale));

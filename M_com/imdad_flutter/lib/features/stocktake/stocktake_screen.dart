@@ -845,13 +845,12 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
           rows: [for (final l in rows) _countRow(l, open)],
         ),
       const SizedBox(height: 12),
-      Row(children: [
+      Wrap(spacing: 10, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
         ImdButton(
           label: 'حفظ العد الفعلي',
           icon: 'save',
           onPressed: open ? _saveCount : null,
         ),
-        const SizedBox(width: 10),
         Text('تم عدّ ${nf(done)} من ${nf(_lines.length)} صنف',
             style: TextStyle(fontSize: 12, color: context.imd.muted)),
       ]),

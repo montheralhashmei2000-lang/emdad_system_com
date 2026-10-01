@@ -9,6 +9,7 @@ import 'package:window_manager/window_manager.dart';
 import 'core/print/print_preview.dart';
 import 'core/security/auth_service.dart';
 import 'core/ui/imd_fonts.dart';
+import 'core/ui/imd_layout.dart';
 import 'core/ui/imd_screen_actions.dart';
 import 'core/ui/imd_widgets.dart';
 import 'core/ui/imd_window.dart';
@@ -226,7 +227,9 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
         ],
         builder: (context, child) {
           final body = child ?? const SizedBox.shrink();
-          return Directionality(
+          return MediaQuery(
+            data: imdClampedMediaQuery(MediaQuery.of(context)),
+            child: Directionality(
             textDirection: TextDirection.rtl,
             child: ImdShortcuts.supported
                 ? CallbackShortcuts(
@@ -243,7 +246,7 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
                     child: Focus(autofocus: true, child: body),
                   )
                 : body,
-          );
+          ));
         },
         home: _signedIn
             ? HomeShell(onSignOut: () async {

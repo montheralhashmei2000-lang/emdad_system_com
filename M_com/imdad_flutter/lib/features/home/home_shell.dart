@@ -799,9 +799,12 @@ class _Topbar extends StatelessWidget {
                       ? 'بانتظار أول مزامنة'
                       : 'آخر مزامنة ${DateFormat('HH:mm').format(sync.lastAt!)}';
 
+      // أندرويد ١٥+ يرسم التطبيق خلف شريط الحالة: بلا هذا الإزاحة يطلع الشريط
+      // العلوي (الاسم والمزامنة) تحت الساعة والبطارية. على ويندوز الإزاحة صفر.
+      final inset = MediaQuery.paddingOf(context).top;
       return Container(
-        height: ImdSizes.topbarHeight,
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+        height: ImdSizes.topbarHeight + inset,
+        padding: EdgeInsets.fromLTRB(12, 8 + inset, 12, 10),
         decoration: BoxDecoration(
           color: c.topbar(mica: ImdWindow.micaActive.value),
           border: Border(bottom: BorderSide(color: c.line)),
