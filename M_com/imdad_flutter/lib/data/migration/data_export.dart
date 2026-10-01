@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 
+import '../../core/security/device_activation.dart';
 import '../db/app_database.dart';
+import '../repos/settings_repo.dart';
 import 'backup_crypto.dart';
 import '../sync/sync_marks.dart';
 
@@ -805,8 +807,11 @@ class DataExporter {
           .toList(),
       'settings':
           (await _rows(db.appSettings, ids('app_settings'), (t) => t.key))
+              .where((s) => !SettingsRepo.localOnlyKeys.contains(s.key))
               .map((s) => {'key': s.key, 'value': s.value})
               .toList(),
+      // إلغاء تفعيل الأجهزة: يصل الجهاز الملغى بهذه القناة فيتوقف (آخر ختمٍ يفوز).
+      'deviceRevocations': await DeviceActivation(db).revocationsForSync(),
       // سجل التغييرات: به يعرف الجهاز الآخر أيّ نسخة أحدث، وما حُذف هنا عمدًا.
       // في التصدير التفاضلي تخرج علامات ما تغيّر وحدها — ومعها شواهد الحذف،
       // فينتقل الحذف كما ينتقل التعديل.

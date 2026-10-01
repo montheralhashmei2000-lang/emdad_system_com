@@ -4,7 +4,9 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 
 import '../../core/security/pbkdf2.dart';
+import '../../core/security/device_activation.dart';
 import '../db/app_database.dart';
+import '../repos/settings_repo.dart';
 import 'backup_crypto.dart';
 import '../sync/sync_marks.dart';
 
@@ -112,6 +114,7 @@ class LegacyImporter {
       await _importSettlements(data['monthlySettlements'], res);
       await _importAuditLogs(data['auditLogs'], res);
       await _importSettings(data['settings'], res);
+      await DeviceActivation(db).mergeRevocations(data['deviceRevocations']);
       await _applyTombstones(marks, res);
       await _settleMarks(marks);
     });
@@ -1286,6 +1289,8 @@ class LegacyImporter {
     if (raw is! Map) return;
     final map = raw.cast<String, dynamic>();
     for (final entry in map.entries) {
+      // خاصٌّ بالجهاز: لا يُكتب فوقه من نسخةٍ واردة.
+      if (SettingsRepo.localOnlyKeys.contains(entry.key)) continue;
       if (!_accept('app_settings', entry.key)) continue;
       await db
           .into(db.appSettings)

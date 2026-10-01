@@ -335,9 +335,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   void _go(String page) {
     setState(() => _page = page);
-    if (_scaffoldKey.currentState?.isEndDrawerOpen ?? false) {
-      Navigator.of(context).pop();
-    }
+    // يُغلق الدرج نفسه لا «أعلى مسار»: `Navigator.pop` كانت تغلق أي حوارٍ
+    // مفتوح فوق الشاشة بدل الدرج.
+    _scaffoldKey.currentState?.closeEndDrawer();
   }
 
   bool _isAdmin(AuthService auth) => auth.currentUser?.role == 'admin';
@@ -636,19 +636,24 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         canPop: false,
         onPopInvokedWithResult: (didPop, _) async {
           if (didPop) return;
-          if (_page != 'dash') {
-            _go('dash');
+          // الرجوع والدرج مفتوح يغلق الدرج أولًا.
+          if (_scaffoldKey.currentState?.isEndDrawerOpen ?? false) {
+            _scaffoldKey.currentState?.closeEndDrawer();
+            return;
+          }
+          final home = _space == AppSpace.fuel ? 'fuelDashboard' : 'dash';
+          if (_page != home && _page != 'dash') {
+            _go(home);
             return;
           }
           if (await imdConfirm(context, 'إغلاق النظام؟', ok: 'خروج')) {
             // `SystemNavigator.pop` تُنهي تطبيق أندرويد، أما على ويندوز
             // فتُطلب ولا يستجيب لها أحد: يظلّ المستخدم ينقر ويظنّ التطبيق
             // معلّقًا. وهدمُ النافذة هو إنهاؤه هناك.
-            if (ImdWindow.supported) {
-              await ImdWindow.exit();
-            } else {
-              await SystemNavigator.pop();
-            }
+            // `exit()` يمسح الجلسة ويُغلق المنافذ على كل المنصات، ويُنهي العملية
+            // على ويندوز؛ على أندرويد يُنهي النظام التطبيق بعد `pop`.
+            await ImdWindow.exit();
+            if (!ImdWindow.supported) await SystemNavigator.pop();
           }
         },
         child: Scaffold(
@@ -666,10 +671,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                     openSec: _openSec,
                     hasPerm: (p) => _hasPerm(auth, p),
                     userName: side.userName,
-                    onGo: (id) {
-                      Navigator.of(context).maybePop();
-                      _go(id);
-                    },
+                    // `_go` يغلق الدرج. كان هنا `maybePop` أيضًا فتعترضها `PopScope`
+                    // أدناه وتُعيد المستخدم إلى الرئيسية (أو تسأله عن الإغلاق)،
+                    // فلا تفتح أي شاشةٍ من الدرج على أندرويد إلا «الرئيسية».
+                    onGo: _go,
                     onToggle: (sec) => setState(
                         () => _openSec = _openSec == sec ? null : sec),
                     onLogout: widget.onSignOut,

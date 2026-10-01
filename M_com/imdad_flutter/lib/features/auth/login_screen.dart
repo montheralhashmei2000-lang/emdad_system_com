@@ -101,11 +101,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _exit() async {
-    if (ImdWindow.supported) {
-      await ImdWindow.exit();
-    } else {
-      await SystemNavigator.pop();
-    }
+    await ImdWindow.exit();
+    if (!ImdWindow.supported) await SystemNavigator.pop();
   }
 
   @override

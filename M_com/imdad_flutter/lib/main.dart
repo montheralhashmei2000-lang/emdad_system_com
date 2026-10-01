@@ -145,12 +145,13 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
     });
     // زر إغلاق النافذة لا يمرّ بـ `PopScope`، فيُعترض هنا ليُسأل عن التأكيد
     // كما يُسأل زر الرجوع على الهاتف.
+    // ما يُنهى قبل الإغلاق: الجلسة، ومؤقّت المزامنة وخادمها ومقبس اكتشافها —
+    // على كل المنصات، فالخروج من أندرويد بزر الرجوع يمسح الجلسة أيضًا.
+    ImdWindow.onBeforeExit = _shutdown;
     if (Platform.isWindows) {
       windowManager.addListener(this);
       // الإضافة غير مُهيّأة في بيئة الاختبار، فالفشل هنا لا يمنع التطبيق.
       windowManager.setPreventClose(true).catchError((_) {});
-      // ما يُنهى قبل الإغلاق: مؤقّت المزامنة وخادمها ومقبس اكتشافها.
-      ImdWindow.onBeforeExit = _shutdown;
       // لون Mica يتبع السمة: فاتحٌ أو داكن.
       _theme.addListener(_syncMica);
     }
@@ -173,10 +174,15 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
   /// خادم المزامنة يستمع على منفذ، ومقبس الاكتشاف على آخر، ومؤقّتها يدور.
   /// هدمُ النافذة وحده يترك هذه قائمةً فتتأخّر نهاية العملية ثوانيَ تبدو
   /// تعليقًا. وكلٌّ منها يُنهى على حدة فلا يمنع تعثّرُ واحدٍ إنهاءَ الباقي.
+  ///
+  /// والجلسة تُمسح كذلك: الخروج الصريح (زر الإغلاق أو «خروج») ينهي الجلسة،
+  /// فيُطلب الدخول عند فتح التطبيق من جديد. كانت الجلسة تبقى 12 ساعة فيدخل
+  /// التطبيق بلا كلمة مرور بعد الإغلاق.
   Future<void> _shutdown() async {
-    try {
-      await _autoSync.shutdown();
-    } catch (_) {}
+    await Future.wait([
+      _autoSync.shutdown().catchError((_) {}),
+      widget.auth.logout().catchError((_) {}),
+    ]);
   }
 
   @override

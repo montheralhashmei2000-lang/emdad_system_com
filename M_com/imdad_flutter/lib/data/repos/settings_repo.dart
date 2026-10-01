@@ -104,6 +104,11 @@ class SettingsRepo {
 
   final AppDatabase db;
 
+  /// مفاتيح خاصة بهذا الجهاز لا تغادره بالمزامنة أبدًا: رمز تفعيله ومعرّفه (وعلى
+  /// جهاز الإدارة مفتاح المالك الخاص)، وسجلّ الأجهزة المُصدَر لها، وختوم الإلغاء
+  /// (تسافر بقناتها الخاصة `deviceRevocations`). كان التصدير يحملها كلها.
+  static const Set<String> localOnlyKeys = {'device', 'devices', 'revocations'};
+
   static const String printLayoutKey = 'printLayout';
   static const String orgKey = 'org';
 

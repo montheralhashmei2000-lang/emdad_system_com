@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/security/auth_service.dart';
 import '../../core/security/device_activation.dart';
 import '../../core/security/esign.dart';
+import '../../core/ui/imd_context_menu.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_scan.dart';
 import '../../core/ui/imd_layout.dart';
+import '../../core/ui/imd_qr.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
@@ -59,12 +62,14 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
   final _ownerKey = TextEditingController();
   final _targetDevice = TextEditingController();
   final _branch = TextEditingController();
+  final _deviceName = TextEditingController();
 
   String _deviceId = '';
   bool _fresh = false; // لا حساب مدير مُهيّأ محليًا
   bool _hasUsers = false; // أي حساب على الجهاز، ولو وصل بالمزامنة
   bool _activated = false; // بطاقة تفعيل سارية على هذا الجهاز
   String _issued = '';
+  List<IssuedDevice> _registry = const [];
   bool _canIssue = false;
   bool _isMaster = false;
   bool _loading = true;
@@ -81,7 +86,7 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
 
   @override
   void dispose() {
-    for (final c in [_token, _targetDevice, _branch, _adminUser, _adminPass, _adminPass2, _ownerKey]) {
+    for (final c in [_token, _targetDevice, _branch, _deviceName, _adminUser, _adminPass, _adminPass2, _ownerKey]) {
       c.dispose();
     }
     super.dispose();
@@ -95,8 +100,10 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
     final fresh = await _auth.needsBootstrap();
     final hasUsers = await _auth.hasAnyUser();
     final activated = await _act.isActivated();
+    final registry = canIssue ? await _act.registry() : const <IssuedDevice>[];
     if (!mounted) return;
     setState(() {
+      _registry = registry;
       _deviceId = id;
       _state = state;
       _activated = activated;
@@ -196,12 +203,15 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
       deviceId: device,
       branch: _branch.text.trim(),
       role: _role,
+      name: _deviceName.text,
       expiresAt: DateTime.now().add(Duration(days: 30 * _months)),
     );
+    final registry = await _act.registry();
     if (!mounted) return;
     setState(() {
       _busy = false;
       _issued = token ?? '';
+      _registry = registry;
     });
     if (token == null) {
       showImdToast(context, '✖ لا يوجد مفتاح إصدار على هذا الجهاز — استورده أولًا', error: true);
@@ -267,6 +277,8 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
       if (canIssue) ...[
         const SizedBox(height: 12),
         _issuer(),
+        const SizedBox(height: 12),
+        _devicesPanel(),
       ],
     ]);
   }
@@ -339,7 +351,7 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
         title: 'إدخال رمز التفعيل',
         icon: 'key',
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          ImdLabeled('الرمز', ImdFld(controller: _token, hint: 'IMDACT1|…')),
+          ImdLabeled('الرمز', ImdFld(controller: _token, hint: 'IMDACT2.…')),
           const SizedBox(height: 10),
           Wrap(spacing: 10, runSpacing: 10, children: [
             ImdButton(label: 'تفعيل', icon: 'check', busy: _busy, onPressed: _activate),
@@ -481,6 +493,7 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
         ImdGrid2(children: [
           ImdLabeled('معرّف الجهاز (٨ أحرف)', ImdFld(controller: _targetDevice, hint: 'ABCD2345')),
           ImdLabeled('الفرع / الجهة', ImdFld(controller: _branch, hint: 'اللواء الأول')),
+          ImdLabeled('اسم الجهاز (اختياري)', ImdFld(controller: _deviceName, hint: 'مثال: مكتب المخزن')),
         ]),
         const SizedBox(height: 10),
         ImdLabeled(
@@ -510,20 +523,176 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
         ),
         if (_issued.isNotEmpty) ...[
           const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: c.accentSoft,
-              border: Border.all(color: c.ring),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: SelectableText(
-              _issued,
-              style: TextStyle(fontSize: 12.5, height: 1.9, color: c.text, fontFamily: 'monospace'),
-            ),
-          ),
+          _issuedToken(c),
         ],
       ]),
     );
   }
+
+  /// الرمز الصادر: QR يُمسح بكاميرا الجهاز الجديد مباشرةً (زر «مسح QR» عنده)،
+  /// ونصٌّ يُنسخ أو يُملى هاتفيًا.
+  Widget _issuedToken(ImdColors c) => Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: c.accentSoft,
+          border: Border.all(color: c.ring),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Center(child: ImdQr(_issued, size: 240)),
+          const SizedBox(height: 6),
+          Text(
+            'وجّه كاميرا الجهاز الجديد إلى الرمز (زر «مسح QR» في شاشة التفعيل) — أو انسخ النص.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, height: 1.7, color: c.muted),
+          ),
+          const SizedBox(height: 10),
+          SelectableText(
+            _issued,
+            style: TextStyle(fontSize: 12.5, height: 1.9, color: c.text, fontFamily: 'monospace'),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: ImdButton.outline(
+              label: 'نسخ الرمز',
+              icon: 'copy',
+              small: true,
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: _issued));
+                if (mounted) showImdToast(context, '✔ نُسخ الرمز');
+              },
+            ),
+          ),
+        ]),
+      );
+
+  // ───────────────────────── سجلّ الأجهزة
+
+  ({String label, ImdTone tone}) _statusOf(IssuedDevice d) => switch (d.status) {
+        IssuedStatus.active => (label: 'مفعَّل', tone: ImdTone.ok),
+        IssuedStatus.expired => (label: 'منتهي', tone: ImdTone.pend),
+        IssuedStatus.revoked => (label: 'ملغى', tone: ImdTone.err),
+      };
+
+  String _day(DateTime d) => d.toIso8601String().substring(0, 10);
+
+  Future<void> _rename(IssuedDevice d) async {
+    final ctrl = TextEditingController(text: d.name);
+    final name = await showImdModal<String>(
+      context,
+      title: 'تعديل اسم الجهاز',
+      icon: 'edit',
+      maxWidth: 440,
+      builder: (ctx) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('المعرّف: ${d.deviceId}', style: TextStyle(fontSize: 12.5, color: ctx.imd.muted)),
+        const SizedBox(height: 10),
+        ImdLabeled('الاسم', ImdFld(controller: ctrl, hint: 'مثال: مكتب المخزن')),
+      ]),
+      actions: (ctx) => [
+        ImdButton.outline(label: 'إلغاء', onPressed: () => Navigator.of(ctx).pop()),
+        ImdButton(label: 'حفظ', icon: 'check', onPressed: () => Navigator.of(ctx).pop(ctrl.text)),
+      ],
+      onEnter: (ctx) => () => Navigator.of(ctx).pop(ctrl.text),
+    );
+    ctrl.dispose();
+    if (name == null) return;
+    await _act.renameIssued(d.deviceId, name);
+    await _load();
+  }
+
+  Future<void> _toggleRevoked(IssuedDevice d) async {
+    final revoke = !d.revoked;
+    final ok = await imdConfirm(
+      context,
+      revoke
+          ? 'إلغاء تفعيل «${d.name.isEmpty ? d.deviceId : d.name}»؟\n\n'
+              'يتوقف الجهاز عن العمل عند أول مزامنة له مع أي جهازٍ وصله هذا الإلغاء. '
+              'جهازٌ لا يزامن أبدًا يبقى يعمل حتى انتهاء رمزه (${_day(d.expiresAt)}).'
+          : 'إعادة تفعيل «${d.name.isEmpty ? d.deviceId : d.name}»؟',
+      ok: revoke ? 'إلغاء التفعيل' : 'إعادة التفعيل',
+      danger: revoke,
+    );
+    if (!ok) return;
+    await _act.setRevoked(d.deviceId, revoke);
+    await _load();
+    if (mounted) showImdToast(context, revoke ? '✔ أُلغي التفعيل' : '✔ أُعيد التفعيل');
+  }
+
+  Future<void> _removeDevice(IssuedDevice d) async {
+    final ok = await imdConfirm(
+      context,
+      'حذف «${d.name.isEmpty ? d.deviceId : d.name}» من السجل؟\n\n'
+      'الحذف من السجل وحده لا يوقف الجهاز: ألغِ تفعيله أولًا إن أردت إيقافه.',
+      ok: 'حذف من السجل',
+      danger: true,
+    );
+    if (!ok) return;
+    await _act.removeIssued(d.deviceId);
+    await _load();
+  }
+
+  List<ImdMenuItem> _menuOf(IssuedDevice d) => [
+        ImdMenuItem(label: 'تعديل الاسم', icon: 'edit', onTap: () => _rename(d)),
+        ImdMenuItem(
+          label: d.revoked ? 'إعادة التفعيل' : 'إلغاء التفعيل',
+          icon: d.revoked ? 'check' : 'alert',
+          onTap: () => _toggleRevoked(d),
+        ),
+        ImdMenuItem(label: 'حذف من السجل', icon: 'trash', danger: true, onTap: () => _removeDevice(d)),
+      ];
+
+  /// الأجهزة التي أُصدر لها رمزٌ من هذا الجهاز: اسمها وحالتها، وإلغاؤها وحذفها
+  /// وإعادة تسميتها. (قائمة السياق بكليك يمين تعطي الإجراءات نفسها.)
+  Widget _devicesPanel() => ImdPanel(
+        title: 'الأجهزة المُصدَر لها (${_registry.length})',
+        icon: 'monitor',
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const ImdNote('كل رمز تُصدره هنا يُسجَّل في هذه القائمة. إلغاء التفعيل يصل الجهاز '
+              'بالمزامنة فيتوقف؛ والحذف يزيل السطر من السجل فقط.'),
+          const SizedBox(height: 10),
+          ImdTable(
+            minWidth: 760,
+            empty: 'لم يُصدَر أي رمز بعد',
+            columns: const [
+              ImdCol('الاسم', flex: 2),
+              ImdCol('المعرّف'),
+              ImdCol('الفرع', flex: 2),
+              ImdCol('الدور'),
+              ImdCol('ينتهي'),
+              ImdCol('الحالة'),
+              ImdCol('', width: 150),
+            ],
+            pageSize: 25,
+            rowMenu: (i) => _menuOf(_registry[i]),
+            rows: [
+              for (final d in _registry)
+                [
+                  Text(d.name.isEmpty ? '—' : d.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(d.deviceId, style: const TextStyle(fontFamily: 'monospace')),
+                  Text(d.branch.isEmpty ? '—' : d.branch),
+                  Text(d.role == DeviceRole.master ? 'إدارة' : 'فرع'),
+                  Text(_day(d.expiresAt)),
+                  ImdChip(_statusOf(d).label, tone: _statusOf(d).tone),
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    ImdIconButton(icon: 'edit', tooltip: 'تعديل الاسم', onPressed: () => _rename(d)),
+                    const SizedBox(width: 4),
+                    ImdIconButton(
+                      icon: d.revoked ? 'check' : 'alert',
+                      tooltip: d.revoked ? 'إعادة التفعيل' : 'إلغاء التفعيل',
+                      onPressed: () => _toggleRevoked(d),
+                    ),
+                    const SizedBox(width: 4),
+                    ImdIconButton(
+                      icon: 'trash',
+                      tooltip: 'حذف من السجل',
+                      kind: ImdBtnKind.danger,
+                      onPressed: () => _removeDevice(d),
+                    ),
+                  ]),
+                ],
+            ],
+          ),
+        ]),
+      );
 }

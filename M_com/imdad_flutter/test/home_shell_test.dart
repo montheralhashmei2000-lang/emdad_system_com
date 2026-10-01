@@ -168,6 +168,43 @@ void main() {
     });
   });
 
+  /// عطلٌ على أندرويد: كل بندٍ في الدرج غير «الرئيسية» لا يفتح شاشته. كان `onGo`
+  /// يستدعي `Navigator.maybePop()` فتعترضها `PopScope(canPop: false)` وتُعيد
+  /// المستخدم إلى الرئيسية أو تسأله «إغلاق النظام؟».
+  testWidgets('الدرج على الجوال يفتح شاشة البند المختار ويُغلق بلا سؤال خروج',
+      (tester) async {
+    window(tester, 700);
+    await enterSupply(tester);
+
+    await tester.tap(find.text('المزيد').first);
+    await pump(tester);
+    // قسم «البيانات الأساسية» مفتوحٌ افتراضيًّا في الدرج.
+    expect(find.text('الأصناف'), findsWidgets);
+
+    await tester.tap(find.text('الأصناف').last);
+    await pump(tester);
+
+    expect(find.text('إدارة الأصناف'), findsOneWidget, reason: 'الشاشة لم تُفتح');
+    expect(find.text('إغلاق النظام؟'), findsNothing, reason: 'سؤال الخروج ظهر خطأً');
+    expect(find.byType(Drawer), findsNothing, reason: 'الدرج لم يُغلق');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('زرّ الرجوع والدرج مفتوح يغلق الدرج ولا يغادر الشاشة', (tester) async {
+    window(tester, 700);
+    await enterSupply(tester);
+
+    await tester.tap(find.text('المزيد').first);
+    await pump(tester);
+    expect(find.byType(Drawer), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await pump(tester);
+
+    expect(find.byType(Drawer), findsNothing);
+    expect(find.text('إغلاق النظام؟'), findsNothing);
+  });
+
   /// عطلٌ ظهر في نافذة ويندوز ارتفاعها ٦٩٧: `AnimatedSize` تُرجع ارتفاع الطفل
   /// الهدف لا المتحرّك، فيفيض العمود مؤقتًا (٩٢ بكسلًا) عند طيّ قسمٍ أو التبديل
   /// بين قسمين. وهو لا يظهر إلا أثناء الحركة، فيُضخّ الوقت خطوةً خطوة.

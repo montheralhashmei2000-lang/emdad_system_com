@@ -42,6 +42,7 @@ void main() {
     DeviceRole role = DeviceRole.branch,
     Duration valid = const Duration(days: 365),
     String? privateKey,
+    bool compact = true,
   }) async {
     await adminAct.importPrivateKey(privateKey ?? ownerPair.privateHex);
     final token = await adminAct.issue(
@@ -49,6 +50,7 @@ void main() {
       branch: 'اللواء الأول',
       role: role,
       expiresAt: DateTime.now().add(valid),
+      compact: compact,
     );
     expect(token, isNotNull, reason: 'الإصدار يحتاج مفتاح المالك');
     return token!;
@@ -156,7 +158,7 @@ void main() {
     });
 
     test('ترقية الدور في الرمز تُسقط التوقيع', () async {
-      final token = await issue(branchAct);
+      final token = await issue(branchAct, compact: false);
       final parts = token.split('|')..[4] = DeviceRole.master.name;
 
       final state = await branchAct.verify(
@@ -167,7 +169,7 @@ void main() {
     });
 
     test('تمديد تاريخ الانتهاء يُسقط التوقيع', () async {
-      final token = await issue(branchAct);
+      final token = await issue(branchAct, compact: false);
       final parts = token.split('|');
       parts[5] = '${int.parse(parts[5]) + 31536000000}';
 
@@ -242,6 +244,178 @@ void main() {
     test('الرمز كله ASCII فلا يتوقف على ترميز الماسح', () async {
       final token = await issue(branchAct);
       expect(token.codeUnits.every((c) => c < 128), isTrue, reason: token);
+    });
+  });
+
+  group('الرمز المضغوط IMDACT2', () {
+    test('يُصدَر مضغوطًا ويفعّل الجهاز كالقديم تمامًا', () async {
+      final token = await issue(branchAct);
+      expect(token, startsWith('IMDACT2.'));
+
+      final state = await branchAct.activate(token);
+      expect(state.ok, isTrue, reason: state.reason);
+      expect(state.branch, 'اللواء الأول');
+      expect(state.role, DeviceRole.branch);
+      expect(state.deviceId, await branchAct.deviceId());
+    });
+
+    test('أقصر من القديم', () async {
+      final compact = await issue(branchAct);
+      final legacy = await issue(branchAct, compact: false);
+      expect(legacy, startsWith('IMDACT1|'));
+      // التوقيع (٦٤ بايتًا ⇒ ٨٦ حرفًا) هو الحدّ الأدنى؛ والباقي هو ما يُضغط.
+      expect(compact.length, lessThan(legacy.length * 0.9),
+          reason: '${compact.length} مقابل ${legacy.length}');
+    });
+
+    test('الرمز القديم يبقى مقبولًا', () async {
+      final legacy = await issue(branchAct, compact: false);
+      expect((await branchAct.activate(legacy)).ok, isTrue);
+    });
+
+    test('دور الإدارة والانتهاء يصلان كما صدرا', () async {
+      final token = await issue(branchAct, role: DeviceRole.master, valid: const Duration(days: 90));
+      final state = await branchAct.verify(token, expectDeviceId: await branchAct.deviceId());
+      expect(state.ok, isTrue, reason: state.reason);
+      expect(state.role, DeviceRole.master);
+      final days = state.expiresAt!.difference(DateTime.now()).inDays;
+      expect(days, inInclusiveRange(88, 90));
+    });
+
+    test('العبث ببايت واحد يُسقطه: لا يُقبل ولا يرمي', () async {
+      final token = await issue(branchAct);
+      final body = token.substring('IMDACT2.'.length);
+      // نقلب حرفًا في منتصف الحمولة (الدور أو الانتهاء أو الفرع أو التوقيع).
+      for (final i in [2, 9, 12, body.length ~/ 2, body.length - 3]) {
+        final flipped = body.substring(0, i) +
+            (body[i] == 'A' ? 'B' : 'A') +
+            body.substring(i + 1);
+        final state = await branchAct.verify('IMDACT2.$flipped',
+            expectDeviceId: await branchAct.deviceId());
+        expect(state.ok, isFalse, reason: 'الموضع $i');
+      }
+    });
+
+    test('رمزٌ مبتور أو بحمولة فارغة يعيد سبب الرفض', () async {
+      for (final bad in ['IMDACT2.', 'IMDACT2.AAAA', 'IMDACT2.!!!!', 'IMDACT2']) {
+        final state = await branchAct.verify(bad, expectDeviceId: 'ABCD2345');
+        expect(state.ok, isFalse, reason: bad);
+        expect(state.reason, isNotEmpty);
+      }
+    });
+
+    test('رمزٌ صادر لجهاز آخر يُرفض بالصيغة المضغوطة أيضًا', () async {
+      final other = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(other.close);
+      final otherAct = DeviceActivation(other, ownerPublicKey: ownerPair.publicB64);
+      final token = await issue(otherAct);
+
+      final state = await branchAct.verify(token, expectDeviceId: await branchAct.deviceId());
+      expect(state.ok, isFalse);
+      expect(state.reason, contains('جهاز آخر'));
+    });
+
+    test('فرعٌ بحروف عربية طويلة يُصدَر ويُقرأ سليمًا', () async {
+      await adminAct.importPrivateKey(ownerPair.privateHex);
+      const branchName = 'اللواء الأول مشاة — الكتيبة الثالثة / السرية الرابعة';
+      final token = await adminAct.issue(
+        deviceId: await branchAct.deviceId(),
+        branch: branchName,
+        expiresAt: DateTime.now().add(const Duration(days: 30)),
+      );
+      final state = await branchAct.verify(token!, expectDeviceId: await branchAct.deviceId());
+      expect(state.ok, isTrue, reason: state.reason);
+      expect(state.branch, branchName);
+    });
+  });
+
+  group('سجلّ الأجهزة والإلغاء', () {
+    setUp(() async => adminAct.importPrivateKey(ownerPair.privateHex));
+
+    Future<void> issueNamed(String id, String name) => adminAct.issue(
+          deviceId: id,
+          name: name,
+          branch: 'الفرع',
+          expiresAt: DateTime.now().add(const Duration(days: 30)),
+        );
+
+    test('كل إصدارٍ يُسجَّل بالاسم والفرع والانتهاء', () async {
+      await issueNamed('ABCD2345', 'حاسوب المخزن');
+      await issueNamed('WXYZ6789', 'هاتف المشرف');
+
+      final list = await adminAct.registry();
+      expect(list.length, 2);
+      expect(list.map((d) => d.name), containsAll(['حاسوب المخزن', 'هاتف المشرف']));
+      expect(list.every((d) => d.status == IssuedStatus.active), isTrue);
+    });
+
+    test('إعادة الإصدار لجهاز مسجَّل لا تكرّره وتحفظ اسمه', () async {
+      await issueNamed('ABCD2345', 'حاسوب المخزن');
+      await issueNamed('ABCD2345', '');
+
+      final list = await adminAct.registry();
+      expect(list.length, 1);
+      expect(list.single.name, 'حاسوب المخزن');
+    });
+
+    test('إعادة التسمية والحذف', () async {
+      await issueNamed('ABCD2345', 'قديم');
+      await adminAct.renameIssued('ABCD2345', '  جديد  ');
+      expect((await adminAct.registry()).single.name, 'جديد');
+
+      await adminAct.removeIssued('ABCD2345');
+      expect(await adminAct.registry(), isEmpty);
+    });
+
+    test('الإلغاء يظهر حالةً ويُعاد بإعادة التفعيل', () async {
+      await issueNamed('ABCD2345', 'جهاز');
+      await adminAct.setRevoked('ABCD2345', true);
+      expect((await adminAct.registry()).single.status, IssuedStatus.revoked);
+
+      await adminAct.setRevoked('ABCD2345', false);
+      expect((await adminAct.registry()).single.status, IssuedStatus.active);
+    });
+
+    test('حذف السطر لا يرفع الإلغاء', () async {
+      await issueNamed('ABCD2345', 'جهاز');
+      await adminAct.setRevoked('ABCD2345', true);
+      await adminAct.removeIssued('ABCD2345');
+      expect(await adminAct.isRevoked('ABCD2345'), isTrue);
+    });
+
+    test('جهاز مفعَّل يتوقف حين يصله إلغاؤه بالمزامنة ويعود حين يُرفع', () async {
+      final token = await issue(branchAct);
+      await branchAct.activate(token);
+      expect(await branchAct.isActivated(), isTrue);
+      final id = await branchAct.deviceId();
+
+      await adminAct.setRevoked(id, true);
+      await branchAct.mergeRevocations(await adminAct.revocationsForSync());
+
+      expect(await branchAct.isActivated(), isFalse);
+      expect((await branchAct.current())?.reason, contains('أُلغي'));
+
+      await adminAct.setRevoked(id, false);
+      await branchAct.mergeRevocations(await adminAct.revocationsForSync());
+      expect(await branchAct.isActivated(), isTrue);
+    });
+
+    test('الدمج يأخذ الأحدث ختمًا ولا يتراجع إلى أقدم', () async {
+      await branchAct.mergeRevocations({
+        'AAAA2222': {'revoked': true, 'at': 2000},
+      });
+      final changed = await branchAct.mergeRevocations({
+        'AAAA2222': {'revoked': false, 'at': 1000}, // أقدم: يُهمَل
+        'BBBB3333': {'revoked': true, 'at': 500},
+      });
+      expect(changed, 1);
+      expect(await branchAct.isRevoked('AAAA2222'), isTrue);
+      expect(await branchAct.isRevoked('BBBB3333'), isTrue);
+    });
+
+    test('حمولة إلغاء مشوّهة لا تسقط', () async {
+      expect(await branchAct.mergeRevocations('نص'), 0);
+      expect(await branchAct.mergeRevocations({'X': 5, 'Y': {'at': 'z'}}), isA<int>());
     });
   });
 }

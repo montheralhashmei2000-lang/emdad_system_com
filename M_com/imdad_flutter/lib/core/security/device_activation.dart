@@ -28,8 +28,16 @@ enum DeviceRole {
 /// **ولماذا لا يُشتق معرّف الجهاز من العتاد:** البصمة العتادية تتغيّر بتحديث
 /// نظام أو تبديل قرص، فيفقد الجهاز تفعيله بلا ذنب. المعرّف هنا عشوائي مخزَّن.
 ///
-/// صيغة الرمز (ASCII بالكامل فلا يتوقف على ترميز الماسح):
-/// `IMDACT1|معرّف المفتاح|معرّف الجهاز|الفرع(Base64)|الدور|الانتهاء|التوقيع`
+/// صيغتا الرمز (كلتاهما ASCII بالكامل فلا يتوقف على ترميز الماسح):
+///
+/// • **المضغوطة `IMDACT2.<Base64Url>`** — ما يُصدره النظام الآن: الحقول الموقَّعة
+///   نفسها في ثنائيٍّ مضغوط (معرّف الجهاز في خمسة بايتات لا ثمانية أحرف،
+///   والانتهاء في ستة لا ثلاثة عشر رقمًا) فيقصر الرمز نحو ثلث طوله، ويُرسم QR
+///   أصغر يُقرأ بالكاميرا بسهولة.
+/// • **القديمة `IMDACT1|معرّف المفتاح|معرّف الجهاز|الفرع(Base64)|الدور|الانتهاء|التوقيع`**
+///   — تبقى مقبولةً فلا يسقط تفعيل جهازٍ صدر له رمزٌ بها.
+///
+/// الصيغتان توقّعان **البصمة نفسها** ([_digest])، فهما ترميزان لشيءٍ واحد.
 class DeviceActivation {
   /// [ownerPublicKey] حقن للاختبارات وحدها؛ الإنتاج يستعمل المفتاح المدفون
   /// ولا يوجد أي مسار في الواجهة أو التشغيل يغيّره.
@@ -42,6 +50,9 @@ class DeviceActivation {
   bool get _configured => _ownerPublicKey.isNotEmpty;
 
   static const String prefix = 'IMDACT1';
+  static const String prefixV2 = 'IMDACT2';
+  static const String _registryKey = 'devices';
+  static const String _revocationsKey = 'revocations';
   static const String _settingsKey = 'device';
 
   // ───────────────────────── هوية الجهاز
@@ -71,7 +82,19 @@ class DeviceActivation {
     final map = await SettingsRepo(db).read(_settingsKey);
     final token = '${map['token'] ?? ''}';
     if (token.isEmpty) return null;
-    return verify(token, expectDeviceId: await deviceId());
+    final id = await deviceId();
+    final state = await verify(token, expectDeviceId: id);
+    if (state.ok && await isRevoked(id)) {
+      return ActivationState(
+        ok: false,
+        reason: 'أُلغي تفعيل هذا الجهاز من الإدارة — تواصل معها',
+        deviceId: state.deviceId,
+        branch: state.branch,
+        role: state.role,
+        expiresAt: state.expiresAt,
+      );
+    }
+    return state;
   }
 
   /// هل يُسمح لهذا الجهاز بالعمل؟
@@ -147,6 +170,8 @@ class DeviceActivation {
     required String branch,
     required DateTime expiresAt,
     DeviceRole role = DeviceRole.branch,
+    String name = '',
+    bool compact = true,
   }) async {
     final priv = await _privateKey();
     if (priv.isEmpty) return null;
@@ -158,23 +183,40 @@ class DeviceActivation {
       privateHex: priv,
       digest: _digest(deviceId, branchB64, roleName, expiry),
     );
-    final kid = _configured ? ESign.keyIdOf(_ownerPublicKey) : 'DEVMODE0';
-    return [prefix, kid, deviceId, branchB64, roleName, '$expiry', base64Url.encode(signature)]
-        .join('|');
+    // المضغوطة أولًا؛ وما لا يتّسع لها (معرّف بحروف خارج الأبجدية أو فرعٌ أطول
+    // من 255 بايتًا) يُصدَر بالقديمة فلا يفشل الإصدار.
+    final short = compact ? _encodeV2(deviceId, branch, role, expiry, signature) : null;
+    final token = short ??
+        [
+          prefix,
+          _configured ? ESign.keyIdOf(_ownerPublicKey) : 'DEVMODE0',
+          deviceId,
+          branchB64,
+          roleName,
+          '$expiry',
+          base64Url.encode(signature),
+        ].join('|');
+
+    await _record(IssuedDevice(
+      deviceId: deviceId,
+      name: name.trim(),
+      branch: branch,
+      role: role,
+      issuedAt: DateTime.now(),
+      expiresAt: DateTime.fromMillisecondsSinceEpoch(expiry),
+    ));
+    return token;
   }
 
   /// يتحقق من رمز: التوقيع بالمفتاح **المدفون**، ومطابقة الجهاز، والانتهاء.
   Future<ActivationState> verify(String token, {required String expectDeviceId}) async {
-    final parts = token.trim().split('|');
-    if (parts.length != 7 || parts.first != prefix) {
+    final _Parsed? parsed = _parse(token.trim());
+    if (parsed == null) {
       return const ActivationState(ok: false, reason: 'رمز التفعيل غير مقروء');
     }
-    final device = parts[2];
-    final roleName = parts[4];
-    final expiry = int.tryParse(parts[5]);
-    if (expiry == null) {
-      return const ActivationState(ok: false, reason: 'تاريخ انتهاء غير صالح');
-    }
+    final device = parsed.deviceId;
+    final roleName = parsed.roleName;
+    final expiry = parsed.expiry;
     if (device != expectDeviceId) {
       return ActivationState(
         ok: false,
@@ -184,10 +226,9 @@ class DeviceActivation {
     }
 
     final String branch;
-    final Uint8List signature;
+    final Uint8List signature = parsed.signature;
     try {
-      branch = utf8.decode(base64Url.decode(parts[3]));
-      signature = base64Url.decode(parts[6]);
+      branch = utf8.decode(base64Url.decode(parsed.branchB64));
     } catch (_) {
       return const ActivationState(ok: false, reason: 'رمز التفعيل تالف');
     }
@@ -198,7 +239,7 @@ class DeviceActivation {
     if (_configured) {
       final ok = ESign.verifyRawWithKey(
         publicKeyB64: _ownerPublicKey,
-        digest: _digest(device, parts[3], roleName, expiry),
+        digest: _digest(device, parsed.branchB64, roleName, expiry),
         rawSignature: signature,
       );
       if (!ok) {
@@ -231,6 +272,180 @@ class DeviceActivation {
       role: role,
       expiresAt: expires,
     );
+  }
+
+  // ───────────────────────── الترميز
+
+  /// أبجدية معرّف الجهاز — اثنان وثلاثون رمزًا بالضبط، فيُحمَل كل رمزٍ في خمس بتّات.
+  static const String _idAlphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+
+  static Uint8List? _idToBytes(String id) {
+    if (id.length != 8) return null;
+    var acc = 0;
+    for (final ch in id.split('')) {
+      final v = _idAlphabet.indexOf(ch);
+      if (v < 0) return null;
+      acc = (acc << 5) | v;
+    }
+    return Uint8List.fromList([for (var i = 4; i >= 0; i--) (acc >> (8 * i)) & 0xFF]);
+  }
+
+  static String _idFromBytes(List<int> b) {
+    var acc = 0;
+    for (final x in b) {
+      acc = (acc << 8) | x;
+    }
+    return [for (var i = 7; i >= 0; i--) _idAlphabet[(acc >> (5 * i)) & 31]].join();
+  }
+
+  /// `IMDACT2.<Base64Url بلا حشو>` — أو `null` إن تعذّر الضغط فيُستعمل القديم.
+  ///
+  /// التخطيط: معرّف الجهاز (5) · الدور (1) · الانتهاء بالمللي ثانية (6) ·
+  /// طول الفرع (1) · الفرع UTF-8 · التوقيع (64).
+  static String? _encodeV2(
+      String deviceId, String branch, DeviceRole role, int expiry, Uint8List signature) {
+    final id = _idToBytes(deviceId);
+    final b = utf8.encode(branch);
+    if (id == null || b.length > 255 || signature.length != 64 || expiry < 0) return null;
+    final out = BytesBuilder()
+      ..add(id)
+      ..addByte(role == DeviceRole.master ? 1 : 0)
+      ..add([for (var i = 5; i >= 0; i--) (expiry >> (8 * i)) & 0xFF])
+      ..addByte(b.length)
+      ..add(b)
+      ..add(signature);
+    return '$prefixV2.${base64Url.encode(out.toBytes()).replaceAll('=', '')}';
+  }
+
+  /// يفكّ الصيغتين إلى الحقول الموقَّعة نفسها، أو `null` إن لم يُقرأ الرمز.
+  static _Parsed? _parse(String token) {
+    try {
+      if (token.startsWith('$prefixV2.')) {
+        final raw = base64Url.decode(base64Url.normalize(token.substring(prefixV2.length + 1)));
+        if (raw.length < 5 + 1 + 6 + 1 + 64) return null;
+        final len = raw[12];
+        if (raw.length != 13 + len + 64) return null;
+        var expiry = 0;
+        for (var i = 6; i < 12; i++) {
+          expiry = (expiry << 8) | raw[i];
+        }
+        return _Parsed(
+          deviceId: _idFromBytes(raw.sublist(0, 5)),
+          branchB64: base64Url.encode(raw.sublist(13, 13 + len)),
+          roleName: raw[5] == 1 ? DeviceRole.master.name : DeviceRole.branch.name,
+          expiry: expiry,
+          signature: Uint8List.fromList(raw.sublist(13 + len)),
+        );
+      }
+      final parts = token.split('|');
+      if (parts.length != 7 || parts.first != prefix) return null;
+      final expiry = int.tryParse(parts[5]);
+      if (expiry == null) return null;
+      return _Parsed(
+        deviceId: parts[2],
+        branchB64: parts[3],
+        roleName: parts[4],
+        expiry: expiry,
+        signature: base64Url.decode(parts[6]),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ───────────────────────── سجلّ الأجهزة المُصدَر لها (على جهاز الإدارة)
+
+  /// الأجهزة التي أُصدر لها رمزٌ من هذا الجهاز، الأحدث أولًا، بحالتها الحالية.
+  Future<List<IssuedDevice>> registry() async {
+    final map = await SettingsRepo(db).read(_registryKey);
+    final revoked = await _revocations();
+    final list = <IssuedDevice>[
+      for (final e in (map['list'] as List? ?? const []))
+        if (e is Map) IssuedDevice.fromMap(e.cast<String, dynamic>()),
+    ];
+    return [
+      for (final d in list)
+        d.copyWith(revoked: (revoked[d.deviceId]?['revoked'] ?? false) == true),
+    ]..sort((a, b) => b.issuedAt.compareTo(a.issuedAt));
+  }
+
+  Future<void> _saveRegistry(List<IssuedDevice> list) =>
+      SettingsRepo(db).write(_registryKey, {'list': [for (final d in list) d.toMap()]});
+
+  /// يسجّل الإصدار: إعادة الإصدار لجهازٍ مسجَّل تحدّث سجلّه ولا تكرّره، وتحفظ
+  /// اسمه السابق إن لم يُعطَ اسمٌ جديد.
+  Future<void> _record(IssuedDevice d) async {
+    final all = await registry();
+    final i = all.indexWhere((x) => x.deviceId == d.deviceId);
+    final next = [...all];
+    if (i >= 0) {
+      next[i] = d.copyWith(name: d.name.isEmpty ? all[i].name : d.name);
+    } else {
+      next.add(d);
+    }
+    await _saveRegistry(next);
+  }
+
+  Future<void> renameIssued(String deviceId, String name) async {
+    final all = await registry();
+    await _saveRegistry([
+      for (final d in all) d.deviceId == deviceId ? d.copyWith(name: name.trim()) : d,
+    ]);
+  }
+
+  /// يحذف الجهاز من السجلّ فقط. **لا يلغي تفعيله**: من أراد إيقافه فليُلغِه أولًا؛
+  /// وإلغاءٌ سابق يبقى سارياً بعد الحذف حتى لا يعود الجهاز بحذف سطره.
+  Future<void> removeIssued(String deviceId) async {
+    final all = await registry();
+    await _saveRegistry([for (final d in all) if (d.deviceId != deviceId) d]);
+  }
+
+  // ───────────────────────── الإلغاء
+
+  /// إلغاء تفعيل جهاز (أو إعادته). الإلغاء يُسجَّل بختم وقته، ويسافر مع المزامنة
+  /// إلى الأجهزة الأخرى (آخر ختمٍ يفوز) فيتوقف الجهاز الملغى عند أول مزامنة له
+  /// مع أي جهازٍ حمل الإلغاء. الرمز نفسه لا يمكن سحبه لأنه يُتحقَّق منه محليًا
+  /// بلا إنترنت — فالمزامنة هي القناة الوحيدة.
+  Future<void> setRevoked(String deviceId, bool revoked) async {
+    final map = await _revocations();
+    map[deviceId] = {'revoked': revoked, 'at': DateTime.now().millisecondsSinceEpoch};
+    await SettingsRepo(db).write(_revocationsKey, {'map': map});
+  }
+
+  Future<bool> isRevoked(String deviceId) async =>
+      ((await _revocations())[deviceId]?['revoked'] ?? false) == true;
+
+  Future<Map<String, Map<String, dynamic>>> _revocations() async {
+    final raw = (await SettingsRepo(db).read(_revocationsKey))['map'];
+    return {
+      if (raw is Map)
+        for (final e in raw.entries)
+          if (e.value is Map) '${e.key}': Map<String, dynamic>.from(e.value as Map),
+    };
+  }
+
+  /// ما يُرسَل إلى الأجهزة الأخرى مع المزامنة.
+  Future<Map<String, Map<String, dynamic>>> revocationsForSync() => _revocations();
+
+  /// يدمج إلغاءاتٍ واردة: لكل جهازٍ آخر ختمٍ يفوز. يُرجع عدد ما تغيّر.
+  Future<int> mergeRevocations(Object? incoming) async {
+    if (incoming is! Map) return 0;
+    final local = await _revocations();
+    var changed = 0;
+    for (final e in incoming.entries) {
+      final v = e.value;
+      if (v is! Map) continue;
+      final at = int.tryParse('${v['at']}') ?? 0;
+      final mine = int.tryParse('${local['${e.key}']?['at']}') ?? -1;
+      if (at > mine) {
+        local['${e.key}'] = {'revoked': v['revoked'] == true, 'at': at};
+        changed++;
+      }
+    }
+    if (changed > 0) {
+      await SettingsRepo(db).write(_revocationsKey, {'map': local});
+    }
+    return changed;
   }
 
   /// ما يُوقَّع عليه: يربط الرمز بالجهاز والفرع والدور والانتهاء معًا، فلا
@@ -267,4 +482,78 @@ class ActivationState {
   final String branch;
   final DeviceRole role;
   final DateTime? expiresAt;
+}
+
+/// الحقول الموقَّعة بعد فكّ أيٍّ من صيغتَي الرمز.
+class _Parsed {
+  const _Parsed({
+    required this.deviceId,
+    required this.branchB64,
+    required this.roleName,
+    required this.expiry,
+    required this.signature,
+  });
+
+  final String deviceId;
+  final String branchB64;
+  final String roleName;
+  final int expiry;
+  final Uint8List signature;
+}
+
+enum IssuedStatus { active, expired, revoked }
+
+/// جهازٌ أُصدر له رمز تفعيل — سطر سجلّ الأجهزة على جهاز الإدارة.
+class IssuedDevice {
+  const IssuedDevice({
+    required this.deviceId,
+    required this.name,
+    required this.branch,
+    required this.role,
+    required this.issuedAt,
+    required this.expiresAt,
+    this.revoked = false,
+  });
+
+  final String deviceId;
+
+  /// اسمٌ يضعه المشرف ليتعرّف على الجهاز («حاسوب المخزن»…) — اختياري.
+  final String name;
+  final String branch;
+  final DeviceRole role;
+  final DateTime issuedAt;
+  final DateTime expiresAt;
+  final bool revoked;
+
+  IssuedStatus get status => revoked
+      ? IssuedStatus.revoked
+      : (DateTime.now().isAfter(expiresAt) ? IssuedStatus.expired : IssuedStatus.active);
+
+  IssuedDevice copyWith({String? name, bool? revoked}) => IssuedDevice(
+        deviceId: deviceId,
+        name: name ?? this.name,
+        branch: branch,
+        role: role,
+        issuedAt: issuedAt,
+        expiresAt: expiresAt,
+        revoked: revoked ?? this.revoked,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'id': deviceId,
+        'name': name,
+        'branch': branch,
+        'role': role.name,
+        'issuedAt': issuedAt.millisecondsSinceEpoch,
+        'expiresAt': expiresAt.millisecondsSinceEpoch,
+      };
+
+  factory IssuedDevice.fromMap(Map<String, dynamic> m) => IssuedDevice(
+        deviceId: '${m['id'] ?? ''}',
+        name: '${m['name'] ?? ''}',
+        branch: '${m['branch'] ?? ''}',
+        role: m['role'] == DeviceRole.master.name ? DeviceRole.master : DeviceRole.branch,
+        issuedAt: DateTime.fromMillisecondsSinceEpoch(int.tryParse('${m['issuedAt']}') ?? 0),
+        expiresAt: DateTime.fromMillisecondsSinceEpoch(int.tryParse('${m['expiresAt']}') ?? 0),
+      );
 }

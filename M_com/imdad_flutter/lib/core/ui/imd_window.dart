@@ -1,3 +1,4 @@
+import 'dart:io' as io show exit;
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
@@ -117,10 +118,19 @@ class ImdWindow {
   /// مهلة الإنهاء النظيف — بعدها يُغلق على أي حال.
   ///
   /// الإغلاق لا ينتظر شبكةً متعثّرة: مقبسٌ لا يُغلق ليس سببًا كافيًا لحبس
-  /// المستخدم داخل التطبيق.
-  static const Duration exitGrace = Duration(seconds: 2);
+  /// المستخدم داخل التطبيق. والمهلة قصيرة لأن ما يُنهى هنا (إغلاق منفذٍ
+  /// ومسح جلسة) لا يستغرق أكثر من أجزاءٍ من الثانية في الحالة السليمة.
+  static const Duration exitGrace = Duration(milliseconds: 800);
 
-  /// إغلاق التطبيق: إنهاءٌ نظيف ثم هدم النافذة.
+  /// مهلة هدم النافذة قبل الإنهاء القسري.
+  static const Duration destroyGrace = Duration(milliseconds: 400);
+
+  /// إغلاق التطبيق: إنهاءٌ نظيف ثم هدم النافذة ثم إنهاء العملية فورًا.
+  ///
+  /// بعد `destroy()` يبقى محرّك Flutter وخيط قاعدة البيانات يُفكّكان ثوانيَ يراها
+  /// المستخدم تعليقًا بعد تأكيد الخروج؛ فتُنهى العملية صراحةً بعد أن أُغلق كل ما
+  /// يلزم إغلاقه (المنافذ، والجلسة). أندرويد يتولّى إنهاءه النظام بعد
+  /// `SystemNavigator.pop` لذا لا يُنهى هنا.
   static Future<void> exit() async {
     final hook = onBeforeExit;
     if (hook != null) {
@@ -130,8 +140,9 @@ class ImdWindow {
     }
     if (!supported) return;
     try {
-      await windowManager.destroy();
+      await windowManager.destroy().timeout(destroyGrace);
     } catch (_) {}
+    io.exit(0);
   }
 
   /// الإضافة غير مُهيّأة في الاختبارات وعلى غير ويندوز: لا يمنع ذلك الواجهة.
