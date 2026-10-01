@@ -46,6 +46,30 @@ class ImdPageBack extends StatelessWidget {
   }
 }
 
+/// وسمٌ يُعلن أن ما تحته **صفّ إجراءات** في رأس الصفحة (تبويبات + أزرار): كل
+/// عنصرٍ فيه بارتفاع [ImdSizes.barControl] ومحاذاةٍ وسطيّة واحدة، فتقع كلها على
+/// خطٍّ أفقيٍّ واحد في كل الشاشات.
+class ImdActionRow extends InheritedWidget {
+  const ImdActionRow({super.key, required super.child});
+
+  static bool of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ImdActionRow>() != null;
+
+  /// يلفّ [children] في `Wrap` موحَّد المحاذاة والفجوات.
+  static Widget wrap(List<Widget> children, {WrapAlignment alignment = WrapAlignment.start}) => ImdActionRow(
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          alignment: alignment,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [for (final w in children) SizedBox(height: ImdSizes.barControl, child: Align(widthFactor: 1, child: w))],
+        ),
+      );
+
+  @override
+  bool updateShouldNotify(ImdActionRow old) => false;
+}
+
 class ImdPageTitle extends StatelessWidget {
   const ImdPageTitle({super.key, required this.title, this.icon, this.subtitle, this.trailing, this.actions});
 
@@ -71,7 +95,7 @@ class ImdPageTitle extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 12),
         child: Align(
           alignment: AlignmentDirectional.centerEnd,
-          child: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: extra),
+          child: ImdActionRow.wrap(extra),
         ),
       );
     }
@@ -105,13 +129,7 @@ class ImdPageTitle extends StatelessWidget {
                 // سقف العرض يمنع الأزرار الكثيرة من ابتلاع العنوان: تلتف بدل أن تفيض.
                 ConstrainedBox(
                   constraints: BoxConstraints(maxWidth: bp.width * .6),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    alignment: WrapAlignment.end,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: acts,
-                  ),
+                  child: ImdActionRow.wrap(acts, alignment: WrapAlignment.end),
                 ),
                 if (trailing != null) ...[const SizedBox(width: 8), trailing!],
               ] else if (trailing != null) ...[const Spacer(), trailing!],
@@ -125,12 +143,7 @@ class ImdPageTitle extends StatelessWidget {
           if (below)
             Padding(
               padding: const EdgeInsets.only(top: 10),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: acts,
-              ),
+              child: ImdActionRow.wrap(acts),
             ),
         ],
       ),
@@ -334,6 +347,7 @@ class _ImdButtonState extends State<ImdButton> {
     // المدمج وزواياه نفسها، فلا يعلو أخاه الحقل بجواره: زرّ «+» بجانب قائمة
     // المستودع كان ٤٤ والقائمة ٣٤، فيتّسع الصفّ كلّه به.
     final compact = ImdCompact.of(context);
+    final flush = ImdCompact.flushOf(context);
     final h = widget.height ?? (compact ? ImdSizes.compactField : null);
     final iconOnly = widget.label.isEmpty;
     final fs = (widget.small || compact) ? 12.5 : 13.5;
@@ -387,12 +401,14 @@ class _ImdButtonState extends State<ImdButton> {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: bg,
-                borderRadius: BorderRadius.circular(
-                    compact ? ImdSizes.compactRadius : (widget.small ? 8 : 10)),
-                border: border == null ? null : Border.all(color: border),
+                borderRadius: flush
+                    ? BorderRadius.zero
+                    : BorderRadius.circular(
+                        compact ? ImdSizes.compactRadius : (widget.small ? 8 : 10)),
+                border: (border == null || flush) ? null : Border.all(color: border),
                 // رفعٌ خفيف عند تمرير الفأرة، ويزول عند الضغط — إحساس زرٍّ
                 // مادّي لا مسطّحٍ كصفحات الويب.
-                boxShadow: enabled && _hover && !_down
+                boxShadow: enabled && _hover && !_down && !flush
                     ? [
                         BoxShadow(
                           color: c.shadowMd,
@@ -485,7 +501,8 @@ class _PillTabState extends State<_PillTab> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          height: 44,
+          height: ImdSizes.barControl,
+          alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
             color: on ? c.text : (_hover ? c.hover : c.surface),
@@ -697,15 +714,24 @@ class ImdAlert extends StatelessWidget {
 /// **تُكتب مرةً حول الجدول فتتبعها حقوله كلها** — بديلًا عن تمرير `compact:`
 /// إلى كل حقلٍ في خمس شاشات، وهو ما يُنسى في أوّل حقلٍ يُضاف بعده.
 class ImdCompact extends InheritedWidget {
-  const ImdCompact({super.key, this.on = true, required super.child});
+  const ImdCompact({super.key, this.on = true, this.flush = false, required super.child});
 
   final bool on;
+
+  /// حقولٌ ملتصقةٌ بحدود خليّتها: بلا زوايا مدوَّرة ولا حدٍّ خاص — الفاصل بين
+  /// الخلايا خطُّ الشبكة وحده (جداول الإدخال ومجموعات الإدخال [ImdInputGroup]).
+  final bool flush;
 
   static bool of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<ImdCompact>()?.on ?? false;
 
+  static bool flushOf(BuildContext context) {
+    final w = context.dependOnInheritedWidgetOfExactType<ImdCompact>();
+    return (w?.on ?? false) && w!.flush;
+  }
+
   @override
-  bool updateShouldNotify(ImdCompact old) => old.on != on;
+  bool updateShouldNotify(ImdCompact old) => old.on != on || old.flush != flush;
 }
 
 InputDecoration imdFieldDecoration(
@@ -719,12 +745,17 @@ InputDecoration imdFieldDecoration(
 }) {
   final c = context.imd;
   final compact = ImdCompact.of(context);
+  final flush = ImdCompact.flushOf(context);
   final hasError = errorText != null && errorText.isNotEmpty;
   // رسالة الخطأ من `colorScheme.error`، وحدّ الحقل يوافقها فلا يختلف لونان.
   final err = Theme.of(context).colorScheme.error;
-  OutlineInputBorder b(Color col, [double w = 1]) => OutlineInputBorder(
-        borderRadius: BorderRadius.circular(compact ? ImdSizes.compactRadius : 10),
-        borderSide: BorderSide(color: col, width: w),
+  // الملتصق: بلا زوايا، وبلا حدٍّ في الحالة العادية (خطّ الشبكة يفصل الخلايا)؛
+  // يظهر حدّ التركيز والخطأ فقط.
+  OutlineInputBorder b(Color col, [double w = 1, bool quiet = false]) => OutlineInputBorder(
+        borderRadius: flush
+            ? BorderRadius.zero
+            : BorderRadius.circular(compact ? ImdSizes.compactRadius : 10),
+        borderSide: flush && quiet ? BorderSide.none : BorderSide(color: col, width: w),
       );
   return InputDecoration(
     isDense: true,
@@ -751,9 +782,9 @@ InputDecoration imdFieldDecoration(
         ? null
         : Padding(padding: const EdgeInsetsDirectional.only(end: 10), child: suffix),
     suffixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-    border: b(c.lineStrong),
-    enabledBorder: b(c.lineStrong),
-    disabledBorder: b(c.lineStrong),
+    border: b(c.lineStrong, 1, true),
+    enabledBorder: b(c.lineStrong, 1, true),
+    disabledBorder: b(c.lineStrong, 1, true),
     focusedBorder: b(c.accent, 1),
     errorBorder: b(hasError ? err : c.danger),
     focusedErrorBorder: b(hasError ? err : c.danger),
@@ -883,10 +914,12 @@ class ImdSelect<T> extends StatelessWidget {
     final c = context.imd;
     final compact = ImdCompact.of(context);
     final has = items.any((e) => e.$1 == value);
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-          minHeight: compact ? ImdSizes.compactField : ImdSizes.touchMin),
+    // الارتفاع **ثابتٌ** لا حدٌّ أدنى: `DropdownButtonFormField` يفرض ٤٨ افتراضيًّا
+    // (`itemHeight`) فيعلو زرّ «+» المجاور له. هنا يساوي الحقل المدمج تمامًا.
+    return SizedBox(
+      height: compact ? ImdSizes.compactField : null,
       child: DropdownButtonFormField<T>(
+        itemHeight: null,
         initialValue: has ? value : null,
         isExpanded: true,
         icon: ImdIcon('chevron-down', size: 16, color: c.muted),
@@ -988,6 +1021,7 @@ class ImdTable extends StatefulWidget {
     this.cellPadding,
     this.gridLines = false,
     this.cellFontSize,
+    this.flushCells = false,
   }) : assert(rowKeys == null || rowKeys.length == rows.length,
             'rowKeys.length يجب أن يساوي rows.length — مفتاحٌ واحدٌ لكل صفّ');
 
@@ -1087,6 +1121,11 @@ class ImdTable extends StatefulWidget {
   /// حجم خطّ خلايا الجسم — `null` (الافتراضي) ⇒ 13.5 كالمعتاد.
   final double? cellFontSize;
 
+  /// خلايا الجسم بلا حشوةٍ ولا محاذاة: ما فيها يملأ الخلية كلّها (عرضًا
+  /// وارتفاعًا) فتلتصق الحقول بخطوط الشبكة بلا فراغ. لجداول الإدخال
+  /// ([ImdEntryTable]) — يتولّى محتوى الخلية ارتفاعه (`ImdEntryTable.cell`).
+  final bool flushCells;
+
   @override
   State<ImdTable> createState() => _ImdTableState();
 }
@@ -1118,14 +1157,18 @@ class _ImdTableState extends State<ImdTable> {
   }
 
   Widget _cell(ImdCol col, Widget child, {required int row, EdgeInsets? pad}) {
-    Widget w = Padding(
-      padding: pad ?? widget.cellPadding ?? const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      child: Align(
-        alignment: col.center ? Alignment.center : AlignmentDirectional.centerStart,
-        widthFactor: 1,
-        child: child,
-      ),
-    );
+    // `row >= 0` = خليةُ جسمٍ؛ الرأس والإجماليات يبقيان بحشوتهما.
+    final Widget w0 = (widget.flushCells && row >= 0)
+        ? child
+        : Padding(
+            padding: pad ?? widget.cellPadding ?? const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            child: Align(
+              alignment: col.center ? Alignment.center : AlignmentDirectional.centerStart,
+              widthFactor: 1,
+              child: child,
+            ),
+          );
+    Widget w = w0;
     if (row >= 0) {
       w = MouseRegion(
         cursor: widget.onRowTap != null ? ImdCursor.click : MouseCursor.defer,

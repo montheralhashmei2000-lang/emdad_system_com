@@ -290,7 +290,9 @@ class ImdDocTabsBar<T> extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         child: Container(
           margin: const EdgeInsets.only(left: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          height: ImdSizes.compactField,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
             color: active ? c.accentSoft : c.surface,
             border: Border.all(color: active ? c.accent : c.faint),
@@ -1020,25 +1022,27 @@ class ImdEntryTable extends StatelessWidget {
   /// فيبقى بجوار الحقول على خطٍّ واحد.
   static Widget textCell(Widget child) => SizedBox(
         height: rowHeight,
-        child: Align(alignment: AlignmentDirectional.centerStart, child: child),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: ImdSizes.compactPadH),
+          child: Align(alignment: AlignmentDirectional.centerStart, child: child),
+        ),
       );
 
   /// خليةُ أزرارٍ في آخر الصفّ: بجوار بعضها، كلٌّ بارتفاع الحقل (يرثه من
   /// [ImdCompact]).
   static Widget actions(List<Widget> buttons) => SizedBox(
         height: rowHeight,
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          for (var i = 0; i < buttons.length; i++) ...[
-            if (i > 0) const SizedBox(width: ImdSizes.compactGap),
-            buttons[i],
-          ],
-        ]),
+        // أزرارٌ ملتصقة (بلا فجوة): الفاصل بينها خطّ الشبكة نفسه.
+        child: Row(mainAxisSize: MainAxisSize.min, children: buttons),
       );
 
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
+    // بطاقات الجوال ليست شبكة: حقولها بحدودها وزواياها المعتادة، والالتصاق للجدول وحده.
+    final asCards = cards && ImdBp.of(context).mobile && rows.isNotEmpty;
     return ImdCompact(
+      flush: !asCards,
       child: ImdTable(
         columns: columns,
         rows: rows,
@@ -1050,7 +1054,7 @@ class ImdEntryTable extends StatelessWidget {
         maxHeight: ImdSizes.tableMaxHeight(context),
         headerBackground: c.accent,
         headerForeground: c.onAccent,
-        cellPadding: const EdgeInsets.symmetric(horizontal: ImdSizes.compactGap),
+        flushCells: !asCards,
         gridLines: true,
         cellFontSize: 12,
       ),
@@ -1075,11 +1079,8 @@ class ImdEntryBalanceCell extends StatelessWidget {
     return Container(
       alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: ImdSizes.compactPadH),
-      decoration: BoxDecoration(
-        color: c.bg,
-        border: Border.all(color: c.line),
-        borderRadius: BorderRadius.circular(ImdSizes.compactRadius),
-      ),
+      // ملتصقةٌ بحدود الخلية: بلا زوايا ولا حدٍّ — خطّ الشبكة يفصلها.
+      decoration: BoxDecoration(color: c.bg),
       child: Text(
         empty ? '—' : text,
         maxLines: 1,

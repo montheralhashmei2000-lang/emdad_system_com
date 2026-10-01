@@ -632,17 +632,14 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     Widget selWithAdd(String label, String value, List<(String, String)> opts, String empty, ValueChanged<String> on, bool wh) =>
         ImdLabeled(
           label,
-          Row(children: [
-            Expanded(
-              child: ImdSelect<String>(
-                value: value,
-                items: opts.isEmpty ? [('', empty)] : opts,
-                onChanged: (v) => on(v ?? ''),
-              ),
+          ImdInputGroup(
+            field: ImdSelect<String>(
+              value: value,
+              items: opts.isEmpty ? [('', empty)] : opts,
+              onChanged: (v) => on(v ?? ''),
             ),
-            const SizedBox(width: 6),
-            ImdIconButton(icon: 'plus', onPressed: () => _quickAdd(wh)),
-          ]),
+            button: ImdIconButton(icon: 'plus', onPressed: () => _quickAdd(wh)),
+          ),
           size: 11,
         );
     final whField = selWithAdd(

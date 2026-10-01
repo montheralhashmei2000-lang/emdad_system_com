@@ -23,11 +23,14 @@ class ImdItabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // داخل صفّ إجراءات العنوان ([ImdActionRow]) بلا أيّ حشوةٍ سفلية، وإلا
+    // ارتفع التبويب عن الأزرار المجاورة وطفا عن خطّها الأفقي.
+    final inline = ImdActionRow.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: EdgeInsets.only(bottom: inline ? 0 : 14),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.only(bottom: 6),
+        padding: EdgeInsets.only(bottom: inline ? 0 : 6),
         child: ImdPillTabs<String>(
             tabs: tabs, value: value, onChanged: onChanged, wrap: false),
       ),
@@ -195,6 +198,7 @@ class ImdFld extends StatelessWidget {
       obscureText: obscure,
       onChanged: onChanged,
       maxLines: maxLines,
+      textAlignVertical: ImdCompact.of(context) ? TextAlignVertical.center : null,
       keyboardType:
           number ? const TextInputType.numberWithOptions(decimal: true) : null,
       style: TextStyle(
@@ -207,19 +211,23 @@ class ImdFld extends StatelessWidget {
           suffix: suffix,
           errorText: errorText),
     );
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-          minHeight: ImdCompact.of(context)
-              ? ImdSizes.compactField
-              : ImdSizes.touchMin),
-      child: suggestions.isEmpty || readOnly || !enabled
+    final compact = ImdCompact.of(context);
+    final fixed = compact && maxLines == 1 && (errorText == null || errorText!.isEmpty);
+    // مدمجٌ بسطرٍ واحد ⇒ ارتفاعٌ **مطابقٌ** لا حدٌّ أدنى، فلا يعلو حقلٌ أخاه.
+    final fieldBox = suggestions.isEmpty || readOnly || !enabled
           ? field
           : _ImdSuggestions(
               controller: controller,
               items: suggestions,
               onPick: onChanged,
               child: field,
-            ),
+            );
+    if (fixed && suggestions.isEmpty) {
+      return SizedBox(height: ImdSizes.compactField, child: fieldBox);
+    }
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: compact ? ImdSizes.compactField : ImdSizes.touchMin),
+      child: fieldBox,
     );
   }
 }
@@ -447,12 +455,11 @@ class ImdDateField extends StatelessWidget {
                 );
                 if (d != null) onChanged(isoDay(d));
               },
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-              minHeight: ImdCompact.of(context)
-                  ? ImdSizes.compactField
-                  : ImdSizes.touchMin),
+        child: SizedBox(
+          height: ImdCompact.of(context) ? ImdSizes.compactField : ImdSizes.touchMin,
           child: InputDecorator(
+            expands: true,
+            textAlignVertical: TextAlignVertical.center,
             decoration: imdFieldDecoration(context, readOnly: !enabled).copyWith(
               suffixIcon: Padding(
                 padding: const EdgeInsetsDirectional.only(end: 10),
@@ -536,4 +543,37 @@ void imdSetText(TextEditingController c, String value) {
     text: value,
     selection: TextSelection.collapsed(offset: value.length),
   );
+}
+
+/// قائمةٌ أو حقلٌ + زرّ («+» إضافة سريعة) في **مجموعة إدخالٍ** واحدة: الاثنان
+/// بارتفاعٍ واحد، وحدودهما ملتصقة بفاصلٍ رفيعٍ واحد داخل إطارٍ واحدٍ مدوَّر.
+class ImdInputGroup extends StatelessWidget {
+  const ImdInputGroup({super.key, required this.field, required this.button});
+  final Widget field;
+  final Widget button;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.imd;
+    // المجموعة مدمجةٌ دائمًا: ارتفاعها ارتفاع الحقل المدمج، فتتساوى مع جيرانها
+    // في صفّ النموذج.
+    final h = ImdSizes.compactField;
+    return ImdCompact(
+      flush: true,
+      child: Container(
+        height: h,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: c.surface,
+          border: Border.all(color: c.lineStrong),
+          borderRadius: BorderRadius.circular(ImdSizes.compactRadius),
+        ),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(child: field),
+          VerticalDivider(width: 1, thickness: 1, color: c.lineStrong),
+          SizedBox(width: h, child: button),
+        ]),
+      ),
+    );
+  }
 }
