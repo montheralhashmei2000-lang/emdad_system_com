@@ -11,6 +11,41 @@ import 'imd_tokens.dart';
 // يُعاد تعريف قياسٍ ولا لونٍ في شاشة.
 
 /// عنوان الشاشة: أيقونةٌ وعنوانٌ وسطرٌ فرعي، ومكانٌ للإجراءات يمينه.
+/// يُحيط شاشةً **مضمَّنةً** داخل شاشةٍ أخرى (كأقسام الإعدادات).
+///
+/// الشاشة المضمَّنة لا تفتح صفحتها الخاصة: لا تمرير ولا حشوة (`ImdPage`)، ولا
+/// عنوان صفحة ولا زر «رجوع» — فالشاشة المضيفة هي التي تعرض العنوان والتنقل.
+class ImdEmbedScope extends InheritedWidget {
+  const ImdEmbedScope({super.key, required super.child});
+
+  static bool of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ImdEmbedScope>() != null;
+
+  @override
+  bool updateShouldNotify(ImdEmbedScope oldWidget) => false;
+}
+
+/// زر «رجوع إلى الإعدادات» أعلى الشاشات المفتوحة من الإعدادات؛ يختفي حين تكون
+/// الشاشة مضمَّنةً داخل الإعدادات نفسها.
+class ImdPageBack extends StatelessWidget {
+  const ImdPageBack({super.key, required this.onPressed, this.label = 'رجوع إلى الإعدادات'});
+
+  final VoidCallback onPressed;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    if (ImdEmbedScope.of(context)) return const SizedBox.shrink();
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: ImdButton.outline(label: label, icon: 'arrow-left', small: true, onPressed: onPressed),
+      ),
+    );
+  }
+}
+
 class ImdPageTitle extends StatelessWidget {
   const ImdPageTitle({super.key, required this.title, this.icon, this.subtitle, this.trailing, this.actions});
 
@@ -27,6 +62,19 @@ class ImdPageTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // مضمَّنةٌ: العنوان للشاشة المضيفة، ويبقى ما يخصّ هذه الشاشة وحدها
+    // (أزرار الإجراءات وشارة الحالة) في سطرٍ مضغوط.
+    if (ImdEmbedScope.of(context)) {
+      final extra = [...?actions, if (trailing != null) trailing!];
+      if (extra.isEmpty) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: extra),
+        ),
+      );
+    }
     final c = context.imd;
     final bp = ImdBp.of(context);
     final mobile = bp.mobile;
@@ -282,10 +330,18 @@ class _ImdButtonState extends State<ImdButton> {
         bg = _hover ? c.text2 : c.text;
         fg = c.onText;
     }
-    final fs = widget.small ? 12.5 : 13.5;
-    final pad = widget.small
-        ? const EdgeInsets.symmetric(horizontal: 12, vertical: 6)
-        : const EdgeInsets.symmetric(horizontal: 16, vertical: 9);
+    // داخل [ImdCompact] (نماذج السندات وجداول الإدخال) يأخذ الزرّ ارتفاع الحقل
+    // المدمج وزواياه نفسها، فلا يعلو أخاه الحقل بجواره: زرّ «+» بجانب قائمة
+    // المستودع كان ٤٤ والقائمة ٣٤، فيتّسع الصفّ كلّه به.
+    final compact = ImdCompact.of(context);
+    final h = widget.height ?? (compact ? ImdSizes.compactField : null);
+    final iconOnly = widget.label.isEmpty;
+    final fs = (widget.small || compact) ? 12.5 : 13.5;
+    final pad = compact
+        ? EdgeInsets.symmetric(horizontal: iconOnly ? 0 : 10)
+        : widget.small
+            ? const EdgeInsets.symmetric(horizontal: 12, vertical: 6)
+            : const EdgeInsets.symmetric(horizontal: 16, vertical: 9);
     final content = Row(
       mainAxisSize: widget.expand ? MainAxisSize.max : MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -323,13 +379,16 @@ class _ImdButtonState extends State<ImdButton> {
             opacity: widget.onPressed == null ? .5 : 1,
             child: _maybeIntrinsic(AnimatedContainer(
               duration: const Duration(milliseconds: 150),
-              height: widget.height,
-              constraints: widget.height == null ? BoxConstraints(minHeight: ImdSizes.touchMin) : null,
+              height: h,
+              // زرّ أيقونةٍ وحدها في الكثافة المدمجة مربّعٌ بضلع الحقل.
+              width: compact && iconOnly && h != null ? h : null,
+              constraints: h == null ? BoxConstraints(minHeight: ImdSizes.touchMin) : null,
               padding: pad,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: bg,
-                borderRadius: BorderRadius.circular(widget.small ? 8 : 10),
+                borderRadius: BorderRadius.circular(
+                    compact ? ImdSizes.compactRadius : (widget.small ? 8 : 10)),
                 border: border == null ? null : Border.all(color: border),
                 // رفعٌ خفيف عند تمرير الفأرة، ويزول عند الضغط — إحساس زرٍّ
                 // مادّي لا مسطّحٍ كصفحات الويب.
@@ -1680,6 +1739,10 @@ class ImdPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // مضمَّنةٌ داخل شاشةٍ تمرّر نفسها: لا تمريرَ داخل تمرير ولا حشوةً مضاعفة.
+    if (ImdEmbedScope.of(context)) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
+    }
     return SingleChildScrollView(
       controller: controller,
       padding: paddingOf(context),

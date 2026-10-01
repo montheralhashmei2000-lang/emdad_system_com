@@ -205,6 +205,43 @@ void main() {
     expect(find.text('إغلاق النظام؟'), findsNothing);
   });
 
+  group('الإعدادات بندٌ واحد في القائمة', () {
+    testWidgets('لا بنود مستقلة للهوية والتفعيل والمزامنة والمستخدمين', (tester) async {
+      wideWindow(tester);
+      await enterSupply(tester);
+
+      // القسم مفتوحٌ في الشريط ليظهر ما تحته.
+      await tester.tap(find.text('الإعدادات').first);
+      await pump(tester);
+
+      expect(find.text('الإعدادات العامة'), findsWidgets);
+      for (final gone in [
+        'هوية النظام والشعار',
+        'رأس وتذييل النماذج',
+        'تفعيل الأجهزة',
+        'التحقق من التوقيع',
+        'مزامنة الأجهزة',
+        'مركز الصلاحيات والوصول',
+      ]) {
+        expect(find.text(gone), findsNothing, reason: '«$gone» ما زال في القائمة');
+      }
+    });
+
+    testWidgets('المعرّفات القديمة تفتح الإعدادات على القسم نفسه', (tester) async {
+      wideWindow(tester);
+      await enterSupply(tester);
+
+      final ctx = tester.element(find.byType(Scaffold).first);
+      ImdNav.of(ctx).go('deviceActivation');
+      await pump(tester);
+
+      expect(find.text('الإعدادات'), findsWidgets);
+      expect(find.textContaining('معرّف هذا الجهاز'), findsWidgets,
+          reason: 'قسم التفعيل لم يُفتح داخل الإعدادات');
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   /// عطلٌ ظهر في نافذة ويندوز ارتفاعها ٦٩٧: `AnimatedSize` تُرجع ارتفاع الطفل
   /// الهدف لا المتحرّك، فيفيض العمود مؤقتًا (٩٢ بكسلًا) عند طيّ قسمٍ أو التبديل
   /// بين قسمين. وهو لا يظهر إلا أثناء الحركة، فيُضخّ الوقت خطوةً خطوة.

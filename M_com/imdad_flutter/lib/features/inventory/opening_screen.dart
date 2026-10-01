@@ -10,6 +10,7 @@ import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
+import 'doc_kit.dart' show ImdEntryTable;
 import '../../data/db/app_database.dart';
 import '../../data/repos/audit_repo.dart';
 import '../../data/repos/catalog_repo.dart';
@@ -328,34 +329,36 @@ class _OpeningScreenState extends State<OpeningScreen> {
         ]),
       ),
       const SizedBox(height: 16),
-      ImdTable(
+      // جدول إدخالٍ كبقية السندات: صفوفٌ ملتصقة وحقولٌ بارتفاع الصفّ نفسه.
+      ImdEntryTable(
         columns: const [
-          ImdCol('الكود'),
-          ImdCol('الصنف'),
-          ImdCol('الحالة'),
-          ImdCol('وحدة الصنف', auto: false, width: 132),
-          ImdCol('الرصيد الافتتاحي', auto: false, width: 132),
+          ImdCol('الكود', width: 120),
+          ImdCol('الصنف', flex: 2),
+          ImdCol('الحالة', width: 170),
+          ImdCol('وحدة الصنف', width: 132),
+          ImdCol('الرصيد الافتتاحي', width: 132),
         ],
+        rowKeys: [for (final x in rows) ValueKey(x.id)],
         pageSize: 50,
         cards: true,
         empty: 'لا أصناف مطابقة',
         rows: [
           for (final x in rows)
             [
-              Text(x.code, style: const TextStyle(fontWeight: FontWeight.w700)),
-              Text(x.name),
-              _openingDate.containsKey(x.id)
+              ImdEntryTable.textCell(Text(x.code, style: const TextStyle(fontWeight: FontWeight.w700))),
+              ImdEntryTable.textCell(Text(x.name)),
+              ImdEntryTable.textCell(_openingDate.containsKey(x.id)
                   ? ImdChip('مضبوط (${_openingDate[x.id]})', tone: ImdTone.ok)
-                  : const ImdChip('لم يُضبط بعد', tone: ImdTone.pend),
-              ImdSelect<String>(
+                  : const ImdChip('لم يُضبط بعد', tone: ImdTone.pend)),
+              ImdEntryTable.cell(ImdSelect<String>(
                 value: _unit(x),
                 dense: true,
                 items: [
                   for (final u in _catalog.unitsDescending(x)) (u.name, u.name),
                 ],
                 onChanged: w ? (v) => _switchUnit(x, v ?? '') : null,
-              ),
-              ImdFld(
+              )),
+              ImdEntryTable.cell(ImdFld(
                 controller: _inputs.putIfAbsent(
                   x.id,
                   () => TextEditingController(text: _plainQty(_balances[x.id] ?? 0)),
@@ -363,7 +366,7 @@ class _OpeningScreenState extends State<OpeningScreen> {
                 number: true,
                 dense: true,
                 enabled: w,
-              ),
+              )),
             ],
         ],
       ),

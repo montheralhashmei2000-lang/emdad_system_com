@@ -18,6 +18,13 @@ import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../catalog/authorities_screen.dart';
+import '../sync/sync_screen.dart';
+import 'branding_screen.dart';
+import 'device_activation_screen.dart';
+import 'forms_designer_screen.dart';
+import 'users_screen.dart';
+import 'verify_sign_screen.dart';
+import '../../core/ui/imd_empty_state.dart';
 import '../../data/migration/data_export.dart';
 import '../../data/migration/excel_import.dart';
 import '../../data/migration/legacy_import.dart';
@@ -37,7 +44,11 @@ const kAppVersionLabel = 'نظام الإمداد والتموين — الإص�
 /// قائمة أقسام جانبية (نظرة عامة، الجهة، المستخدمون، المخزون، الطباعة،
 /// المزامنة، النسخ الاحتياطي، الصيانة، عن النظام) مع بحث داخل الإعدادات.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, this.initialSection = 'general'});
+
+  /// القسم الذي تُفتح عليه الشاشة — تفتحه الروابط القديمة إلى الهوية والتفعيل
+  /// والمزامنة والمستخدمين (صارت أقسامًا هنا لا بنودًا في القائمة الجانبية).
+  final String initialSection;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -54,16 +65,19 @@ class _Section {
 
 const _sections = <_Section>[
   _Section('general', 'home', 'نظرة عامة', 'الجاهزية والجلسة الحالية ومؤشرات البيانات'),
-  _Section('company', 'building', 'بيانات الجهة والمظهر', 'الشعار واسم الجهة والسمة ورأس النماذج'),
-  _Section('users', 'users', 'المستخدمون والصلاحيات', 'الحسابات المحلية والأدوار والصلاحيات'),
+  _Section('company', 'building', 'هوية النظام والشعار', 'الشعار واسم الجهة الظاهران في الواجهة والتقارير'),
+  _Section('forms', 'file', 'رأس وتذييل النماذج', 'الرأس والتذييل وخانات التوقيع في المطبوعات'),
+  _Section('users', 'users', 'المستخدمون والصلاحيات', 'الحسابات المحلية والأدوار ومركز الصلاحيات'),
   _Section('inventory', 'package', 'المخزون والاستحقاقات',
       'الأرصدة الافتتاحية ومعدلات الاستحقاق والقوانين'),
   _Section('print', 'printer', 'الطباعة والتصدير والاستيراد', 'النماذج المطبوعة وأدوات كل شاشة'),
-  _Section('sync', 'swap', 'المزامنة والتوقيع', 'ربط الأجهزة وملفات المزامنة والتوقيع الإلكتروني'),
+  _Section('sync', 'swap', 'المزامنة والتوقيع', 'ربط الأجهزة ومزامنتها والتوقيع الإلكتروني والإشعارات'),
   _Section('authorities', 'users', 'جهات الاعتمادات',
       'من يعتمدون الطلبيات ويطلب منهم المخزن الرئيسي'),
   _Section('devices', 'monitor', 'تفعيل الأجهزة',
       'رمز تفعيل كل جهاز ومفتاح الإصدار — لا يعمل جهاز بلا رمز'),
+  _Section('verify', 'check-circle', 'التحقق من التوقيع',
+      'التأكد من أن مستندًا مطبوعًا صادرٌ عن مفتاح معروف ولم يتغيّر'),
   _Section('backup', 'database', 'النسخ الاحتياطي', 'تصدير البيانات واستعادتها'),
   _Section('health', 'shield', 'الصيانة والفحص', 'فحص سلامة النظام والوصول السريع للشاشات'),
   _Section('about', 'info', 'عن النظام', 'الإصدار ووضع التشغيل'),
@@ -74,7 +88,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final Perm _perm = Perm.of(context);
 
   final _search = TextEditingController();
-  String _section = 'general';
+  late String _section = widget.initialSection;
   bool _loading = true;
 
   int _items = 0;
@@ -551,6 +565,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// شاشةٌ كاملة مضمَّنة كقسمٍ هنا — لمن يملك صلاحية صفحتها الأصلية.
+  ///
+  /// نصُّها للبحث فارغ فلا تُبنى الشاشات الكبيرة ضمن نتائج البحث.
+  Widget _embed(String permPage, Widget screen) => _perm.has(permPage)
+      ? ImdEmbedScope(child: screen)
+      : const ImdEmptyState.noPermission(message: 'لا تملك صلاحية هذا القسم — تواصل مع مدير النظام');
+
   /// كل لوحة: (القسم، نصها للبحث، الودجة).
   List<(String, String, Widget)> _panels() {
     final c = context.imd;
@@ -682,53 +703,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       (
         'company',
-        'بيانات الجهة والهوية الشعار رأس النماذج',
-        ImdPanel(
-          title: 'بيانات الجهة والهوية',
-          icon: 'building',
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const ImdNote('اسم الجهة والشعار يظهران في رأس الشاشات وفي كل النماذج المطبوعة.'),
-            const SizedBox(height: 10),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              ImdButton(
-                label: 'الهوية والشعار',
-                icon: 'image',
-                small: true,
-                onPressed: () => _go('branding'),
-              ),
-              ImdButton.outline(
-                label: 'رأس وتذييل النماذج',
-                icon: 'tag',
-                small: true,
-                onPressed: () => _go('formsDesigner'),
-              ),
-            ]),
-          ]),
-        ),
+        '',
+        _embed('branding', const BrandingScreen()),
+      ),
+      (
+        'forms',
+        '',
+        _embed('formsDesigner', const FormsDesignerScreen()),
       ),
       (
         'users',
-        'المستخدمون والأدوار مصفوفة الصلاحيات',
-        ImdPanel(
-          title: 'المستخدمون والأدوار',
-          icon: 'users',
-          child: _perm.admin
-              ? Wrap(spacing: 8, runSpacing: 8, children: [
-                  ImdButton(
-                    label: 'إدارة المستخدمين',
-                    icon: 'users',
-                    small: true,
-                    onPressed: () => _go('usersAccess'),
-                  ),
-                  ImdButton.outline(
-                    label: 'مصفوفة الصلاحيات',
-                    icon: 'lock',
-                    small: true,
-                    onPressed: () => _go('usersAccess'),
-                  ),
-                ])
-              : const ImdChip('إدارة المستخدمين متاحة للمدير فقط', tone: ImdTone.pend),
-        ),
+        '',
+        _embed('usersAccess', const UsersScreen()),
       ),
       (
         'inventory',
@@ -845,25 +831,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       (
         'sync',
-        'المزامنة بين الأجهزة الشبكة المحلية التوقيع الإلكتروني',
-        ImdPanel(
-          title: 'المزامنة بين الأجهزة',
-          icon: 'swap',
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const ImdNote('مزامنة البيانات بين أجهزة الشبكة المحلية دون إنترنت — '
-                'جهاز يعمل مضيفًا والبقية تتصل به.'),
-            const SizedBox(height: 10),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: ImdButton(
-                label: 'فتح شاشة المزامنة',
-                icon: 'swap',
-                small: true,
-                onPressed: () => _go('lanSync'),
-              ),
-            ),
-          ]),
-        ),
+        '',
+        _embed('settings', const SyncScreen()),
       ),
       (
         'sync',
@@ -901,13 +870,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 label: 'التحقق من توقيع مستند',
                 icon: 'shield',
                 small: true,
-                onPressed: () => _go('verifySign'),
+                onPressed: () => setState(() => _section = 'verify'),
               ),
               ImdButton.outline(
                 label: 'تفعيل الأجهزة',
                 icon: 'monitor',
                 small: true,
-                onPressed: () => _go('deviceActivation'),
+                onPressed: () => setState(() => _section = 'devices'),
               ),
             ]),
             if (_hasSignKey && _signKeyId.isNotEmpty) ...[
@@ -930,25 +899,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       (
         'devices',
-        'تفعيل الأجهزة رمز التفعيل مفتاح الإصدار معرّف الجهاز الفروع',
-        ImdPanel(
-          title: 'تفعيل الأجهزة',
-          icon: 'monitor',
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const ImdNote('لا يعمل أي جهاز في النظام إلا برمز تفعيل موقَّع منك. '
-                'من هنا تستورد مفتاح الإصدار، وتُصدر رموز أجهزة الفروع، وترى حالة '
-                'هذا الجهاز ومعرّفه.'),
-            const SizedBox(height: 12),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: ImdButton(
-                label: 'فتح شاشة تفعيل الأجهزة',
-                icon: 'monitor',
-                onPressed: () => _go('deviceActivation'),
-              ),
-            ),
-          ]),
-        ),
+        '',
+        _embed('deviceActivation', const DeviceActivationScreen()),
+      ),
+      (
+        'verify',
+        '',
+        _embed('verifySign', const VerifySignScreen()),
       ),
       (
         'sync',

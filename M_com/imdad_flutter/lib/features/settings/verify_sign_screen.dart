@@ -70,18 +70,7 @@ class _VerifySignScreenState extends State<VerifySignScreen> {
     final c = context.imd;
 
     return ImdPage(children: [
-      Align(
-        alignment: AlignmentDirectional.centerStart,
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: ImdButton.outline(
-            label: 'رجوع إلى الإعدادات',
-            icon: 'arrow-left',
-            small: true,
-            onPressed: () => context.read<ImdNav>().go('settings'),
-          ),
-        ),
-      ),
+      ImdPageBack(onPressed: () => context.read<ImdNav>().go('settings')),
       const ImdPageTitle(
         title: 'التحقق من توقيع مستند',
         icon: 'shield',

@@ -983,6 +983,9 @@ class ImdEntryTable extends StatelessWidget {
     required this.rows,
     required this.rowKeys,
     this.empty = 'لم يُضف صنف بعد',
+    this.pageSize,
+    this.cards = false,
+    this.minWidth,
   });
 
   final List<ImdCol> columns;
@@ -990,13 +993,43 @@ class ImdEntryTable extends StatelessWidget {
   final List<LocalKey> rowKeys;
   final String empty;
 
-  /// ارتفاع صفّ الجدول — ثابتٌ فلا يتغيّر بتغيّر محتوى خليةٍ واحدة.
-  static const double rowHeight = 40;
+  /// ترقيم الصفحات للجداول الطويلة (الأرصدة الافتتاحية، العدّ الفعلي).
+  final int? pageSize;
 
-  /// خليةٌ بارتفاعٍ ثابت: الحقل المدمج يتوسّطها، فيبقى الصفّ ٤٠ مهما اختلف
-  /// محتوى الخلايا (حقلٌ نصّي أو قائمةٌ أو زرّان).
-  static Widget cell(Widget child) =>
-      SizedBox(height: rowHeight, child: Center(child: child));
+  /// بطاقاتٌ على الجوال: سندات الإدخال لها عرض جوّالها الخاص فتتركها `false`؛
+  /// أما شاشات القوائم الطويلة فتحتاجها.
+  final bool cards;
+
+  /// أقل عرضٍ للجدول — تمريرٌ أفقيٌّ إن ضاق عنه.
+  final double? minWidth;
+
+  /// ارتفاع صفّ الجدول = ارتفاع الحقل المدمج نفسه ([ImdSizes.compactField]):
+  /// الحقل يملأ الصفّ كلّه فلا فراغ فوقه ولا تحته، ويلتصق الصفّ الثاني بالأول
+  /// بخطّ الشبكة وحده. ثابتٌ فلا يتغيّر بتغيّر محتوى خليةٍ واحدة.
+  static double get rowHeight => ImdSizes.compactField;
+
+  /// خليةٌ بارتفاع الصفّ: ما فيها (حقلٌ نصّي أو قائمةٌ أو رصيدٌ أو أزرار) يأخذ
+  /// الارتفاع كلّه — **لا يُتوسَّط بحجمه** — فيتساوى الجميع رأسيًّا.
+  static Widget cell(Widget child) => SizedBox(height: rowHeight, child: child);
+
+  /// خليةُ **نصٍّ أو شارة** (ما ليس حقلًا): تتوسّط الصفّ رأسيًّا ولا تتمدّد به،
+  /// فيبقى بجوار الحقول على خطٍّ واحد.
+  static Widget textCell(Widget child) => SizedBox(
+        height: rowHeight,
+        child: Align(alignment: AlignmentDirectional.centerStart, child: child),
+      );
+
+  /// خليةُ أزرارٍ في آخر الصفّ: بجوار بعضها، كلٌّ بارتفاع الحقل (يرثه من
+  /// [ImdCompact]).
+  static Widget actions(List<Widget> buttons) => SizedBox(
+        height: rowHeight,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          for (var i = 0; i < buttons.length; i++) ...[
+            if (i > 0) const SizedBox(width: ImdSizes.compactGap),
+            buttons[i],
+          ],
+        ]),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -1007,7 +1040,9 @@ class ImdEntryTable extends StatelessWidget {
         rows: rows,
         rowKeys: rowKeys,
         empty: empty,
-        cards: false,
+        cards: cards,
+        pageSize: pageSize,
+        minWidth: minWidth,
         maxHeight: ImdSizes.tableMaxHeight(context),
         headerBackground: c.accent,
         headerForeground: c.onAccent,
@@ -1019,11 +1054,12 @@ class ImdEntryTable extends StatelessWidget {
   }
 }
 
-/// خلية «الرصيد» في جدول الإدخال — قراءةٌ لا إدخال.
+/// خلية «الرصيد» في جدول الإدخال — حقلُ قراءةٍ لا إدخال.
 ///
-/// خطُّها ١١ لا ١٢ ولونها أهدأ: هي سياقٌ يُطمئن قبل كتابة الكمية، لا رقمٌ
-/// يُنافس الحقول على الانتباه. وبلا صنفٍ مختار تبقى شرطةً لا فراغًا، فيُعرف
-/// أن العمود موجودٌ وأن قيمته لم تُعرف بعد.
+/// بشكل الحقول المجاورة نفسه (الحدّ والزوايا والارتفاع) بخلفيةٍ هادئة، فتبدو
+/// حقلًا بين حقول لا نصًّا سائبًا بحجمٍ آخر. خطُّها ١١ لا ١٢ ولونها أهدأ: هي
+/// سياقٌ يُطمئن قبل كتابة الكمية، لا رقمٌ يُنافس الحقول. وبلا صنفٍ مختار تبقى
+/// شرطةً لا فراغًا، فيُعرف أن العمود موجودٌ وأن قيمته لم تُعرف بعد.
 class ImdEntryBalanceCell extends StatelessWidget {
   const ImdEntryBalanceCell(this.text, {super.key});
   final String text;
@@ -1032,11 +1068,20 @@ class ImdEntryBalanceCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.imd;
     final empty = text.trim().isEmpty;
-    return Text(
-      empty ? '—' : text,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(fontSize: 11, color: empty ? c.faint : c.muted),
+    return Container(
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: ImdSizes.compactPadH),
+      decoration: BoxDecoration(
+        color: c.bg,
+        border: Border.all(color: c.line),
+        borderRadius: BorderRadius.circular(ImdSizes.compactRadius),
+      ),
+      child: Text(
+        empty ? '—' : text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 11.5, color: empty ? c.faint : c.muted),
+      ),
     );
   }
 }
@@ -1431,6 +1476,16 @@ class _ImdStickyPageState extends State<ImdStickyPage> {
 
   @override
   Widget build(BuildContext context) {
+    // مضمَّنةٌ داخل شاشةٍ تمرّر نفسها (أقسام الإعدادات): شريط الإجراءات يبقى في
+    // آخر المحتوى بلا تثبيتٍ عائم، ولا تمريرَ داخل تمرير.
+    if (ImdEmbedScope.of(context)) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ...widget.children,
+        const SizedBox(height: 10),
+        widget.sticky,
+        ...widget.after,
+      ]);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _check();
     });

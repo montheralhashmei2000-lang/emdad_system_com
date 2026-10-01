@@ -60,14 +60,8 @@ import '../reports/camp_ledger_screen.dart';
 import '../reports/camp_settlement_screen.dart';
 import '../reports/actual_entitlement_screen.dart';
 import '../reports/reports_center_screen.dart';
-import '../settings/branding_screen.dart';
-import '../settings/forms_designer_screen.dart';
-import '../settings/device_activation_screen.dart';
-import '../settings/verify_sign_screen.dart';
 import '../settings/settings_screen.dart';
-import '../settings/users_screen.dart';
 import '../stocktake/stocktake_screen.dart';
-import '../sync/sync_screen.dart';
 import 'dashboard_screen.dart';
 
 /// التنقل بين الشاشات من داخل أي شاشة.
@@ -98,6 +92,19 @@ class _MenuItem {
   /// أمين المحروقات من دليلٍ يحتاجه في كل سند أغلى من تكرار بندٍ في قائمة.
   final String space;
 }
+
+/// معرّفات الصفحات التي صارت أقسامًا داخل الإعدادات ← القسم الذي تُفتح عليه.
+const kSettingsSections = <String, String>{
+  'branding': 'company',
+  'formsDesigner': 'forms',
+  'deviceActivation': 'devices',
+  'verifySign': 'verify',
+  'lanSync': 'sync',
+  'usersAccess': 'users',
+};
+
+/// الصفحة التي يُضيئها بندُها في القائمة: الأقسام المضمَّنة تُضيء «الإعدادات».
+String _menuPageOf(String page) => kSettingsSections.containsKey(page) ? 'settings' : page;
 
 class _MenuSection {
   const _MenuSection(this.sec, this.icon, this.name, this.items);
@@ -187,14 +194,11 @@ const _menu = <_MenuSection>[
   // «مركز الصلاحيات» كان بندًا مستقلًّا خارج كل الأقسام يظهر لمدير النظام
   // فقط؛ انتقل هنا، وبقي مقصورًا على الإمداد (`space` الافتراضي) كما كان —
   // شأنُ النظام كله وبابه قسم الإمداد، لا يخلطه بالمحروقات.
+  // بندٌ واحد: الهوية والنماذج والتفعيل والتوقيع والمزامنة والمستخدمون صارت
+  // أقسامًا داخل شاشة الإعدادات نفسها (انظر [kSettingsSections])، وتبقى
+  // معرّفاتها القديمة (`branding`، `deviceActivation`…) تفتح الإعدادات على قسمها.
   _MenuSection('settings', 'wrench', 'الإعدادات', [
     _MenuItem('settings', 'settings', 'الإعدادات العامة'),
-    _MenuItem('branding', 'image', 'هوية النظام والشعار'),
-    _MenuItem('formsDesigner', 'file', 'رأس وتذييل النماذج'),
-    _MenuItem('deviceActivation', 'shield', 'تفعيل الأجهزة'),
-    _MenuItem('verifySign', 'check-circle', 'التحقق من التوقيع'),
-    _MenuItem('lanSync', 'refresh', 'مزامنة الأجهزة'),
-    _MenuItem('usersAccess', 'users', 'مركز الصلاحيات والوصول'),
   ]),
 
   // ═════════ المحروقات: نفس نمط الإمداد — خمسة أقسامٍ و«رئيسية» مستقلة.
@@ -560,18 +564,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return const SupplyAuditScreen(initialTab: 'healthOps');
       case 'settings':
         return const SettingsScreen();
+      // أقسامٌ داخل الإعدادات: الروابط القديمة تفتح الإعدادات على القسم نفسه.
       case 'formsDesigner':
-        return const FormsDesignerScreen();
       case 'deviceActivation':
-        return const DeviceActivationScreen();
       case 'verifySign':
-        return const VerifySignScreen();
       case 'branding':
-        return const BrandingScreen();
       case 'usersAccess':
-        return const UsersScreen();
       case 'lanSync':
-        return const SyncScreen();
+        return SettingsScreen(initialSection: kSettingsSections[page]!);
     }
     // رسالة الشاشات غير المبنية بعد.
     return const _Soon();
@@ -613,7 +613,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final body = allowed ? _pageBody(_page) : const _NoAccess();
 
     final side = _Sidebar(
-      page: _page,
+      page: _menuPageOf(_page),
       space: space,
       rail: rail,
       openSec: _openSec,
@@ -666,7 +666,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                   width: ImdSizes.sideWidth,
                   backgroundColor: c.side,
                   child: _Sidebar(
-                    page: _page,
+                    page: _menuPageOf(_page),
                     space: space,
                     openSec: _openSec,
                     hasPerm: (p) => _hasPerm(auth, p),
@@ -684,7 +684,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           bottomNavigationBar: handheld
               ? _BottomNav(
                   space: space,
-                  page: _page,
+                  page: _menuPageOf(_page),
                   hasPerm: (p) => _hasPerm(auth, p),
                   onGo: _go,
                   onMore: () => _scaffoldKey.currentState?.openEndDrawer(),

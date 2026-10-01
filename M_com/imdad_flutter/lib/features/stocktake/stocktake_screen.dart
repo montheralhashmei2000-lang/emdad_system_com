@@ -825,18 +825,20 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
                 ),
         )
       else
-        ImdTable(
+        // جدول إدخالٍ: صفوفٌ ملتصقة وحقول العدّ بارتفاع الصفّ نفسه.
+        ImdEntryTable(
           minWidth: 900,
           columns: const [
-            ImdCol('الكود'),
-            ImdCol('الصنف'),
-            ImdCol('الوحدة 1'),
-            ImdCol('الفعلي 1', auto: false, width: 110),
-            ImdCol('الوحدة 2'),
-            ImdCol('الفعلي 2', auto: false, width: 110),
-            ImdCol('الوحدة 3'),
-            ImdCol('الفعلي 3', auto: false, width: 110),
+            ImdCol('الكود', width: 110),
+            ImdCol('الصنف', flex: 2),
+            ImdCol('الوحدة 1', width: 110),
+            ImdCol('الفعلي 1', width: 110),
+            ImdCol('الوحدة 2', width: 110),
+            ImdCol('الفعلي 2', width: 110),
+            ImdCol('الوحدة 3', width: 110),
+            ImdCol('الفعلي 3', width: 110),
           ],
+          rowKeys: [for (final l in rows) ValueKey(l.id)],
           pageSize: 50,
           cards: true,
           empty: _lines.isEmpty ? 'لا توجد أصناف في هذا الأمر' : 'لا نتائج مطابقة للبحث',
@@ -859,22 +861,22 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
   List<Widget> _countRow(StocktakeLine l, bool open) {
     final units = _unitsOf(l);
     final cells = <Widget>[
-      Text(l.itemCode.isEmpty ? '—' : l.itemCode, style: const TextStyle(fontWeight: FontWeight.w700)),
-      Text(l.itemName),
+      ImdEntryTable.textCell(Text(l.itemCode.isEmpty ? '—' : l.itemCode, style: const TextStyle(fontWeight: FontWeight.w700))),
+      ImdEntryTable.textCell(Text(l.itemName)),
     ];
     for (var i = 0; i < 3; i++) {
       if (i >= units.length) {
-        cells..add(const Text('—'))..add(const SizedBox.shrink());
+        cells..add(ImdEntryTable.textCell(const Text('—')))..add(ImdEntryTable.cell(const SizedBox.shrink()));
         continue;
       }
       final u = units[i];
-      cells.add(Text(u.factor == 1 ? u.name : '${u.name} ×${nf(u.factor)}'));
-      cells.add(ImdFld(
+      cells.add(ImdEntryTable.textCell(Text(u.factor == 1 ? u.name : '${u.name} ×${nf(u.factor)}')));
+      cells.add(ImdEntryTable.cell(ImdFld(
         controller: _counts[l.id]![u.name]!,
         number: true,
         dense: true,
         enabled: open,
-      ));
+      )));
     }
     return cells;
   }

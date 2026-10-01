@@ -159,19 +159,8 @@ class _BrandingScreenState extends State<BrandingScreen> {
             ])
           : const ImdNote('👁 عرض فقط — تعديل الهوية يحتاج صلاحية الإعدادات.'),
       children: [
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            // `injectBackToSettings()` — الشاشتان تُفتحان من الإعدادات فقط.
-            child: ImdButton.outline(
-              label: 'رجوع إلى الإعدادات',
-              icon: 'arrow-left',
-              small: true,
-              onPressed: () => context.read<ImdNav>().go('settings'),
-            ),
-          ),
-        ),
+        // `injectBackToSettings()` — الشاشتان تُفتحان من الإعدادات فقط.
+        ImdPageBack(onPressed: () => context.read<ImdNav>().go('settings')),
         const ImdPageTitle(
           title: 'هوية التطبيق والشعار',
           icon: 'image',

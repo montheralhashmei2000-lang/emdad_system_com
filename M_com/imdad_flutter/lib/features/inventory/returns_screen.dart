@@ -524,7 +524,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
         icon: 'clipboard',
         child: ImdCompact(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ImdFormGrid(children: fields),
-          const SizedBox(height: 6),
+          const SizedBox(height: ImdSizes.compactRowGap),
           const ImdRowLabel('حالة الأصناف المرتجعة'),
           ImdTargetPills<String>(
             value: _cond,
@@ -534,7 +534,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
               ImdTab('DAMAGED', '💥 تالفة — تُسجَّل إتلافًا (بدون إضافة للرصيد)'),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: ImdSizes.compactRowGap),
           ImdCollapsibleSection(title: 'ملاحظات', child: ImdFld(controller: _uNotes)),
         ])),
       ),
@@ -598,9 +598,9 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
         icon: 'clipboard',
         child: ImdCompact(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ImdFormGrid(children: fields),
-          const SizedBox(height: 6),
+          const SizedBox(height: ImdSizes.compactRowGap),
           _lab('مرجع سند التوريد الأصلي', ImdFld(controller: _sOrig, hint: 'مثال: و-000012', onChanged: (_) => setState(() {}))),
-          const SizedBox(height: 6),
+          const SizedBox(height: ImdSizes.compactRowGap),
           ImdCollapsibleSection(
             title: 'سبب الإرجاع / ملاحظات',
             child: ImdFld(controller: _sNotes, hint: 'مواصفات غير مطابقة، تلف بالنقل...أو غيره', onChanged: (_) => setState(() {})),

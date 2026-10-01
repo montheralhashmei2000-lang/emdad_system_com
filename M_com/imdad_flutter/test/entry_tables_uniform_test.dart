@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/core/theme/app_theme.dart';
+import 'package:imdad/core/ui/imd_form.dart';
 import 'package:imdad/core/ui/imd_tokens.dart';
 import 'package:imdad/core/ui/imd_widgets.dart';
 import 'package:imdad/features/inventory/doc_kit.dart';
@@ -47,9 +48,9 @@ void main() {
     expect(t.maxHeight, isNotNull, reason: 'سقفٌ يُثبّت الرأس ويُمرّر الجسم');
   });
 
-  testWidgets('ارتفاع الصفّ ثابتٌ ٤٠ مهما اختلف محتوى الخلية', (tester) async {
+  testWidgets('ارتفاع الصفّ ثابتٌ (= ارتفاع الحقل المدمج) مهما اختلف محتوى الخلية', (tester) async {
     // محتوياتٌ مختلفة الارتفاع جدًّا: نصٌّ قصير، وصندوقٌ ضئيل، وآخر أطول من
-    // الصفّ نفسه — والخلية تفرض ٤٠ على الثلاثة.
+    // الصفّ نفسه — والخلية تفرض ارتفاعها على الثلاثة.
     const keys = <Key>[Key('قصير'), Key('ضئيل'), Key('طويل')];
     await tester.pumpWidget(host(Column(children: [
       ImdEntryTable.cell(const Text('نصّ قصير', key: Key('قصير'))),
@@ -95,5 +96,88 @@ void main() {
     expect(ImdSizes.compactPadV, 6);
     expect(ImdSizes.compactGap, 4, reason: 'بين الأعمدة');
     expect(ImdSizes.compactRowGap, 2, reason: 'بين الصفوف');
+  });
+
+  group('صفوفٌ ملتصقة وخلايا بارتفاع الحقل', () {
+    final fieldH = ImdSizes.compactField;
+    final controllers = <TextEditingController>[];
+
+    Widget realTable(int rows) {
+      controllers.clear();
+      return ImdEntryTable(
+        columns: const [
+          ImdCol('الصنف', flex: 3),
+          ImdCol('الرصيد', width: 96),
+          ImdCol('الكمية', width: 88),
+          ImdCol('', width: 96),
+        ],
+        rowKeys: [for (var i = 0; i < rows; i++) ValueKey('r$i')],
+        rows: [
+          for (var i = 0; i < rows; i++)
+            [
+              ImdEntryTable.cell(ImdFld(controller: TextEditingController(text: 'صنف $i'))),
+              ImdEntryTable.cell(ImdEntryBalanceCell('${i + 1}٠ كيس')),
+              ImdEntryTable.cell(ImdFld(controller: TextEditingController(text: '5'))),
+              ImdEntryTable.actions([
+                ImdIconButton(icon: 'plus-square', onPressed: () {}),
+                ImdIconButton(icon: 'x', kind: ImdBtnKind.danger, onPressed: () {}),
+              ]),
+            ],
+        ],
+      );
+    }
+
+    testWidgets('كل خلايا الصفّ بارتفاع الحقل نفسه: الرصيد والأزرار والحقول', (tester) async {
+      await tester.pumpWidget(host(realTable(2)));
+
+      for (final f in tester.widgetList<ImdFld>(find.byType(ImdFld))) {
+        expect(tester.getSize(find.byWidget(f)).height, fieldH, reason: 'حقل');
+      }
+      expect(tester.getSize(find.byType(ImdEntryBalanceCell).first).height, fieldH,
+          reason: 'الرصيد أطول أو أقصر من الحقول');
+      for (final b in tester.widgetList<ImdIconButton>(find.byType(ImdIconButton))) {
+        expect(tester.getSize(find.byWidget(b)).height, fieldH, reason: 'زرّ الإجراءات');
+      }
+    });
+
+    testWidgets('الصفّ الثاني ملتصقٌ بالأول: لا فراغ بينهما إلا خطّ الشبكة', (tester) async {
+      await tester.pumpWidget(host(realTable(3)));
+
+      final tops = [
+        for (final f in tester.widgetList<ImdFld>(find.byType(ImdFld)).where(
+            (f) => (f.controller.text).startsWith('صنف')))
+          tester.getTopLeft(find.byWidget(f)).dy,
+      ];
+      expect(tops.length, 3);
+      // المسافة بين بدايتَي صفّين متتاليين = ارتفاع الصفّ + سُمك خطّ الشبكة فقط.
+      for (var i = 1; i < tops.length; i++) {
+        expect(tops[i] - tops[i - 1], inInclusiveRange(fieldH, fieldH + 2),
+            reason: 'فراغٌ زائد بين الصفّين $i');
+      }
+    });
+
+    testWidgets('الزرّ خارج الجداول المدمجة يبقى بمقاسه المعتاد', (tester) async {
+      await tester.pumpWidget(host(Center(child: ImdIconButton(icon: 'plus', onPressed: () {}))));
+      expect(tester.getSize(find.byType(ImdIconButton)).height, greaterThanOrEqualTo(ImdSizes.touchMin));
+    });
+
+    testWidgets('زرّ «+» بجوار قائمةٍ في نموذجٍ مدمج بارتفاع القائمة نفسه', (tester) async {
+      await tester.pumpWidget(host(ImdCompact(
+        child: Row(children: [
+          Expanded(
+            child: ImdSelect<String>(
+              value: 'أ',
+              items: const [('أ', 'مستودع')],
+              onChanged: (_) {},
+            ),
+          ),
+          const SizedBox(width: 6),
+          ImdIconButton(icon: 'plus', onPressed: () {}),
+        ]),
+      )));
+      final select = tester.getSize(find.byType(ImdSelect<String>)).height;
+      final button = tester.getSize(find.byType(ImdIconButton)).height;
+      expect(button, select, reason: 'الزرّ أعلى من القائمة أو أقصر منها');
+    });
   });
 }

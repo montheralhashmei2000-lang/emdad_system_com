@@ -708,14 +708,14 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
         icon: 'clipboard',
         child: ImdCompact(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ImdFormGrid(children: [whField, supField, dateField, refField]),
-          const SizedBox(height: 6),
+          const SizedBox(height: ImdSizes.compactRowGap),
           ImdFormGrid(children: [
             fld('لجنة الفحص (رقابة)', _c1),
             fld('المراجعة والتفتيش', _c2),
             fld('التدقيق', _c3),
             fld('رقم الفاتورة/التاجر', _inv),
           ]),
-          const SizedBox(height: 6),
+          const SizedBox(height: ImdSizes.compactRowGap),
           ImdCollapsibleSection(title: 'ملاحظات', child: ImdFld(controller: _notes)),
         ])),
       ),
@@ -940,7 +940,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
             cell(f.qty),
             if (anyRefill) cell(f.refill ? f.cy : const SizedBox.shrink()),
             if (anyExpiry) cell(f.hasExpiry ? f.expiry : const SizedBox.shrink()),
-            cell(Row(mainAxisSize: MainAxisSize.min, children: [f.copy, f.delete])),
+            ImdEntryTable.actions([f.copy, f.delete]),
           ],
       ],
     );

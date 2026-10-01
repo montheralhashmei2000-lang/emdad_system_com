@@ -66,7 +66,9 @@ class _SyncScreenState extends State<SyncScreen> {
     _includeUsers = widget.firstRun;
     // المنفذ واحد: تتنحّى المزامنة التلقائية ما دامت هذه الشاشة مفتوحة، وتعود
     // إلى حالتها المحفوظة عند الخروج منها.
-    unawaited(_auto0.pause());
+    // بعد أول إطار: `pause()` تُشعر المستمعين فورًا، وهذا ممنوعٌ أثناء البناء
+    // (يظهر خطأ «setState during build» حين تُبنى الشاشة مضمَّنةً في الإعدادات).
+    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_auto0.pause()));
     _loadAddresses();
     _loadTrust();
   }
@@ -88,7 +90,8 @@ class _SyncScreenState extends State<SyncScreen> {
   void dispose() {
     _sync.stopReceiving();
     // تُقرأ من حقل محفوظ لا من السياق: السياق لا يُقرأ بعد بدء الإزالة.
-    unawaited(_auto0.resume());
+    // مؤجَّلة: إشعار المستمعين أثناء هدم الشجرة ممنوع.
+    unawaited(Future<void>.microtask(_auto0.resume));
     _host.dispose();
     _code.dispose();
     super.dispose();

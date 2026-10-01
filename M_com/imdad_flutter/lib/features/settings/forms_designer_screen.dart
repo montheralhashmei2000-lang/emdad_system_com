@@ -199,19 +199,8 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
         ),
       ]),
       children: [
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            // `injectBackToSettings()` — الشاشتان تُفتحان من الإعدادات فقط.
-            child: ImdButton.outline(
-              label: 'رجوع إلى الإعدادات',
-              icon: 'arrow-left',
-              small: true,
-              onPressed: _leaveToSettings,
-            ),
-          ),
-        ),
+        // `injectBackToSettings()` — الشاشتان تُفتحان من الإعدادات فقط.
+        ImdPageBack(onPressed: _leaveToSettings),
         ImdPageTitle(
           title: 'مصمم النماذج المطبوعة',
           icon: 'printer',

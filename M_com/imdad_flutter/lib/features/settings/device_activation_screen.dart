@@ -231,18 +231,7 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
 
     return ImdPage(children: [
       if (!widget.standalone)
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: ImdButton.outline(
-              label: 'رجوع إلى الإعدادات',
-              icon: 'arrow-left',
-              small: true,
-              onPressed: () => context.read<ImdNav>().go('settings'),
-            ),
-          ),
-        ),
+        ImdPageBack(onPressed: () => context.read<ImdNav>().go('settings')),
       const ImdPageTitle(
         title: 'تفعيل الأجهزة',
         icon: 'shield',
