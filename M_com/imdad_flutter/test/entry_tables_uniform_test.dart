@@ -43,7 +43,9 @@ void main() {
     expect(t.headerForeground, c.onAccent, reason: 'نصُّ الرأس يقابله');
     expect(t.gridLines, isTrue, reason: 'حدٌّ لكل خلية');
     expect(t.cellFontSize, 12);
-    expect(t.cellPadding, const EdgeInsets.symmetric(horizontal: 4));
+    // خلايا ملتصقة (CLAUDE.md §5): بلا حشو للخلية، وخط الشبكة وحده يفصل.
+    expect(t.flushCells, isTrue, reason: 'خلايا ملتصقة على سطح المكتب');
+    expect(t.cellPadding, isNull, reason: 'لا حشو للخلية');
     expect(t.cards, isFalse, reason: 'جدولٌ دومًا على سطح المكتب');
     expect(t.maxHeight, isNotNull, reason: 'سقفٌ يُثبّت الرأس ويُمرّر الجسم');
   });

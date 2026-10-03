@@ -30,10 +30,12 @@ Future<InvoiceAiSettings?> showInvoiceAiSettings(BuildContext context, SettingsR
     maxWidth: 560,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const ImdNote(
-            'المسح يرسل صورة الفاتورة (أو ملف PDF) عبر الإنترنت إلى خدمة Anthropic لقراءتها واستخراج بياناتها، '
-            'ولا يُرسل شيء إلا حين تضغط «مسح فاتورة». لا تمسح مستنداتٍ سريةً لا يجوز خروجها من الجهة. '
-            'المفتاح يُحفظ على هذا الجهاز وحده ولا يُزامَن مع الأجهزة الأخرى.'),
+        const ImdNote('كيف يعمل المسح؟\n'
+            '• حين تضغط «مسح فاتورة» تُرسَل صورة الفاتورة (أو ملف PDF) عبر الإنترنت إلى شركة Anthropic، '
+            'فتقرؤها وتُعيد البيانات (الأصناف والأسعار…) إلى التطبيق.\n'
+            '• لا يُرسَل شيء إلا في تلك اللحظة، ولا يُرسَل أي شيء آخر من النظام.\n'
+            '• لا تمسح بهذه الطريقة فاتورةً أو مستندًا لا يجوز أن يخرج من جهتك. إن كانت لديك شكوك فأدخل الأصناف يدويًا.\n'
+            '• المفتاح أدناه يُحفظ على هذا الجهاز فقط ولا ينتقل إلى الأجهزة الأخرى.'),
         ImdLabeled('مفتاح الخدمة (API key)', ImdFld(controller: key, obscure: true, hint: 'sk-ant-…')),
         ImdLabeled(
             'النموذج',

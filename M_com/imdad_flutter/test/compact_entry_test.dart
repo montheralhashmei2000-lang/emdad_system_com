@@ -92,13 +92,12 @@ void main() {
         ]),
       );
 
-      final boxes = tester
-          .widgetList<ConstrainedBox>(find.byType(ConstrainedBox))
-          .map((b) => b.constraints.minHeight)
-          .where((h) => h > 0)
-          .toList();
-      expect(boxes, contains(ImdSizes.touchMin));
-      expect(boxes, contains(ImdSizes.compactField));
+      // الحقل المدمج بسطرٍ واحد ارتفاعه **مطابقٌ** لـ compactField (SizedBox ثابت)،
+      // والعادي لا يقل عن touchMin — فلا يعلو حقلٌ مدمجٌ أخاه في صفّ الجدول.
+      final normal = tester.getSize(find.byType(ImdFld).first).height;
+      final compact = tester.getSize(find.byType(ImdFld).last).height;
+      expect(normal, greaterThanOrEqualTo(ImdSizes.touchMin));
+      expect(compact, ImdSizes.compactField);
       expect(ImdSizes.compactField, lessThan(ImdSizes.touchMin),
           reason: 'المدمج يجب أن يكون أقصر');
     });
