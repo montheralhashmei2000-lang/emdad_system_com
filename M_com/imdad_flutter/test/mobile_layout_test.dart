@@ -37,6 +37,10 @@ void main() {
     'campLedger', 'campSettlement', 'actualEntitlement', 'stockAlerts', 'supplyAudit',
     'stocktakeCreate', 'stocktakeCount', 'stocktakeAnalysis', 'stocktakeSettle', 'stocktakeHistory',
     'settings', 'branding', 'formsDesigner', 'deviceActivation', 'verifySign', 'lanSync', 'usersAccess',
+    'personnel',
+    'cables',
+    'linkages',
+    'archive',
   ];
 
   /// خط التطبيق الحقيقي: اختبارات Flutter ترسم كل نصٍّ بخط Ahem (كل حرفٍ مربعٌ

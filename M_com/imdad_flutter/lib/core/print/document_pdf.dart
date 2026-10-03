@@ -4,11 +4,13 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:provider/provider.dart';
 
+import '../../data/db/app_database.dart';
+import '../../data/repos/archive_auto.dart';
+import '../../domain/print_layout.dart';
 import '../ui/imd_fonts.dart';
 import 'print_preview.dart';
-
-import '../../domain/print_layout.dart';
 
 /// بناء مستندات PDF عربية (RTL) وفق تخطيط الطباعة القابل للضبط.
 /// يُستخدم لسندات الاستلام والصرف والتحويل والمرتجعات وتقارير المركز.
@@ -178,6 +180,20 @@ class DocumentPdf {
   }) async {
     final bytes = await build(doc: doc, layout: layout);
     await showPrintPreview(bytes, name: doc.title);
+    // الأرشفة التلقائية للتقارير والمطبوعات — إن مُكِّنت من الإعدادات.
+    // قاعدة البيانات تُحلّ من سياق التطبيق، وفشلُ الأرشفة لا يمنع طباعةً تمّت.
+    try {
+      final ctx = imdNavigatorKey.currentContext;
+      if (ctx != null) {
+        final db = Provider.of<AppDatabase>(ctx, listen: false);
+        await ArchiveAuto(db).onDocumentPrinted(
+          op: 'report',
+          title: doc.title,
+          pdfBytes: bytes,
+          fileName: '${doc.title.replaceAll(' ', '-')}.pdf',
+        );
+      }
+    } catch (_) {}
   }
 
   static Future<void> share({

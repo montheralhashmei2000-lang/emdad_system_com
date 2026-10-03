@@ -74,6 +74,24 @@ class MilitaryPrint {
     _loadedFamily = font.family;
   }
 
+  /// سمة المستند بخط الطباعة المختار — يشاركها كل نموذجٍ مطبوعٍ خارج السندات
+  /// (كنموذج البرقية) ليظهر بالخط نفسه.
+  Future<pw.ThemeData> pdfTheme() async {
+    await ensureFonts(family: printFont);
+    // مكتبة pdf تحسب فراغ الكلمات من wordSpacing وحده، وبالقيمة الافتراضية (١)
+    // تلتصق بعض الكلمات العربية («أرز أبيض» ⇒ «أرزأبيض»). المضاعفة تعيد الفراغ الطبيعي.
+    final base = pw.ThemeData.withFont(base: _regular!, bold: _bold!);
+    return base.copyWith(
+      defaultTextStyle: base.defaultTextStyle.copyWith(wordSpacing: 2),
+      paragraphStyle: base.paragraphStyle.copyWith(wordSpacing: 2),
+      tableCell: base.tableCell.copyWith(wordSpacing: 2),
+      tableHeader: base.tableHeader.copyWith(wordSpacing: 2),
+    );
+  }
+
+  /// بايتات الشعار المحفوظ في الإعدادات، أو null.
+  Uint8List? get logoBytes => _logoBytes();
+
   static const _firstPageMax = 18;
   static const _otherPageMax = 28;
 
@@ -88,17 +106,7 @@ class MilitaryPrint {
     String? receiptNote,
     String? signatureToken,
   }) async {
-    await ensureFonts(family: printFont);
-    // مكتبة pdf تحسب فراغ الكلمات من wordSpacing وحده، وبالقيمة الافتراضية (١)
-    // تلتصق بعض الكلمات العربية («أرز أبيض» ⇒ «أرزأبيض»). المضاعفة تعيد الفراغ الطبيعي.
-    final base = pw.ThemeData.withFont(base: _regular!, bold: _bold!);
-    final theme = base.copyWith(
-      defaultTextStyle: base.defaultTextStyle.copyWith(wordSpacing: 2),
-      paragraphStyle: base.paragraphStyle.copyWith(wordSpacing: 2),
-      tableCell: base.tableCell.copyWith(wordSpacing: 2),
-      tableHeader: base.tableHeader.copyWith(wordSpacing: 2),
-    );
-    final pdf = pw.Document(theme: theme);
+    final pdf = pw.Document(theme: await pdfTheme());
 
     final chunks = <List<List<String>>>[];
     if (rows.isEmpty) {

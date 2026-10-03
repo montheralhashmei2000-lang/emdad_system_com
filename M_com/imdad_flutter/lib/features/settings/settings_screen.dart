@@ -36,6 +36,7 @@ import '../../data/repos/movements_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/rules_engine.dart';
 import '../home/home_shell.dart';
+import '../archive/archive_auto_settings.dart';
 
 /// إصدار التطبيق كما يظهر في «عن النظام».
 const kAppVersionLabel = 'نظام الإمداد والتموين — الإصدار ٧.٤.٠';
@@ -71,6 +72,7 @@ const _sections = <_Section>[
   _Section('inventory', 'package', 'المخزون والاستحقاقات',
       'الأرصدة الافتتاحية ومعدلات الاستحقاق والقوانين'),
   _Section('print', 'printer', 'الطباعة والتصدير والاستيراد', 'النماذج المطبوعة وأدوات كل شاشة'),
+  _Section('archiveAuto', 'zap', 'الأرشفة التلقائية', 'تفعيل أرشفة السندات والتقارير المطبوعة تلقائيًّا في الأرشيف الإلكتروني — مفصّلة بكل عملية'),
   _Section('sync', 'swap', 'المزامنة والتوقيع', 'ربط الأجهزة ومزامنتها والتوقيع الإلكتروني والإشعارات'),
   _Section('authorities', 'users', 'جهات الاعتمادات',
       'من يعتمدون الطلبيات ويطلب منهم المخزن الرئيسي'),
@@ -584,6 +586,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final role = user?.role == 'admin' ? 'مدير النظام' : 'مستخدم';
 
     return [
+      (
+        'archiveAuto',
+        'الأرشفة التلقائية أرشيف السندات التقارير المطبوعة الاستلام الصرف التحويل المرتجعات الجرد',
+        ImdPanel(
+          title: 'الأرشفة التلقائية عند الطباعة',
+          icon: 'zap',
+          child: const ArchiveAutoSettingsCard(),
+        ),
+      ),
       (
         'general',
         'درجة الجاهزية الحالية',

@@ -5,6 +5,10 @@ import '../repos/signatures_repo.dart';
 import '../sync/sync_marks.dart';
 import 'connection/connection.dart';
 
+import 'archive_tables.dart';
+import 'cable_tables.dart';
+import 'linkage_tables.dart';
+
 part 'app_database.g.dart';
 
 /// مخطط قاعدة البيانات المحلية (SQLite عبر Drift):
@@ -1061,13 +1065,22 @@ class AppSettings extends Table {
   CampStockLimits,
   MonthlySettlements,
   AppSettings,
+  ArchiveFiles,
+  LinkPersons,
+  LinkStatusLogs,
+  LinkTerms,
+  LinkFinCustodies,
+  LinkClearances,
+  LinkPurchaseContracts,
+  LinkArmaments,
+  Cables,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_open());
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 20;
+  int get schemaVersion => 23;
 
   /// الفهارس المخدومة فعليًا بالاستعلامات: البحث بالمرجع (فتح سند من سجل
   /// المستندات)، وبالحالة (الأوامر المعلقة والمسودات)، وبالمستودع والصنف
@@ -1126,6 +1139,21 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS ix_fuel_transfer_date ON fuel_transfers (date)',
       'CREATE INDEX IF NOT EXISTS ix_fuel_alloc_unit ON fuel_allocations (unit_id, active)',
       'CREATE INDEX IF NOT EXISTS ix_fuel_stline_doc ON fuel_stocktake_lines (stocktake_id)',
+      'CREATE INDEX IF NOT EXISTS ix_link_persons_status ON link_persons (status)',
+      'CREATE INDEX IF NOT EXISTS ix_link_status_person ON link_status_logs (person_id)',
+      'CREATE INDEX IF NOT EXISTS ix_link_custody_cleared ON link_fin_custodies (cleared)',
+      'CREATE INDEX IF NOT EXISTS ix_link_clear_ref ON link_clearances (kind, ref_id)',
+      'CREATE INDEX IF NOT EXISTS ix_link_contracts_status ON link_purchase_contracts (status)',
+      'CREATE INDEX IF NOT EXISTS ix_link_arm_person ON link_armaments (person_id)',
+      'CREATE INDEX IF NOT EXISTS ix_archive_cat ON archive_files (category)',
+      'CREATE INDEX IF NOT EXISTS ix_archive_date ON archive_files (doc_date)',
+      'CREATE INDEX IF NOT EXISTS ix_archive_ref ON archive_files (doc_ref)',
+      'CREATE INDEX IF NOT EXISTS ix_archive_wh ON archive_files (warehouse)',
+      'CREATE INDEX IF NOT EXISTS ix_archive_op_ref ON archive_files (op_type, doc_ref)',
+      'CREATE INDEX IF NOT EXISTS ix_cables_date ON cables (cable_date)',
+      'CREATE INDEX IF NOT EXISTS ix_cables_dir ON cables (direction)',
+      'CREATE INDEX IF NOT EXISTS ix_cables_status ON cables (status)',
+      'CREATE INDEX IF NOT EXISTS ix_cables_class ON cables (classification)',
     ];
     for (final sql in statements) {
       await customStatement(sql);
@@ -1460,6 +1488,24 @@ class AppDatabase extends _$AppDatabase {
             ]) {
               await _addCol(m, fuelSettingsRows, c);
             }
+          }
+          // v21: الأرشيف الإلكتروني — جدول ملفاته الوصفية.
+          if (from < 21) {
+            await _createIfMissing(m, archiveFiles);
+          }
+          // v22: الارتباطات — القوة البشرية والمالية والتسليح.
+          if (from < 22) {
+            await _createIfMissing(m, linkPersons);
+            await _createIfMissing(m, linkStatusLogs);
+            await _createIfMissing(m, linkTerms);
+            await _createIfMissing(m, linkFinCustodies);
+            await _createIfMissing(m, linkClearances);
+            await _createIfMissing(m, linkPurchaseContracts);
+            await _createIfMissing(m, linkArmaments);
+          }
+          // v23: البرقيات.
+          if (from < 23) {
+            await _createIfMissing(m, cables);
           }
           // v15: إصلاح ما خلّفه تنقّل القاعدة بين نسختين مختلفتي المخطط.
           //

@@ -42,6 +42,10 @@ import '../daily/ratios_screen.dart';
 import '../daily/strength_screen.dart';
 import 'notification_bell.dart';
 import '../alerts/stock_alerts_screen.dart';
+import '../linkages/linkages_screen.dart';
+import '../cables/cables_screen.dart';
+import '../linkages/personnel_screen.dart';
+import '../archive/electronic_archive_screen.dart';
 import '../catalog/assets_screen.dart';
 import '../catalog/items_screen.dart';
 import '../catalog/kitchens_screen.dart';
@@ -162,6 +166,14 @@ const _menu = <_MenuSection>[
   // «رقابة» وحدها بقيت باباً بتبويباته الخمسة (سجل النشاط، ذكاء النشاط،
   // التغييرات الحساسة، مركز القيادة، صحة النظام) — خمس نظراتٍ على سجلٍّ
   // واحد لا خمس شاشاتٍ منفصلة، فتفكيكها يُكرِّر لا يُبسِّط.
+  _MenuSection('archiveGroup', 'folder', 'البرقيات والأرشيف', [
+    _MenuItem('cables', 'mail', 'البرقيات'),
+    _MenuItem('archive', 'folder', 'الأرشيف الإلكتروني'),
+  ]),
+  _MenuSection('linkagesGroup', 'link', 'الارتباطات', [
+    _MenuItem('personnel', 'users', 'القوة البشرية'),
+    _MenuItem('linkages', 'link', 'مركز الارتباطات'),
+  ]),
   _MenuSection('reports', 'trending', 'التقارير', [
     _MenuItem('balances', 'calculator', 'الأرصدة الحالية'),
     // تقارير «مركز التقارير» التسعة كلها بنودٌ مباشرة الآن (بلا قائمة تنقّل
@@ -562,6 +574,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return const SupplyAuditScreen(initialTab: 'sensitiveOps');
       case 'healthOps':
         return const SupplyAuditScreen(initialTab: 'healthOps');
+      case 'cables':
+        return const CablesScreen();
+      case 'archive':
+        return const ElectronicArchiveScreen();
+      case 'personnel':
+        return const PersonnelStrengthScreen();
+      case 'linkages':
+        return const LinkagesScreen();
       case 'settings':
         return const SettingsScreen();
       // أقسامٌ داخل الإعدادات: الروابط القديمة تفتح الإعدادات على القسم نفسه.

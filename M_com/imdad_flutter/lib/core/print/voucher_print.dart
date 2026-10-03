@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/db/app_database.dart';
 import '../../data/repos/settings_repo.dart';
+import '../../data/repos/archive_auto.dart';
 import '../../data/repos/signatures_repo.dart';
 import '../ui/imd_format.dart';
 import 'military_print.dart';
@@ -128,6 +129,25 @@ class VoucherPrint {
         await engine.returnVoucher(master, rows, fromUnit: false, signatureToken: token),
     };
     await MilitaryPrint.show(bytes, name: '$title $refNo');
+    // الأرشفة التلقائية: إن مُكِّنت عملية هذا السند من «الإعدادات ←
+    // الأرشفة التلقائية» أُرشفت نسخة PDF مطابقة لما طُبع فعلًا. والفشل
+    // هنا لا يمنع طباعةً تمّت، فيُبتلع بعد إظهار الطباعة.
+    try {
+      await ArchiveAuto(db).onDocumentPrinted(
+        op: switch (kind) {
+          VoucherKind.receive => 'receipt',
+          VoucherKind.issue => 'issue',
+          VoucherKind.transfer => 'transfer',
+          VoucherKind.returnFromUnit || VoucherKind.returnToSupplier => 'return',
+        },
+        title: '$title ${refNo.isEmpty ? '' : refNo}'.trim(),
+        docRef: refNo,
+        warehouse: warehouse,
+        docDate: date,
+        pdfBytes: bytes,
+        fileName: '${refNo.isEmpty ? title.replaceAll(' ', '-') : refNo}.pdf',
+      );
+    } catch (_) {}
   }
 
   /// يبني المحرك من هوية الجهة المحفوظة (الشعار والأسطر والتذييل).
