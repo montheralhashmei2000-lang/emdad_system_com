@@ -56,7 +56,7 @@ void main() {
       // سعر صرف صفر لا يقسم.
       expect(const CustodyRowValues(spentSar: 5, spentYer: 100, rate: 0).spentInSar, 5);
     });
-    test('الإجماليات والمتبقي = العهدة − المنصرف', () {
+    test('الإجماليات والمتبقي = العهدة − المنصرف − المرتجع', () {
       final t = custodyTotals(const [
         CustodyRowValues(grantSar: 30000, spentSar: 3905),
         CustodyRowValues(spentYer: 135000, rate: 410),
@@ -65,7 +65,7 @@ void main() {
       expect(t.granted, 30000);
       expect(t.spent, closeTo(3905 + 329.27, 0.01));
       expect(t.returned, 10);
-      expect(t.remaining, closeTo(30000 - 3905 - 329.27, 0.01));
+      expect(t.remaining, closeTo(30000 - 3905 - 329.27 - 10, 0.01), reason: 'المرتجع يُطرح من المتبقي');
     });
     test('الفواتير المكررة: الفارغ لا يُعدّ تكرارًا والمقارنة بلا فروق حالة وفراغ', () {
       expect(duplicateInvoiceNos(['سند استلام', ' سند استلام ', '274', '', '', 'A', 'a']), {'سند استلام', 'a'});
@@ -196,12 +196,14 @@ void main() {
         await pump(tester, const CustodySheetEditor(initial: null, initialRows: [], actor: 'a', canPrint: true), size);
         expect(tester.takeException(), isNull);
         expect(find.text('حفظ المسير'), findsWidgets);
+        expect(find.text('استيراد من Excel'), findsOneWidget);
       });
 
       testWidgets('محرر العقد يُبنى بلا فيض ${size.width.toInt()}×${size.height.toInt()}', (tester) async {
         await pump(tester, const ContractEditor(initial: null, actor: 'a', canPrint: true), size);
         expect(tester.takeException(), isNull);
         expect(find.text('حفظ العقد'), findsWidgets);
+        expect(find.text('مسح فاتورة'), findsOneWidget);
       });
     }
 

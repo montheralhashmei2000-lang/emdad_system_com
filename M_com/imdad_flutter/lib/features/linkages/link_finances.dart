@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart' show Value;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -15,6 +16,7 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/linkage_repo.dart';
 import '../../domain/access_control.dart';
+import '../../data/migration/custody_sheet_import.dart';
 import '../../domain/custody_sheet.dart';
 import 'contract_editor.dart';
 import 'custody_sheet_editor.dart';
@@ -284,6 +286,28 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
     }
   }
 
+  /// يقرأ ملف Excel لمسير ويفتحه في المحرر للمراجعة قبل أول حفظ.
+  Future<void> _importSheet() async {
+    if (!_canCreate) return showImdToast(context, '✖ لا تملك صلاحية التسجيل', error: true);
+    try {
+      final res = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: const ['xlsx'], withData: true);
+      final bytes = res?.files.firstOrNull?.bytes;
+      if (res == null || bytes == null) return;
+      final parsed = CustodySheetImporter.parse(bytes);
+      if (!mounted) return;
+      if (parsed.warnings.isNotEmpty) showImdToast(context, '⚠ ${parsed.warnings.join('، ')}');
+      final saved = await openCustodySheetEditor(context, imported: parsed, actor: widget.perm.email, canPrint: _canPrint);
+      if (saved) {
+        await _load();
+        if (mounted) showImdToast(context, '✔ حُفظ المسير المستورد');
+      }
+    } on FormatException catch (e) {
+      if (mounted) showImdToast(context, '✖ ${e.message}', error: true);
+    } catch (e) {
+      if (mounted) showImdToast(context, '✖ تعذّر الاستيراد: $e', error: true);
+    }
+  }
+
   Future<void> _printSheet(LinkCustodySheet s) async {
     if (!_canPrint) return showImdToast(context, '✖ لا تملك صلاحية الطباعة', error: true);
     try {
@@ -511,6 +535,7 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
         hint: 'بحث برقم العهدة أو عنوان المسير…',
         onChanged: (_) => setState(() {}),
         actions: [
+          if (_canCreate) ImdButton.outline(label: 'استيراد من Excel', icon: 'upload', small: true, onPressed: _importSheet),
           if (_canCreate) ImdButton(label: 'مسير عهدة جديد', icon: 'plus', onPressed: _addOrEditSheet),
         ],
       ),

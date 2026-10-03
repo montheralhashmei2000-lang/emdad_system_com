@@ -9,9 +9,13 @@ import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
+import '../../data/ai/invoice_scan.dart';
 import '../../data/repos/linkage_repo.dart';
+import '../../data/repos/settings_repo.dart';
 import '../../domain/arabic_words.dart';
+import '../../domain/invoice_merge.dart';
 import '../inventory/doc_kit.dart';
+import 'invoice_scan_ui.dart';
 
 double _num(String s) => double.tryParse(s.trim().replaceAll(',', '')) ?? 0;
 
@@ -100,6 +104,10 @@ class _ContractEditorState extends State<ContractEditor> {
   List<String> _shopHints = const [];
   List<String> _categoryHints = const [];
   bool _busy = false;
+
+  /// تنبيهات آخر مسح (تبقى ظاهرة حتى يُغلقها المستخدم).
+  List<String> _scanNotes = const [];
+  int _scannedCount = 0;
 
   bool get _isYer => _currency == LinkCurrency.yer;
 
@@ -215,6 +223,86 @@ class _ContractEditorState extends State<ContractEditor> {
     if (mounted) Navigator.of(context).pop(true);
   }
 
+  /// مسح فاتورة (كاميرا أو ملف ممسوح) وسحب بياناتها إلى أصناف العقد ورأسه.
+  /// ما يُسحب يُضاف كأسطر عادية قابلة للتعديل؛ والإجمالي يبقى مجموع الأصناف.
+  Future<void> _scanInvoice({InvoiceScanner? scannerForTest}) async {
+    final settingsRepo = SettingsRepo(context.read<AppDatabase>());
+    var settings = await InvoiceAiSettings.load(settingsRepo);
+    if (!mounted) return;
+    if (!settings.ready) {
+      final saved = await showInvoiceAiSettings(context, settingsRepo);
+      if (saved == null || !saved.ready || !mounted) return;
+      settings = saved;
+    }
+    final source = await chooseInvoiceSource(context);
+    if (source == null || !mounted) return;
+    if (source == InvoiceSource.settings) {
+      await showInvoiceAiSettings(context, settingsRepo);
+      return;
+    }
+    final List<PickedInvoiceFile> files;
+    try {
+      files = await pickInvoiceFiles(source);
+    } catch (e) {
+      if (mounted) showImdToast(context, '✖ تعذّر فتح الكاميرا/الملف: $e', error: true);
+      return;
+    }
+    if (files.isEmpty || !mounted) return;
+
+    final scanner = scannerForTest ?? InvoiceScanner(apiKey: settings.apiKey, model: settings.model);
+    final progress = ValueNotifier<String>('جارٍ قراءة الفاتورة…');
+    showScanProgress(context, progress);
+    final invoices = <ScannedInvoice>[];
+    final errors = <String>[];
+    for (final (i, f) in files.indexed) {
+      progress.value = 'جارٍ قراءة ${files.length > 1 ? 'الملف ${i + 1} من ${files.length}: ' : ''}${f.name}…';
+      try {
+        invoices.addAll(await scanner.scan(f.bytes));
+      } on InvoiceScanException catch (e) {
+        errors.add('${f.name}: ${e.message}');
+      } catch (e) {
+        errors.add('${f.name}: $e');
+      }
+    }
+    if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    progress.dispose();
+    if (!mounted) return;
+    if (invoices.isEmpty) {
+      showImdToast(context, errors.isEmpty ? '✖ لم تُقرأ أي فاتورة' : '✖ ${errors.first}', error: true);
+      return;
+    }
+    _applyScans(invoices, errors);
+  }
+
+  Future<void> _applyScans(List<ScannedInvoice> invoices, List<String> errors) async {
+    final hasItems = _rows.any((r) => !r.value.isEmpty);
+    final merge = mergeScansIntoContract(
+      supplier: _supplier.text,
+      listDate: _listDate,
+      currency: _currency,
+      exchangeRate: _num(_rate.text),
+      hasExistingItems: hasItems,
+      invoices: invoices,
+    );
+    if (merge.currencyConflict) {
+      final go = await imdConfirm(context, '${merge.warnings.first}\nهل تُضاف الأصناف رغم ذلك (دون تحويل)؟', ok: 'إضافة');
+      if (!go || !mounted) return;
+    }
+    setState(() {
+      if (_rows.length == 1 && _rows.first.value.isEmpty) _rows.removeAt(0).dispose();
+      for (final it in merge.items) {
+        _rows.add(_ItemRow(it));
+      }
+      _supplier.text = merge.supplier;
+      _listDate = merge.listDate;
+      _currency = merge.currency;
+      if (merge.exchangeRate > 0 && _num(_rate.text) <= 0) _rate.text = _fmt(merge.exchangeRate);
+      _scannedCount += merge.items.length;
+      _scanNotes = [...merge.warnings, ...errors];
+    });
+    showImdToast(context, '✔ سُحب ${merge.items.length} صنفًا من ${invoices.length} فاتورة — راجعها وعدّل ما يلزم');
+  }
+
   Widget _itemsTable(BuildContext context) {
     const cell = ImdEntryTable.cell;
     return ImdEntryTable(
@@ -322,6 +410,15 @@ class _ContractEditorState extends State<ContractEditor> {
           title: 'الأصناف',
           icon: 'package',
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              ImdButton(label: 'مسح فاتورة', icon: 'scan', small: true, onPressed: _scanInvoice),
+              if (_scannedCount > 0) ImdChip('سُحب $_scannedCount صنفًا', tone: ImdTone.info, icon: 'check'),
+            ]),
+            if (_scanNotes.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ImdNote('تنبيهات المسح — راجعها:\n• ${_scanNotes.join('\n• ')}'),
+            ],
+            const SizedBox(height: 8),
             _itemsTable(context),
             const SizedBox(height: 8),
             Align(

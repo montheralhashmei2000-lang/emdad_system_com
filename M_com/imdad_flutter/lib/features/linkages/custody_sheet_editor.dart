@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart' show Value;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -8,6 +9,7 @@ import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
+import '../../data/migration/custody_sheet_import.dart';
 import '../../data/repos/linkage_repo.dart';
 import '../../domain/arabic_words.dart';
 import '../../domain/custody_sheet.dart';
@@ -39,6 +41,27 @@ class _SRow {
         notes = TextEditingController(text: r?.notes ?? ''),
         date = r?.date ?? '' {
     sync();
+  }
+
+  /// سطر مقروء من ملف Excel.
+  factory _SRow.imported(ImportedCustodyRow r) {
+    final row = _SRow(rate: r.rate);
+    row.date = r.date;
+    row.grant.text = _fmt(r.grantSar);
+    row.retSar.text = _fmt(r.returnSar);
+    row.retYer.text = _fmt(r.returnYer);
+    row.spentSar.text = _fmt(r.spentSar);
+    row.spentYer.text = _fmt(r.spentYer);
+    row.rate.text = _fmt(r.rate);
+    row.person.text = r.person;
+    row.statement.text = r.statement;
+    row.category.text = r.category;
+    row.entryNo.text = r.entryNo;
+    row.invoiceNo.text = r.invoiceNo;
+    row.shop.text = r.shop;
+    row.notes.text = r.notes;
+    row.sync();
+    return row;
   }
 
   final key = UniqueKey();
@@ -79,7 +102,8 @@ class _SRow {
 }
 
 /// فتح محرر مسير العهدة. يعيد true عند الحفظ.
-Future<bool> openCustodySheetEditor(BuildContext context, {LinkCustodySheet? initial, required String actor, required bool canPrint}) async {
+Future<bool> openCustodySheetEditor(BuildContext context,
+    {LinkCustodySheet? initial, CustodySheetImport? imported, required String actor, required bool canPrint}) async {
   final repo = LinkageRepo(context.read<AppDatabase>());
   final rows = initial == null ? const <LinkCustodySheetRow>[] : await repo.sheetRows(initial.id);
   if (!context.mounted) return false;
@@ -97,10 +121,14 @@ Future<bool> openCustodySheetEditor(BuildContext context, {LinkCustodySheet? ini
 /// «رقم الفاتورة» يُلوَّن بالأحمر الفاتح، وأسفل الجدول إجمالي العهدة (برتقالي)
 /// والمنصرف (ذهبي) والمتبقي (أحمر) وجملة المتبقي بالحروف.
 class CustodySheetEditor extends StatefulWidget {
-  const CustodySheetEditor({super.key, required this.initial, required this.initialRows, required this.actor, required this.canPrint});
+  const CustodySheetEditor(
+      {super.key, required this.initial, required this.initialRows, this.imported, required this.actor, required this.canPrint});
 
   final LinkCustodySheet? initial;
   final List<LinkCustodySheetRow> initialRows;
+
+  /// أسطر مستوردة من Excel تُعرض للمراجعة قبل الحفظ.
+  final CustodySheetImport? imported;
   final String actor;
   final bool canPrint;
 
@@ -109,13 +137,14 @@ class CustodySheetEditor extends StatefulWidget {
 }
 
 class _CustodySheetEditorState extends State<CustodySheetEditor> {
-  late final _no = TextEditingController(text: widget.initial?.sheetNo ?? '');
+  late final _no = TextEditingController(text: widget.initial?.sheetNo ?? widget.imported?.sheetNo ?? '');
   late final _title = TextEditingController(text: widget.initial?.title ?? '');
-  late final _rate = TextEditingController(text: _fmt(widget.initial?.defaultRate ?? kDefaultYerPerSar));
+  late final _rate = TextEditingController(text: _fmt(widget.initial?.defaultRate ?? widget.imported?.defaultRate ?? kDefaultYerPerSar));
   late final _notes = TextEditingController(text: widget.initial?.notes ?? '');
   late final List<_SRow> _rows = [
     for (final r in widget.initialRows) _SRow(r: r),
-    if (widget.initialRows.isEmpty) _SRow(rate: kDefaultYerPerSar),
+    for (final r in widget.imported?.rows ?? const <ImportedCustodyRow>[]) _SRow.imported(r),
+    if (widget.initialRows.isEmpty && (widget.imported?.rows.isEmpty ?? true)) _SRow(rate: kDefaultYerPerSar),
   ];
   List<String> _persons = const [], _statements = const [], _categories = const [], _shops = const [];
   bool _busy = false;
@@ -215,6 +244,30 @@ class _CustodySheetEditorState extends State<CustodySheetEditor> {
     final sheet = (await repo.custodySheets()).firstWhere((s) => s.id == id);
     await CustodySheetPrint.print(db, sheet, await repo.sheetRows(id));
     if (mounted) Navigator.of(context).pop(true);
+  }
+
+  /// يضيف أسطر ملف Excel (بتنسيق المسير المعتمد) إلى المحرر للمراجعة قبل الحفظ.
+  Future<void> _importExcel() async {
+    try {
+      final res = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: const ['xlsx'], withData: true);
+      final bytes = res?.files.firstOrNull?.bytes;
+      if (res == null || bytes == null) return;
+      final parsed = CustodySheetImporter.parse(bytes);
+      if (!mounted) return;
+      setState(() {
+        // السطر الفارغ الوحيد يُستبدل بالمستورد.
+        if (_rows.length == 1 && _rows.first.isEmpty) _rows.removeAt(0).dispose();
+        for (final r in parsed.rows) {
+          _rows.add(_SRow.imported(r));
+        }
+        if (_no.text.trim().isEmpty && parsed.sheetNo.isNotEmpty) _no.text = parsed.sheetNo;
+      });
+      showImdToast(context, '✔ استُوردت ${parsed.rows.length} سطرًا — راجعها ثم اضغط حفظ${parsed.warnings.isEmpty ? '' : ' · ${parsed.warnings.join('، ')}'}');
+    } on FormatException catch (e) {
+      if (mounted) showImdToast(context, '✖ ${e.message}', error: true);
+    } catch (e) {
+      if (mounted) showImdToast(context, '✖ تعذّر الاستيراد: $e', error: true);
+    }
   }
 
   Widget _invoiceCell(BuildContext context, _SRow r, bool dup) {
@@ -332,6 +385,7 @@ class _CustodySheetEditorState extends State<CustodySheetEditor> {
             Wrap(spacing: 8, runSpacing: 8, children: [
               ImdButton.outline(
                   label: 'إضافة سطر', icon: 'plus', small: true, onPressed: () => setState(() => _rows.add(_SRow(rate: _defaultRate)))),
+              ImdButton.outline(label: 'استيراد من Excel', icon: 'upload', small: true, onPressed: _importExcel),
               ImdChip('عدد الأسطر: ${_filled.length}', tone: ImdTone.off),
               if (duplicateInvoiceNos([for (final r in _rows) r.invoiceNo.text]).isNotEmpty)
                 const ImdChip('تنبيه: أرقام فواتير مكررة (مظلَّلة)', tone: ImdTone.err, icon: 'alert'),
