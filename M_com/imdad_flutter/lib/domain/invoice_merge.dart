@@ -1,4 +1,4 @@
-import '../data/ai/invoice_scan.dart';
+import '../data/ocr/invoice_models.dart';
 import '../data/repos/linkage_repo.dart';
 
 /// ناتج دمج فواتير مسحوبة في عقد شراء قيد التحرير.

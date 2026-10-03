@@ -31,6 +31,7 @@ dependencies:
   shared_preferences: ^2.3.2
   file_picker: ^8.1.2
   image_picker: ^1.1.2 # تصوير الفاتورة بكاميرا الهاتف (أندرويد/iOS؛ على ويندوز اختيار ملف ممسوح)
+  flutter_tesseract_ocr: ^0.4.31 # OCR مجاني دون إنترنت على أندرويد (Tesseract + تدريب عربي)
   excel: ^4.0.3
   # قراءة ملفات xlsx الواقعية: حزمة excel ترفض ملفات Excel العربية التي تعرّف تنسيقات أرقام
   # مخصصة بمعرّفات أقل من ١٦٤ (وهو شائع)، فللاستيراد قارئ بسيط فوق هاتين الحزمتين.
@@ -60,6 +61,9 @@ flutter:
   uses-material-design: true
   assets:
     - assets/logo.png
+    # بيانات Tesseract للغتين العربية والإنجليزية (tessdata_fast، ترخيص Apache 2.0) — قراءة الفواتير دون إنترنت.
+    - assets/tessdata_config.json
+    - assets/tessdata/
   fonts:
     # خط الواجهة نفسه في نسخة الويب (IBM Plex Sans Arabic — رخصة OFL)، مضمَّن ليعمل بلا إنترنت.
     - family: IBMPlexSansArabic

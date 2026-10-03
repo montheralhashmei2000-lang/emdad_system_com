@@ -5,9 +5,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_widgets.dart';
-import '../../data/ai/invoice_scan.dart';
+import '../../data/ocr/ocr_engine.dart';
 import '../../data/repos/settings_repo.dart';
 
 /// ملفٌ جاهز للمسح: اسمه وبايتاته.
@@ -17,47 +16,56 @@ typedef PickedInvoiceFile = ({String name, Uint8List bytes});
 /// متعددة الوظائف) ويُختار الملف الناتج.
 bool get invoiceCameraAvailable => Platform.isAndroid || Platform.isIOS;
 
-/// إعداد المسح: مفتاح الخدمة والنموذج. يعيد الإعدادات المحفوظة أو null عند الإلغاء.
-Future<InvoiceAiSettings?> showInvoiceAiSettings(BuildContext context, SettingsRepo repo) async {
-  final current = await InvoiceAiSettings.load(repo);
-  if (!context.mounted) return null;
-  final key = TextEditingController(text: current.apiKey);
-  var model = InvoiceAiSettings.models.containsKey(current.model) ? current.model : InvoiceAiSettings.defaultModel;
-  final saved = await showImdModal<InvoiceAiSettings>(
+/// حالة المسح على سطح المكتب: يحتاج برنامج Tesseract المجاني. يبيّن إن كان مثبّتًا،
+/// وكيف يُثبَّت، ويتيح تحديد مساره يدويًّا. يعيد true إذا صار جاهزًا.
+Future<bool> showOcrSetup(BuildContext context, SettingsRepo repo) async {
+  var path = await DesktopTesseractOcr.locate(saved: await OcrSettings.savedPath(repo));
+  if (!context.mounted) return false;
+  final ok = await showImdModal<bool>(
     context,
     title: 'إعداد مسح الفواتير',
     icon: 'scan',
     maxWidth: 560,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const ImdNote('كيف يعمل المسح؟\n'
-            '• حين تضغط «مسح فاتورة» تُرسَل صورة الفاتورة (أو ملف PDF) عبر الإنترنت إلى شركة Anthropic، '
-            'فتقرؤها وتُعيد البيانات (الأصناف والأسعار…) إلى التطبيق.\n'
-            '• لا يُرسَل شيء إلا في تلك اللحظة، ولا يُرسَل أي شيء آخر من النظام.\n'
-            '• لا تمسح بهذه الطريقة فاتورةً أو مستندًا لا يجوز أن يخرج من جهتك. إن كانت لديك شكوك فأدخل الأصناف يدويًا.\n'
-            '• المفتاح أدناه يُحفظ على هذا الجهاز فقط ولا ينتقل إلى الأجهزة الأخرى.'),
-        ImdLabeled('مفتاح الخدمة (API key)', ImdFld(controller: key, obscure: true, hint: 'sk-ant-…')),
-        ImdLabeled(
-            'النموذج',
-            ImdSelect<String>(
-              items: [for (final e in InvoiceAiSettings.models.entries) (e.key, e.value)],
-              value: model,
-              onChanged: (v) => setLocal(() => model = v ?? InvoiceAiSettings.defaultModel),
-            )),
+        const ImdNote('المسح يعمل بالكامل على جهازك ودون إنترنت، ومجانًا: لا يُرسَل شيء إلى أي جهة.\n'
+            'يحتاج برنامج Tesseract (مجاني ومفتوح المصدر) مثبّتًا على الحاسوب مرةً واحدة؛ بيانات اللغة العربية مضمَّنة في التطبيق.'),
+        ImdChip(path == null ? 'Tesseract غير مثبّت' : 'جاهز: $path', tone: path == null ? ImdTone.err : ImdTone.ok, icon: path == null ? 'alert' : 'check-circle'),
+        if (path == null) ...[
+          const SizedBox(height: 10),
+          const Text('للتثبيت على ويندوز: افتح «PowerShell» واكتب الأمر التالي ثم أعد فتح هذه النافذة:'),
+          const SizedBox(height: 6),
+          const SelectableText('winget install UB-Mannheim.TesseractOCR', style: TextStyle(fontFamily: 'monospace')),
+          const SizedBox(height: 6),
+          const Text('أو نزّل المثبّت من صفحة UB-Mannheim/tesseract على GitHub. وإن ثبّتّه في مكانٍ غير معتاد فاختر ملف tesseract.exe يدويًّا:'),
+        ],
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          ImdButton.outline(
+              label: 'إعادة الفحص',
+              icon: 'refresh',
+              small: true,
+              onPressed: () async {
+                final f = await DesktopTesseractOcr.locate(saved: await OcrSettings.savedPath(repo));
+                setLocal(() => path = f);
+              }),
+          ImdButton.outline(
+              label: 'اختيار tesseract يدويًّا',
+              icon: 'folder',
+              small: true,
+              onPressed: () async {
+                final r = await FilePicker.platform.pickFiles(type: FileType.any);
+                final chosen = r?.files.firstOrNull?.path;
+                if (chosen == null) return;
+                await OcrSettings.savePath(repo, chosen);
+                setLocal(() => path = chosen);
+              }),
+        ]),
       ]),
     ),
-    actions: (ctx) => [
-      ImdButton.outline(label: 'إلغاء', onPressed: () => Navigator.of(ctx).pop()),
-      ImdButton(
-        label: 'حفظ',
-        icon: 'save',
-        onPressed: () => Navigator.of(ctx).pop(InvoiceAiSettings(apiKey: key.text.trim(), model: model)),
-      ),
-    ],
+    actions: (ctx) => [ImdButton(label: 'تم', onPressed: () => Navigator.of(ctx).pop(path != null))],
   );
-  key.dispose();
-  if (saved != null) await saved.save(repo);
-  return saved;
+  return ok == true;
 }
 
 enum InvoiceSource { camera, file, settings }
@@ -69,8 +77,8 @@ Future<InvoiceSource?> chooseInvoiceSource(BuildContext context) => showImdModal
       icon: 'scan',
       maxWidth: 440,
       builder: (ctx) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const ImdNote('تُسحب الأصناف والوحدات والكميات والأسعار ورقم الفاتورة وتاريخها والعملة واسم التاجر '
-            'إلى أماكنها في العقد، وتبقى كلها قابلة للتعديل قبل الحفظ.'),
+        const ImdNote('تُقرأ الفاتورة على جهازك دون إنترنت ومجانًا، وتُسحب الأصناف والوحدات والكميات والأسعار '
+            'ورقم الفاتورة وتاريخها والعملة واسم التاجر إلى أماكنها في العقد، وتبقى كلها قابلة للتعديل قبل الحفظ.'),
         if (invoiceCameraAvailable) ...[
           ImdButton(label: 'تصوير بكاميرا الهاتف', icon: 'camera', onPressed: () => Navigator.of(ctx).pop(InvoiceSource.camera)),
           const SizedBox(height: 8),
@@ -82,8 +90,10 @@ Future<InvoiceSource?> chooseInvoiceSource(BuildContext context) => showImdModal
         const SizedBox(height: 8),
         const Text('ملف الماسح الضوئي: امسح الورقة ببرنامج الماسح أو الطابعة واحفظها صورةً أو PDF ثم اخترها هنا.',
             style: TextStyle(fontSize: 12)),
-        const SizedBox(height: 12),
-        ImdButton.outline(label: 'إعداد المسح (المفتاح والنموذج)', icon: 'settings', small: true, onPressed: () => Navigator.of(ctx).pop(InvoiceSource.settings)),
+        if (!invoiceCameraAvailable) ...[
+          const SizedBox(height: 12),
+          ImdButton.outline(label: 'حالة المسح وتثبيت Tesseract', icon: 'settings', small: true, onPressed: () => Navigator.of(ctx).pop(InvoiceSource.settings)),
+        ],
       ]),
     );
 

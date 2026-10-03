@@ -1,10 +1,15 @@
 import 'dart:convert';
-import 'dart:typed_data';
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:archive/archive.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:imdad/data/ai/invoice_scan.dart';
+import 'package:imdad/data/ocr/invoice_models.dart';
+import 'package:imdad/data/ocr/invoice_scanner.dart';
+import 'package:imdad/data/ocr/invoice_text_parser.dart';
+import 'package:imdad/data/ocr/ocr_engine.dart';
+import 'package:imdad/data/ocr/ocr_words.dart';
 import 'package:imdad/data/migration/custody_sheet_import.dart';
 import 'package:imdad/data/repos/linkage_repo.dart';
 import 'package:imdad/data/repos/settings_repo.dart';
@@ -85,164 +90,172 @@ void main() {
     });
   });
 
-  group('مسح الفواتير', () {
-    final pdf = Uint8List.fromList(utf8.encode('%PDF-1.4 minimal test document bytes'));
+  group('قراءة الفواتير (OCR محلي)', () {
+    List<ScannedInvoice> fromHocr(String name) =>
+        InvoiceTextParser.parse(wordsToLines(parseHocr(File('test/fixtures/ocr/$name.hocr').readAsStringSync())).join('\n'));
 
-    test('بصمة الملف تحدد نوعه لا امتداده', () {
+    test('فاتورة عربية: الجدول المقسوم إلى كتل يعود صفوفًا بالترتيب المنطقي', () {
+      final inv = fromHocr('invoice_ar').single;
+      expect(inv.merchant, 'مؤسسة النور للتجارة');
+      expect(inv.invoiceNo, '5821');
+      expect(inv.date, '2026-08-12');
+      expect(inv.currency, 'sar');
+      expect(inv.printedTotal, 1770);
+      expect(inv.items, hasLength(4), reason: 'الصف الرابع لم يُقرأ اسمه لكن أرقامه متسقة فيبقى');
+      expect(inv.items[0].name, 'أرزبسمتي');
+      expect((inv.items[0].unit, inv.items[0].qty, inv.items[0].unitPrice, inv.items[0].lineTotal), ('كيس', 10, 85, 850));
+      expect(inv.items[1].name, 'سكر أبيض', reason: 'كلمات الاسم تُقرأ من اليمين');
+      expect((inv.items[1].qty, inv.items[1].unitPrice, inv.items[1].lineTotal), (4, 120.5, 482));
+      expect(inv.items[2].name, 'زيت طبخ');
+      expect(inv.items[3].name, isEmpty);
+      expect(inv.items[3].lineTotal, 186);
+      // مجموع الأصناف يطابق الإجمالي المطبوع قبل الضريبة؟ 850+482+252+186 = 1770.
+      expect(inv.items.fold<double>(0, (s, e) => s + e.lineTotal), 1770);
+    });
+
+    test('فاتورة إنجليزية بالريال اليمني', () {
+      final inv = fromHocr('invoice_en').single;
+      expect(inv.merchant, 'AL-AMAL TRADING CO.');
+      expect(inv.invoiceNo, 'INV-2044');
+      expect(inv.date, '2026-07-03');
+      expect(inv.currency, 'yer');
+      expect(inv.printedTotal, 667500);
+      expect(inv.items.map((e) => e.name), ['Flour 50kg', 'Cooking Oil', 'Salt'], reason: 'رقم السطر لا يدخل الاسم');
+      expect(inv.items.map((e) => e.unit), ['Bag', 'Box', 'KG']);
+      expect(inv.items.map((e) => e.lineTotal), [480000, 157500, 30000]);
+    });
+
+    test('الأرقام الهندية والفواصل العربية تُقرأ، والترتيب المعكوس للأعمدة يُحَلّ بالتحقق الحسابي', () {
+      const text = 'رقم الفاتورة: ٧٧٤\nالتاريخ: ٠٣/٠٩/٢٠٢٦\n'
+          'سكر ناعم كيس ٥ ١٢٠٫٥ ٦٠٢٫٥\n'
+          '١٢٠٠ ٤٠٠ ٣ علبة شاي الكبوس\n' // الأعمدة معكوسة: إجمالي، سعر، كمية، وحدة، اسم
+          'الإجمالي ١٨٠٢٫٥ ريال سعودي';
+      final inv = InvoiceTextParser.parse(text).single;
+      expect(inv.invoiceNo, '774');
+      expect(inv.date, '2026-09-03');
+      expect(inv.items, hasLength(2));
+      expect((inv.items[0].qty, inv.items[0].unitPrice, inv.items[0].lineTotal), (5, 120.5, 602.5));
+      expect(inv.items[1].name, 'شاي الكبوس');
+      expect((inv.items[1].qty, inv.items[1].unitPrice, inv.items[1].lineTotal), (3, 400, 1200));
+      expect(inv.printedTotal, 1802.5);
+    });
+
+    test('سطور الإجمالي والضريبة والخصم والهاتف والترويسة لا تُعدّ أصنافًا', () {
+      const text = 'مؤسسة الأمل للتجارة\nهاتف: 0551234567\nالصنف الكمية السعر الإجمالي\n'
+          'أرز 2 10 20\nالإجمالي 20\nضريبة 15% 3\nخصم 5\nالمبلغ المطلوب 18\nتوقيع المستلم 3';
+      final inv = InvoiceTextParser.parse(text).single;
+      expect(inv.items.map((e) => e.name), ['أرز']);
+    });
+
+    test('ما لا يُقرأ يبقى فارغًا ولا يُخمَّن', () {
+      final inv = InvoiceTextParser.parse('سكر 2 10 20').single;
+      expect(inv.invoiceNo, isEmpty);
+      expect(inv.date, isEmpty);
+      expect(inv.currency, isEmpty);
+      expect(inv.merchant, isEmpty);
+      expect(InvoiceTextParser.parse('   \n  '), isEmpty);
+    });
+
+    test('إعادة بناء الصفوف من المواضع: جدول يساري واتجاه الاسم يُستنتج', () {
+      OcrWord w(String t, double x, double y) => OcrWord(t, x, y, x + 60, y + 30);
+      // اسم عند اليسار وأرقام عند اليمين (جدول مرسوم من اليسار بكلمات عربية).
+      final ltr = wordsToLines([
+        w('سكر', 400, 100), w('أبيض', 330, 100), w('كيس', 580, 100), w('4', 760, 100), w('120', 940, 100), w('480', 1120, 100),
+        w('زيت', 400, 200), w('طبخ', 330, 200), w('جالون', 580, 200), w('6', 760, 200), w('42', 940, 200), w('252', 1120, 200),
+        w('ملح', 330, 300), w('كيس', 580, 300), w('2', 760, 300), w('5', 940, 300), w('10', 1120, 300),
+      ]);
+      expect(ltr, ['سكر أبيض كيس 4 120 480', 'زيت طبخ جالون 6 42 252', 'ملح كيس 2 5 10']);
+      // اسم عند اليمين (جدول عربي معتاد).
+      final rtl = wordsToLines([
+        w('سكر', 1100, 100), w('أبيض', 1030, 100), w('كيس', 880, 100), w('4', 700, 100), w('120', 520, 100), w('480', 340, 100),
+        w('زيت', 1100, 200), w('طبخ', 1030, 200), w('جالون', 880, 200), w('6', 700, 200), w('42', 520, 200), w('252', 340, 200),
+      ]);
+      expect(rtl, ['سكر أبيض كيس 4 120 480', 'زيت طبخ جالون 6 42 252']);
+    });
+
+    test('مخرجات hOCR: الكيانات والوسوم الداخلية', () {
+      const h = "<span class='ocrx_word' id='w1' title='bbox 10 20 70 50; x_wconf 90'>A&amp;B</span>"
+          "<span class='ocrx_word' id='w2' title='bbox 80 20 140 50; x_wconf 90'><strong>٥٠</strong></span>";
+      final words = parseHocr(h);
+      expect(words.map((e) => e.text), ['A&B', '٥٠']);
+      expect(words.first.x0, 10);
+    });
+
+    test('نوع الملف يُعرف من بصمته لا امتداده', () {
+      final pdf = Uint8List.fromList(utf8.encode('%PDF-1.4 minimal test document bytes'));
       expect(InvoiceScanner.mediaTypeOf(pdf), 'application/pdf');
       expect(InvoiceScanner.mediaTypeOf(Uint8List.fromList([0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0, 0, 0, 0, 0])), 'image/jpeg');
       expect(InvoiceScanner.mediaTypeOf(Uint8List.fromList([0x89, 0x50, 0x4E, 0x47, 0, 0, 0, 0, 0, 0, 0, 0])), 'image/png');
       expect(InvoiceScanner.mediaTypeOf(Uint8List.fromList(List.filled(20, 7))), isNull);
     });
 
-    test('جسم الطلب: مخطط منظَّم، بلا tool_choice/thinking/sampling، وPDF كوثيقة', () {
-      final body = InvoiceScanner(apiKey: 'k').buildRequest(pdf, 'application/pdf');
-      expect(body['model'], 'claude-opus-5-5');
-      expect(body.containsKey('tool_choice'), isFalse, reason: 'forced tool use يُرفض على النماذج الحالية');
-      expect(body.containsKey('thinking'), isFalse);
-      expect(body.containsKey('temperature'), isFalse);
-      final oc = body['output_config'] as Map;
-      expect(oc['effort'], 'low');
-      expect((oc['format'] as Map)['type'], 'json_schema');
-      final content = ((body['messages'] as List).single as Map)['content'] as List;
-      expect((content[0] as Map)['type'], 'document');
-      expect(((content[0] as Map)['source'] as Map)['media_type'], 'application/pdf');
-      expect(((content[0] as Map)['source'] as Map)['data'], base64Encode(pdf));
-      expect((content[1] as Map)['type'], 'text');
-      // صورة ⇒ كتلة image.
-      final img = InvoiceScanner(apiKey: 'k', model: 'claude-sonnet-5-5').buildRequest(pdf, 'image/png');
-      expect((((img['messages'] as List).single as Map)['content'] as List)[0] as Map, containsPair('type', 'image'));
-      expect(img['model'], 'claude-sonnet-5-5');
+    test('مفتاح مسار Tesseract محلي لا يُزامَن، ولا مفاتيح خدمات خارجية', () {
+      expect(SettingsRepo.localOnlyKeys, contains(OcrSettings.key));
+      expect(SettingsRepo.localOnlyKeys, isNot(contains('invoiceAi')));
     });
 
-    test('المخطط: كل الحقول مطلوبة ولا حقول إضافية (شرط الإخراج المنظَّم)', () {
-      void check(Map s) {
-        if (s['type'] == 'object') {
-          expect(s['additionalProperties'], isFalse);
-          expect((s['required'] as List).toSet(), (s['properties'] as Map).keys.toSet());
-          for (final v in (s['properties'] as Map).values) {
-            check(v as Map);
-          }
-        } else if (s['type'] == 'array') {
-          check(s['items'] as Map);
-        }
+    testWidgets('الصورة الكبيرة تُصغَّر والصغيرة تُكبَّر لتناسب القراءة', (tester) async {
+      Future<Uint8List> png(int w, int h) async {
+        final rec = ui.PictureRecorder();
+        ui.Canvas(rec).drawRect(ui.Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()), ui.Paint()..color = const ui.Color(0xFF336699));
+        final img = await rec.endRecording().toImage(w, h);
+        return (await img.toByteData(format: ui.ImageByteFormat.png))!.buffer.asUint8List();
       }
 
-      check(InvoiceScanner.schema);
-    });
-
-    String reply(List<Map<String, Object?>> invoices, {String stop = 'end_turn'}) => jsonEncode({
-          'stop_reason': stop,
-          'content': [
-            {'type': 'text', 'text': jsonEncode({'invoices': invoices})},
-          ],
-        });
-
-    final sample = {
-      'merchant': ' محلات الوفي ',
-      'invoice_no': '274',
-      'date': '12/08/2026',
-      'currency': 'yer',
-      'exchange_rate': 0,
-      'printed_total': 4400,
-      'notes': '',
-      'items': [
-        {'name': 'رز بسمتي', 'unit': 'كيس', 'qty': 2, 'unit_price': 2200, 'line_total': 4400},
-        {'name': '', 'unit': '', 'qty': 0, 'unit_price': 0, 'line_total': 0},
-      ],
-    };
-
-    test('يقرأ الردّ ويطبّع التاريخ والعملة ويُسقط الأسطر الفارغة', () {
-      final inv = InvoiceScanner.parseResponse(200, reply([sample])).single;
-      expect(inv.merchant, 'محلات الوفي');
-      expect(inv.date, '2026-08-12');
-      expect(inv.currency, 'yer');
-      expect(inv.items, hasLength(1));
-      expect(inv.items.single.unitPrice, 2200);
-      // عملة غير معروفة ⇒ فارغة، وتاريخ هجري/غير مفهوم ⇒ فارغ.
-      final u = InvoiceScanner.parseResponse(200, reply([{...sample, 'currency': 'unknown', 'date': '1448/02/10'}])).single;
-      expect(u.currency, isEmpty);
-      expect(u.date, isEmpty);
-    });
-
-    test('أخطاء الخدمة تُترجم لرسائل مفهومة', () {
-      InvoiceScanException err(int status, [String body = '{"type":"error","error":{"message":"bad"}}']) {
-        try {
-          InvoiceScanner.parseResponse(status, body);
-        } on InvoiceScanException catch (e) {
-          return e;
-        }
-        fail('لم يُرمَ خطأ');
+      Future<int> longest(Uint8List b) async {
+        final c = await ui.instantiateImageCodec(b);
+        final f = await c.getNextFrame();
+        return f.image.width > f.image.height ? f.image.width : f.image.height;
       }
 
-      expect(err(401).message, contains('مفتاح'));
-      expect(err(429).message, contains('حد الطلبات'));
-      expect(err(400).message, contains('bad'));
-      expect(() => InvoiceScanner.parseResponse(200, reply([], stop: 'refusal')), throwsA(isA<InvoiceScanException>()));
-      expect(() => InvoiceScanner.parseResponse(200, reply([], stop: 'max_tokens')), throwsA(isA<InvoiceScanException>()));
-      expect(() => InvoiceScanner.parseResponse(200, 'ليس json'), throwsA(isA<InvoiceScanException>()));
+      await tester.runAsync(() async {
+        final ok = await png(2400, 1600);
+        expect(await InvoiceScanner.fitForOcr(ok), ok, reason: 'ضمن الحدود: كما هي');
+        expect(await longest(await InvoiceScanner.fitForOcr(await png(5200, 3400))), 3000);
+        expect(await longest(await InvoiceScanner.fitForOcr(await png(600, 400))), 1800);
+      });
     });
 
-    test('المسح كاملًا بنقل مُحاكى: العنوان والترويسات وجسم الطلب', () async {
-      Uri? url;
-      Map<String, String>? headers;
-      String? sent;
-      final scanner = InvoiceScanner(
-        apiKey: 'sk-test',
-        transport: (u, h, b) async {
-          url = u;
-          headers = h;
-          sent = b;
-          return (200, reply([sample]));
-        },
+    testWidgets('الخط الكامل بمحرك مُحاكى: صورة ← كلمات ← صفوف ← فاتورة', (tester) async {
+      await tester.runAsync(() async {
+        final rec = ui.PictureRecorder();
+        ui.Canvas(rec).drawRect(const ui.Rect.fromLTWH(0, 0, 2000, 1400), ui.Paint()..color = const ui.Color(0xFFFFFFFF));
+        final img = await rec.endRecording().toImage(2000, 1400);
+        final bytes = (await img.toByteData(format: ui.ImageByteFormat.png))!.buffer.asUint8List();
+        final engine = _FakeOcr(parseHocr(File('test/fixtures/ocr/invoice_en.hocr').readAsStringSync()));
+        final out = await InvoiceScanner(engine).scan(bytes);
+        expect(out.single.items, hasLength(3));
+        expect(engine.paths, hasLength(1));
+        expect(File(engine.paths.single).existsSync(), isFalse, reason: 'الملف المؤقت يُحذف بعد القراءة');
+        await expectLater(InvoiceScanner(engine).scan(Uint8List.fromList(List.filled(40, 9))), throwsA(isA<InvoiceScanException>()));
+        await expectLater(InvoiceScanner(_FakeOcr(const [])).scan(bytes), throwsA(isA<InvoiceScanException>()));
+      });
+    });
+
+    // اختبار حقيقي لمحرك سطح المكتب ببرنامج Tesseract إن وُجد على الجهاز (يُتخطّى بدونه).
+    test('Tesseract الحقيقي: صورة فاتورة عربية وإنجليزية تُقرآن دون إنترنت', () async {
+      final exe = await DesktopTesseractOcr.locate();
+      if (exe == null) {
+        markTestSkipped('Tesseract غير مثبّت على هذا الجهاز');
+        return;
+      }
+      final tmp = await Directory.systemTemp.createTemp('ocr_real');
+      addTearDown(() => tmp.delete(recursive: true));
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/path_provider'),
+        (call) async => tmp.path,
       );
-      final out = await scanner.scan(pdf);
-      expect(out.single.invoiceNo, '274');
-      expect(url.toString(), 'https://api.anthropic.com/v1/messages');
-      expect(headers!['x-api-key'], 'sk-test');
-      expect(headers!['anthropic-version'], '2023-06-01');
-      expect((jsonDecode(sent!) as Map)['model'], 'claude-opus-5-5');
-    });
-
-    test('بلا مفتاح أو بنوع غير مدعوم: خطأ قبل أي إرسال', () async {
-      var called = false;
-      Future<(int, String)> t(Uri u, Map<String, String> h, String b) async {
-        called = true;
-        return (200, '{}');
-      }
-
-      await expectLater(InvoiceScanner(apiKey: '', transport: t).scan(pdf), throwsA(isA<InvoiceScanException>()));
-      await expectLater(InvoiceScanner(apiKey: 'k', transport: t).scan(Uint8List.fromList(List.filled(30, 3))), throwsA(isA<InvoiceScanException>()));
-      expect(called, isFalse);
-    });
-
-    test('مفتاح الخدمة محلي لا يُزامَن', () {
-      expect(SettingsRepo.localOnlyKeys, contains(InvoiceAiSettings.key));
+      addTearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(const MethodChannel('plugins.flutter.io/path_provider'), null));
+      final engine = DesktopTesseractOcr(exe);
+      final en = InvoiceTextParser.parse(wordsToLines(await engine.recognize('test/fixtures/ocr/invoice_en.png')).join('\n')).single;
+      expect(en.items.map((e) => e.lineTotal), [480000, 157500, 30000]);
+      final ar = InvoiceTextParser.parse(wordsToLines(await engine.recognize('test/fixtures/ocr/invoice_ar.png')).join('\n')).single;
+      expect(ar.items.map((e) => e.lineTotal), [850, 482, 252, 186]);
+      expect(ar.invoiceNo, '5821');
     });
   });
 
-  testWidgets('الصورة الكبيرة تُصغَّر قبل الإرسال والصغيرة تبقى كما هي', (tester) async {
-    Future<Uint8List> png(int w, int h) async {
-      final rec = ui.PictureRecorder();
-      ui.Canvas(rec).drawRect(ui.Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()), ui.Paint()..color = const ui.Color(0xFF336699));
-      final img = await rec.endRecording().toImage(w, h);
-      return (await img.toByteData(format: ui.ImageByteFormat.png))!.buffer.asUint8List();
-    }
-
-    await tester.runAsync(() async {
-      final small = await png(400, 300);
-      final (same, t1) = await InvoiceScanner.prepareImage(small, 'image/png');
-      expect(same, small);
-      expect(t1, 'image/png');
-
-      final big = await png(3600, 2400);
-      final (shrunk, t2) = await InvoiceScanner.prepareImage(big, 'image/png');
-      expect(t2, 'image/png');
-      final codec = await ui.instantiateImageCodec(shrunk);
-      final f = await codec.getNextFrame();
-      expect(f.image.width > f.image.height ? f.image.width : f.image.height, 1700);
-    });
-  });
 
   group('توزيع المسحوب على العقد', () {
     const inv = ScannedInvoice(
@@ -316,4 +329,17 @@ void main() {
       expect(ContractItem.sum(m.items), 8800);
     });
   });
+}
+
+/// محرك OCR مُحاكى يعيد كلماتٍ جاهزة، ويسجّل مسارات الصور التي طُلبت قراءتها.
+class _FakeOcr implements OcrEngine {
+  _FakeOcr(this.words);
+  final List<OcrWord> words;
+  final paths = <String>[];
+
+  @override
+  Future<List<OcrWord>> recognize(String imagePath) async {
+    paths.add(imagePath);
+    return words;
+  }
 }

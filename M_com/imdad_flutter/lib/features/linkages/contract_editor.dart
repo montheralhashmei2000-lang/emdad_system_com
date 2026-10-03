@@ -9,7 +9,9 @@ import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
-import '../../data/ai/invoice_scan.dart';
+import '../../data/ocr/invoice_models.dart';
+import '../../data/ocr/invoice_scanner.dart';
+import '../../data/ocr/ocr_engine.dart';
 import '../../data/repos/linkage_repo.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../domain/arabic_words.dart';
@@ -227,18 +229,20 @@ class _ContractEditorState extends State<ContractEditor> {
   /// ما يُسحب يُضاف كأسطر عادية قابلة للتعديل؛ والإجمالي يبقى مجموع الأصناف.
   Future<void> _scanInvoice({InvoiceScanner? scannerForTest}) async {
     final settingsRepo = SettingsRepo(context.read<AppDatabase>());
-    var settings = await InvoiceAiSettings.load(settingsRepo);
-    if (!mounted) return;
-    if (!settings.ready) {
-      final saved = await showInvoiceAiSettings(context, settingsRepo);
-      if (saved == null || !saved.ready || !mounted) return;
-      settings = saved;
-    }
     final source = await chooseInvoiceSource(context);
     if (source == null || !mounted) return;
     if (source == InvoiceSource.settings) {
-      await showInvoiceAiSettings(context, settingsRepo);
+      await showOcrSetup(context, settingsRepo);
       return;
+    }
+    // محرك القراءة المحلي: Tesseract المضمَّن على الهاتف، أو المثبّت على الحاسوب.
+    var engine = scannerForTest == null ? await createOcrEngine(settingsRepo) : null;
+    if (scannerForTest == null && engine == null) {
+      if (!mounted) return;
+      final ready = await showOcrSetup(context, settingsRepo);
+      if (!ready || !mounted) return;
+      engine = await createOcrEngine(settingsRepo);
+      if (engine == null) return;
     }
     final List<PickedInvoiceFile> files;
     try {
@@ -249,7 +253,7 @@ class _ContractEditorState extends State<ContractEditor> {
     }
     if (files.isEmpty || !mounted) return;
 
-    final scanner = scannerForTest ?? InvoiceScanner(apiKey: settings.apiKey, model: settings.model);
+    final scanner = scannerForTest ?? InvoiceScanner(engine!);
     final progress = ValueNotifier<String>('جارٍ قراءة الفاتورة…');
     showScanProgress(context, progress);
     final invoices = <ScannedInvoice>[];
@@ -298,7 +302,7 @@ class _ContractEditorState extends State<ContractEditor> {
       _currency = merge.currency;
       if (merge.exchangeRate > 0 && _num(_rate.text) <= 0) _rate.text = _fmt(merge.exchangeRate);
       _scannedCount += merge.items.length;
-      _scanNotes = [...merge.warnings, ...errors];
+      _scanNotes = [kOcrReviewNote, ...merge.warnings, ...errors];
     });
     showImdToast(context, '✔ سُحب ${merge.items.length} صنفًا من ${invoices.length} فاتورة — راجعها وعدّل ما يلزم');
   }

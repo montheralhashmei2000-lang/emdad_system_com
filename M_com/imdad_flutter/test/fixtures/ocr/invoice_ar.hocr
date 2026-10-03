@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+ <head>
+  <title></title>
+  <meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+  <meta name='ocr-system' content='tesseract 5.3.4' />
+  <meta name='ocr-capabilities' content='ocr_page ocr_carea ocr_par ocr_line ocrx_word ocrp_wconf'/>
+ </head>
+ <body>
+  <div class='ocr_page' id='page_1' title='image "test/fixtures/ocr/invoice_ar.png"; bbox 0 0 1406 1988; ppageno 0; scan_res 170 170'>
+   <div class='ocr_carea' id='block_1_1' title="bbox 520 150 892 196">
+    <p class='ocr_par' dir='rtl' id='par_1_1' lang='ara' title="bbox 520 150 892 196">
+     <span class='ocr_line' id='line_1_1' title="bbox 520 150 892 196; baseline -0.005 2; x_size 96.25; x_descenders 26.5; x_ascenders 23.25">
+      <span class='ocrx_word' id='word_1_1' title='bbox 747 150 892 196; x_wconf 92'>مؤسسة</span>
+      <span class='ocrx_word' id='word_1_2' title='bbox 649 150 728 196; x_wconf 91'>النور</span>
+      <span class='ocrx_word' id='word_1_3' title='bbox 520 150 642 196; x_wconf 81'>للتجارة</span>
+     </span>
+    </p>
+   </div>
+   <div class='ocr_carea' id='block_1_2' title="bbox 564 215 1274 741">
+    <p class='ocr_par' dir='rtl' id='par_1_2' lang='ara' title="bbox 564 215 1274 737">
+     <span class='ocr_line' id='line_1_2' title="bbox 622 215 787 248; baseline 0.006 -1; x_size 35.611111; x_descenders 6.6111112; x_ascenders 12">
+      <span class='ocrx_word' id='word_1_4' title='bbox 719 215 787 248; x_wconf 92'>فاتورة</span>
+      <span class='ocrx_word' id='word_1_5' title='bbox 622 216 709 247; x_wconf 92'>مبيعات</span>
+     </span>
+     <span class='ocr_line' id='line_1_3' title="bbox 1075 281 1273 312; baseline 0 -9; x_size 41.444443; x_descenders 7; x_ascenders 14.444445">
+      <span class='ocrx_word' id='word_1_6' title='bbox 1243 265 1275 316; x_wconf 93'>رقم</span>
+      <span class='ocrx_word' id='word_1_7' title='bbox 1151 281 1273 312; x_wconf 91'>الفاتورة:</span>
+      <span class='ocrx_word' id='word_1_8' title='bbox 1075 283 1139 303; x_wconf 93'>5821</span>
+     </span>
+     <span class='ocr_line' id='line_1_4' title="bbox 1041 325 1274 355; baseline 0 -9; x_size 24.516129; x_descenders 4.516129; x_ascenders 8.3870964">
+      <span class='ocrx_word' id='word_1_9' title='bbox 1207 325 1274 355; x_wconf 92'>التاريخ:</span>
+      <span class='ocrx_word' id='word_1_10' title='bbox 1041 325 1195 350; x_wconf 92'>12/08/2026</span>
+     </span>
+     <span class='ocr_line' id='line_1_5' title="bbox 1032 367 1274 388; baseline 0 0; x_size 24.516129; x_descenders 4.516129; x_ascenders 8.3870964">
+      <span class='ocrx_word' id='word_1_11' title='bbox 1209 367 1274 388; x_wconf 89'>هاتف:</span>
+      <span class='ocrx_word' id='word_1_12' title='bbox 1032 368 1198 388; x_wconf 93'>0551234567</span>
+     </span>
+     <span class='ocr_line' id='line_1_6' title="bbox 564 426 1260 479; baseline 0 -13; x_size 43.166664; x_descenders 7; x_ascenders 15.166666">
+      <span class='ocrx_word' id='word_1_13' title='bbox 1168 445 1260 479; x_wconf 91'>الإجمالي</span>
+      <span class='ocrx_word' id='word_1_14' title='bbox 967 426 1034 477; x_wconf 90'>السعر</span>
+      <span class='ocrx_word' id='word_1_15' title='bbox 746 426 818 477; x_wconf 91'>الكمية</span>
+      <span class='ocrx_word' id='word_1_16' title='bbox 564 426 639 477; x_wconf 92'>الوحدة</span>
+     </span>
+     <span class='ocr_line' id='line_1_7' title="bbox 582 507 1261 543; baseline 0 -11; x_size 24.516129; x_descenders 4.516129; x_ascenders 8.3870964">
+      <span class='ocrx_word' id='word_1_17' title='bbox 1172 512 1261 532; x_wconf 96' lang='eng'>850.00</span>
+      <span class='ocrx_word' id='word_1_18' title='bbox 966 512 1038 532; x_wconf 96' lang='eng'>85.00</span>
+      <span class='ocrx_word' id='word_1_19' title='bbox 788 512 818 532; x_wconf 95'>10</span>
+      <span class='ocrx_word' id='word_1_20' title='bbox 582 507 643 543; x_wconf 96'>كيس</span>
+     </span>
+     <span class='ocr_line' id='line_1_8' title="bbox 581 574 1261 610; baseline -0.003 -9; x_size 24.516129; x_descenders 4.516129; x_ascenders 8.3870964">
+      <span class='ocrx_word' id='word_1_21' title='bbox 1171 579 1261 599; x_wconf 96' lang='eng'>482.00</span>
+      <span class='ocrx_word' id='word_1_22' title='bbox 949 579 1038 599; x_wconf 96' lang='eng'>120.50</span>
+      <span class='ocrx_word' id='word_1_23' title='bbox 803 579 818 599; x_wconf 96'>4</span>
+      <span class='ocrx_word' id='word_1_24' title='bbox 581 574 640 610; x_wconf 91'>كرتون</span>
+     </span>
+     <span class='ocr_line' id='line_1_9' title="bbox 577 640 1262 676; baseline -0.003 -9; x_size 24.516129; x_descenders 4.516129; x_ascenders 8.3870964">
+      <span class='ocrx_word' id='word_1_25' title='bbox 1173 645 1262 665; x_wconf 96' lang='eng'>252.00</span>
+      <span class='ocrx_word' id='word_1_26' title='bbox 965 645 1038 665; x_wconf 96' lang='eng'>42.00</span>
+      <span class='ocrx_word' id='word_1_27' title='bbox 806 645 819 665; x_wconf 96'>6</span>
+      <span class='ocrx_word' id='word_1_28' title='bbox 577 640 640 676; x_wconf 90'>جالون</span>
+     </span>
+     <span class='ocr_line' id='line_1_10' title="bbox 596 706 1261 741; baseline 0 -10; x_size 24.516129; x_descenders 4.516129; x_ascenders 8.3870964">
+      <span class='ocrx_word' id='word_1_29' title='bbox 1172 711 1261 731; x_wconf 96' lang='eng'>186.00</span>
+      <span class='ocrx_word' id='word_1_30' title='bbox 966 711 1038 731; x_wconf 96' lang='eng'>15.50</span>
+      <span class='ocrx_word' id='word_1_31' title='bbox 788 711 818 731; x_wconf 95'>12</span>
+      <span class='ocrx_word' id='word_1_32' title='bbox 596 706 643 741; x_wconf 92'>علبة</span>
+     </span>
+    </p>
+   </div>
+   <div class='ocr_carea' id='block_1_3' title="bbox 876 783 1273 853">
+    <p class='ocr_par' dir='rtl' id='par_1_3' lang='ara' title="bbox 876 783 1273 853">
+     <span class='ocr_line' id='line_1_11' title="bbox 900 783 1273 817; baseline 0.011 -16; x_size 38.25; x_descenders 7.5; x_ascenders 10.25">
+      <span class='ocrx_word' id='word_1_33' title='bbox 1173 783 1273 817; x_wconf 92'>الإجمالي:</span>
+      <span class='ocrx_word' id='word_1_34' title='bbox 1044 784 1161 808; x_wconf 94' lang='eng'>1,770.00</span>
+      <span class='ocrx_word' id='word_1_35' title='bbox 993 783 1035 811; x_wconf 96'>ريال</span>
+      <span class='ocrx_word' id='word_1_36' title='bbox 900 789 984 817; x_wconf 91'>سعودي</span>
+     </span>
+     <span class='ocr_line' id='line_1_12' title="bbox 876 824 1272 853; baseline 0.003 -7; x_size 38.25; x_descenders 7.5; x_ascenders 10.25">
+      <span class='ocrx_word' id='word_1_37' title='bbox 1211 826 1272 853; x_wconf 92'>ضريبة</span>
+      <span class='ocrx_word' id='word_1_38' title='bbox 1141 825 1202 852; x_wconf 93'>القيمة</span>
+      <span class='ocrx_word' id='word_1_39' title='bbox 1048 824 1132 846; x_wconf 93'>المضافة</span>
+      <span class='ocrx_word' id='word_1_40' title='bbox 976 826 1041 846; x_wconf 83' lang='eng'>%15:</span>
+      <span class='ocrx_word' id='word_1_41' title='bbox 876 826 965 846; x_wconf 93'>265.50</span>
+     </span>
+    </p>
+   </div>
+   <div class='ocr_carea' id='block_1_4' title="bbox 342 445 448 674">
+    <p class='ocr_par' dir='rtl' id='par_1_4' lang='ara' title="bbox 342 445 448 674">
+     <span class='ocr_line' id='line_1_13' title="bbox 370 445 448 466; baseline 0 0; x_size 39.5; x_descenders 6.5; x_ascenders 10.5">
+      <span class='ocrx_word' id='word_1_42' title='bbox 370 445 448 466; x_wconf 90'>الصنف</span>
+     </span>
+     <span class='ocr_line' id='line_1_14' title="bbox 349 506 445 544; baseline 0 0; x_size 45.511112; x_descenders 7.5111113; x_ascenders 12">
+      <span class='ocrx_word' id='word_1_43' title='bbox 349 506 445 544; x_wconf 90'>أرزبسمتي</span>
+     </span>
+     <span class='ocr_line' id='line_1_15' title="bbox 342 573 445 606; baseline 0 0; x_size 40.222221; x_descenders 7.2222223; x_ascenders 8">
+      <span class='ocrx_word' id='word_1_44' title='bbox 408 569 449 618; x_wconf 79'>سكر</span>
+      <span class='ocrx_word' id='word_1_45' title='bbox 338 569 398 618; x_wconf 79'>أبيض</span>
+     </span>
+     <span class='ocr_line' id='line_1_16' title="bbox 356 644 448 674; baseline -0.033 0; x_size 35.777779; x_descenders 5.7777781; x_ascenders 10">
+      <span class='ocrx_word' id='word_1_46' title='bbox 410 651 448 672; x_wconf 92'>زيت</span>
+      <span class='ocrx_word' id='word_1_47' title='bbox 356 644 401 674; x_wconf 93'>طبخ</span>
+     </span>
+    </p>
+   </div>
+   <div class='ocr_separator' id='block_1_5' title="bbox 0 423 0 425"></div>
+   <div class='ocr_separator' id='block_1_6' title="bbox 0 489 0 492"></div>
+   <div class='ocr_separator' id='block_1_7' title="bbox 0 555 0 558"></div>
+   <div class='ocr_separator' id='block_1_8' title="bbox 0 621 0 624"></div>
+   <div class='ocr_separator' id='block_1_9' title="bbox 0 688 0 690"></div>
+   <div class='ocr_separator' id='block_1_10' title="bbox 0 754 0 756"></div>
+  </div>
+ </body>
+</html>
