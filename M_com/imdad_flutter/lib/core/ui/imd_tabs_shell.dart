@@ -89,12 +89,17 @@ class _ImdTabsShellState extends State<ImdTabsShell> {
             color: c.surface,
             border: Border(bottom: BorderSide(color: c.line)),
           ),
-          child: ImdPillTabs<String>(
-            value: current,
-            onChanged: (v) => setState(() => _tab = v),
-            tabs: [
-              for (final t in visible) ImdTab(t.id, t.label, icon: t.icon),
-            ],
+          // شريط التبويبات سطرٌ واحد يُمرَّر أفقيًّا: التفافه على عدة أسطر كان يبتلع
+          // ارتفاع الهاتف الأفقي (٣٦٠) فيفيض الغلاف.
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ImdPillTabs<String>(
+              value: current,
+              onChanged: (v) => setState(() => _tab = v),
+              tabs: [
+                for (final t in visible) ImdTab(t.id, t.label, icon: t.icon),
+              ],
+            ),
           ),
         ),
         // الشاشة المختارة تحتفظ بتمريرها ولوحاتها كما لو فُتحت وحدها.

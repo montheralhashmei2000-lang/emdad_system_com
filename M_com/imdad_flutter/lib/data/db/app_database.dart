@@ -1072,6 +1072,8 @@ class AppSettings extends Table {
   LinkFinCustodies,
   LinkClearances,
   LinkPurchaseContracts,
+  LinkCustodySheets,
+  LinkCustodySheetRows,
   LinkArmaments,
   Cables,
 ])
@@ -1144,6 +1146,7 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS ix_link_custody_cleared ON link_fin_custodies (cleared)',
       'CREATE INDEX IF NOT EXISTS ix_link_clear_ref ON link_clearances (kind, ref_id)',
       'CREATE INDEX IF NOT EXISTS ix_link_contracts_status ON link_purchase_contracts (status)',
+      'CREATE INDEX IF NOT EXISTS ix_link_sheet_rows ON link_custody_sheet_rows (sheet_id, seq)',
       'CREATE INDEX IF NOT EXISTS ix_link_arm_person ON link_armaments (person_id)',
       'CREATE INDEX IF NOT EXISTS ix_archive_cat ON archive_files (category)',
       'CREATE INDEX IF NOT EXISTS ix_archive_date ON archive_files (doc_date)',
@@ -1501,6 +1504,8 @@ class AppDatabase extends _$AppDatabase {
             await _createIfMissing(m, linkFinCustodies);
             await _createIfMissing(m, linkClearances);
             await _createIfMissing(m, linkPurchaseContracts);
+            await _createIfMissing(m, linkCustodySheets);
+            await _createIfMissing(m, linkCustodySheetRows);
             await _createIfMissing(m, linkArmaments);
           }
           // v23: البرقيات.

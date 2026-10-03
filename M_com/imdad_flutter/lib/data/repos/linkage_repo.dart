@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:flutter/material.dart' show DateUtils;
 
@@ -32,6 +34,100 @@ class LinkStatus {
   static String label(String s) => meta[s]?.$1 ?? s;
   static ImdTone tone(String s) => meta[s]?.$2 ?? ImdTone.off;
   static bool isDated(String s) => dated.contains(s);
+}
+
+/// عملة فاتورة الشراء.
+class LinkCurrency {
+  static const String sar = 'sar';
+  static const String yer = 'yer';
+
+  static const Map<String, String> labels = {sar: 'سعودي', yer: 'يمني'};
+
+  static String label(String c) => labels[c] ?? c;
+
+  /// الاسم في التفقيط: «ريال يمني».
+  static String major(String c) => c == yer ? 'ريال يمني' : 'ريال سعودي';
+
+  /// الوحدة الصغرى في التفقيط.
+  static String minor(String c) => c == yer ? 'فلس' : 'هللة';
+
+  /// رمز العملة في الجداول المطبوعة.
+  static String symbol(String c) => c == yer ? 'ر.ي.' : 'ر.س.';
+}
+
+/// سطر أصناف في عقد الشراء. نصٌّ حر بلا صلة بأصناف النظام.
+class ContractItem {
+  const ContractItem({
+    this.name = '',
+    this.unit = '',
+    this.qty = 0,
+    this.price = 0,
+    this.total = 0,
+    this.invoiceNo = '',
+    this.date = '',
+    this.note = '',
+  });
+
+  final String name;
+  final String unit;
+  final double qty;
+  final double price;
+
+  /// السعر الإجمالي — يُحسب افتراضيًّا (الكمية × السعر) ويقبل التعديل.
+  final double total;
+  final String invoiceNo;
+
+  /// تاريخ الشراء حسب الفاتورة (يدوي).
+  final String date;
+  final String note;
+
+  bool get isEmpty =>
+      name.trim().isEmpty && unit.trim().isEmpty && qty == 0 && price == 0 && total == 0 && invoiceNo.trim().isEmpty && note.trim().isEmpty;
+
+  /// الإجمالي الافتراضي: الكمية × سعر الوحدة (الكمية الفارغة تُعدّ واحدًا).
+  static double autoTotal(double qty, double price) => (qty > 0 ? qty : 1) * price;
+
+  Map<String, Object> toJson() => {
+        'name': name,
+        'unit': unit,
+        'qty': qty,
+        'price': price,
+        'total': total,
+        'invoiceNo': invoiceNo,
+        'date': date,
+        'note': note,
+      };
+
+  static double _d(Object? v) => v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
+
+  static List<ContractItem> decode(String json) {
+    try {
+      final raw = jsonDecode(json);
+      if (raw is! List) return const [];
+      return [
+        for (final e in raw)
+          if (e is Map)
+            ContractItem(
+              name: '${e['name'] ?? ''}',
+              unit: '${e['unit'] ?? ''}',
+              qty: _d(e['qty']),
+              price: _d(e['price']),
+              total: _d(e['total']),
+              invoiceNo: '${e['invoiceNo'] ?? ''}',
+              date: '${e['date'] ?? ''}',
+              note: '${e['note'] ?? ''}',
+            ),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static String encode(List<ContractItem> items) =>
+      jsonEncode([for (final i in items) if (!i.isEmpty) i.toJson()]);
+
+  /// إجمالي القائمة.
+  static double sum(Iterable<ContractItem> items) => items.fold(0.0, (s, e) => s + e.total);
 }
 
 /// أنواع الإخلاء.
@@ -497,10 +593,10 @@ class LinkageRepo {
     final out = rows.where((c) {
       if (status.isNotEmpty && c.status != status) return false;
       if (query.isEmpty) return true;
-      final hay = [c.contractNo, c.title, c.supplier, c.itemsSummary].join(' ').toLowerCase();
+      final hay = [c.contractNo, c.title, c.supplier, c.itemsJson, c.notes].join(' ').toLowerCase();
       return hay.contains(query);
     }).toList();
-    out.sort((a, b) => b.signDate.compareTo(a.signDate));
+    out.sort((a, b) => b.listDate.compareTo(a.listDate));
     return out;
   }
 
@@ -534,6 +630,88 @@ class LinkageRepo {
       action: 'linkage.contract.delete',
       entityType: 'linkage',
       summary: 'حذف عقد: ${c.title}',
+      risk: AuditRepo.riskHigh,
+      actorEmail: actor,
+    );
+  }
+
+  // ───────────────── مسير العهدة ─────────────────
+
+  Future<List<LinkCustodySheet>> custodySheets({String q = ''}) async {
+    final rows = await db.select(db.linkCustodySheets).get();
+    final query = q.trim().toLowerCase();
+    final out = rows.where((s) {
+      if (query.isEmpty) return true;
+      return [s.sheetNo, s.title, s.notes].join(' ').toLowerCase().contains(query);
+    }).toList();
+    out.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return out;
+  }
+
+  Future<List<LinkCustodySheetRow>> sheetRows(String sheetId) async {
+    final rows = await (db.select(db.linkCustodySheetRows)..where((t) => t.sheetId.equals(sheetId))).get();
+    rows.sort((a, b) => a.seq.compareTo(b.seq));
+    return rows;
+  }
+
+  /// يحفظ المسير وأسطره دفعةً واحدة (حفظٌ واحد لا حفظ لكل سطر).
+  Future<String> saveCustodySheet({
+    String? id,
+    required String sheetNo,
+    required String title,
+    required double defaultRate,
+    required String notes,
+    required List<LinkCustodySheetRowsCompanion> rows,
+    String actor = '',
+  }) async {
+    final sheetId = id ?? Ids.next('ls');
+    await db.transaction(() async {
+      if (id == null) {
+        await db.into(db.linkCustodySheets).insert(LinkCustodySheetsCompanion(
+              id: Value(sheetId),
+              sheetNo: Value(sheetNo),
+              title: Value(title),
+              defaultRate: Value(defaultRate),
+              notes: Value(notes),
+              createdBy: Value(actor),
+              createdAt: Value(DateTime.now()),
+            ));
+      } else {
+        await (db.update(db.linkCustodySheets)..where((t) => t.id.equals(id))).write(LinkCustodySheetsCompanion(
+          sheetNo: Value(sheetNo),
+          title: Value(title),
+          defaultRate: Value(defaultRate),
+          notes: Value(notes),
+          updatedAt: Value(DateTime.now()),
+        ));
+        await (db.delete(db.linkCustodySheetRows)..where((t) => t.sheetId.equals(id))).go();
+      }
+      var seq = 0;
+      for (final r in rows) {
+        await db.into(db.linkCustodySheetRows).insert(
+              r.copyWith(id: Value(Ids.next('lr')), sheetId: Value(sheetId), seq: Value(seq++)),
+            );
+      }
+    });
+    await AuditRepo(db).log(
+      action: id == null ? 'linkage.sheet.create' : 'linkage.sheet.edit',
+      entityType: 'linkage',
+      summary: '${id == null ? 'إنشاء' : 'تعديل'} مسير عهدة رقم $sheetNo — ${rows.length} سطر',
+      risk: AuditRepo.riskNormal,
+      actorEmail: actor,
+    );
+    return sheetId;
+  }
+
+  Future<void> deleteCustodySheet(LinkCustodySheet s, {String actor = ''}) async {
+    await db.transaction(() async {
+      await (db.delete(db.linkCustodySheetRows)..where((t) => t.sheetId.equals(s.id))).go();
+      await (db.delete(db.linkCustodySheets)..where((t) => t.id.equals(s.id))).go();
+    });
+    await AuditRepo(db).log(
+      action: 'linkage.sheet.delete',
+      entityType: 'linkage',
+      summary: 'حذف مسير عهدة رقم ${s.sheetNo}',
       risk: AuditRepo.riskHigh,
       actorEmail: actor,
     );

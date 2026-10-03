@@ -112,6 +112,7 @@ class LegacyImporter {
       await _importCampLedgers(data['campLedgers'], res);
       await _importCampStockLimits(data['campStockLimits'], res);
       await _importSettlements(data['monthlySettlements'], res);
+      await _importLinkage(data, res);
       await _importAuditLogs(data['auditLogs'], res);
       await _importSettings(data['settings'], res);
       await DeviceActivation(db).mergeRevocations(data['deviceRevocations']);
@@ -733,6 +734,34 @@ class LegacyImporter {
           ));
     }
     if (rows.isNotEmpty) _count(res, 'تصفيات الشهور', rows.length);
+  }
+
+  /// البرقيات والارتباطات: صفوفها بتسلسل Drift (`toJson`) فتُقرأ بـ`fromJson`
+  /// ويُرفض ما أقدم من نسخة الجهاز المحلية كبقية الجداول.
+  Future<void> _importLinkage(Map<String, dynamic> data, LegacyImportResult res) async {
+    Future<void> run<T extends Table, D extends DataClass>(
+        String key, String entity, String label, TableInfo<T, D> table, D Function(Map<String, dynamic>) from) async {
+      final rows = _rows(data[key]);
+      var n = 0;
+      for (final m in rows) {
+        if (!_accept(entity, _id(m))) continue;
+        await db.into(table).insertOnConflictUpdate(from(m) as Insertable<D>);
+        n++;
+      }
+      if (n > 0) _count(res, label, n);
+    }
+
+    await run('cables', 'cables', 'البرقيات', db.cables, Cable.fromJson);
+    await run('linkPersons', 'link_persons', 'أفراد القوة البشرية', db.linkPersons, LinkPerson.fromJson);
+    await run('linkStatusLogs', 'link_status_logs', 'سجل حالات الأفراد', db.linkStatusLogs, LinkStatusLog.fromJson);
+    await run('linkFinCustodies', 'link_fin_custodies', 'العهد', db.linkFinCustodies, LinkFinCustody.fromJson);
+    await run('linkClearances', 'link_clearances', 'الإخلاءات', db.linkClearances, LinkClearance.fromJson);
+    await run('linkPurchaseContracts', 'link_purchase_contracts', 'عقود الشراء', db.linkPurchaseContracts,
+        LinkPurchaseContract.fromJson);
+    await run('linkArmaments', 'link_armaments', 'التسليح', db.linkArmaments, LinkArmament.fromJson);
+    await run('linkCustodySheets', 'link_custody_sheets', 'مسيرات العهدة', db.linkCustodySheets, LinkCustodySheet.fromJson);
+    await run('linkCustodySheetRows', 'link_custody_sheet_rows', 'أسطر مسيرات العهدة', db.linkCustodySheetRows,
+        LinkCustodySheetRow.fromJson);
   }
 
   // ───────── أدوات مساعدة ─────────

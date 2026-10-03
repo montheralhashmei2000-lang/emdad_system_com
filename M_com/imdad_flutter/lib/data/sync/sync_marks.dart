@@ -114,6 +114,18 @@ class SyncMarks {
     'camp_ledgers': 'id',
     'camp_stock_limits': 'id',
     'monthly_settlements': 'id',
+    // البرقيات والارتباطات (القوة البشرية والمالية والتسليح): بيانات تشغيلية
+    // تُدخل في فرع ويحتاجها غيره. أرشيف الملفات خارج المزامنة عمدًا لأن
+    // ملفاته على قرص هذا الجهاز؛ ودليل المسميات مفتاحه مركّب فيُعاد بناؤه محليًّا.
+    'cables': 'id',
+    'link_persons': 'id',
+    'link_status_logs': 'id',
+    'link_fin_custodies': 'id',
+    'link_clearances': 'id',
+    'link_purchase_contracts': 'id',
+    'link_armaments': 'id',
+    'link_custody_sheets': 'id',
+    'link_custody_sheet_rows': 'id',
   };
 
   /// المللي ثانية الحالية بصيغة SQLite (لا يوجد `unixepoch('subsec')` في كل نسخة).

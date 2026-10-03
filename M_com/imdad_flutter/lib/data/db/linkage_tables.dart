@@ -194,30 +194,38 @@ class LinkClearances extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-/// عقد مشتريات لمالية الإمداد — يرتبط اختياريًّا بفردٍ (المسؤول عن العقد).
+/// عقد شراء — «قائمة الكمية المستهلكة» بفواتير التاجر. الأصناف نصٌّ حرّ
+/// ([itemsJson]) لا صلة له بأصناف النظام لأن مسمياتها عند التجار تختلف.
 class LinkPurchaseContracts extends Table {
   TextColumn get id => text()();
 
-  /// رقم العقد وعنوانه.
   TextColumn get contractNo => text().withDefault(const Constant(''))();
+
+  /// التصنيف: «مواد غذائية» أو «بهارات» أو أي مسمى.
   TextColumn get title => text()();
 
-  /// المورد.
+  /// اسم المحل أو التاجر.
   TextColumn get supplier => text().withDefault(const Constant(''))();
 
-  /// قيمة العقد.
+  /// عملة الفاتورة: `sar` سعودي | `yer` يمني.
+  TextColumn get currency => text().withDefault(const Constant('sar'))();
+
+  /// سعر الصرف (ريال يمني لكل ريال سعودي) — يُستعمل عند العملة اليمنية فقط.
+  RealColumn get exchangeRate => real().withDefault(const Constant(0))();
+
+  /// «قائمة الكمية المستهلكة بتاريخ» — يُدخل يدويًا حسب تاريخ الفاتورة.
+  TextColumn get listDate => text().withDefault(const Constant(''))();
+
+  /// أسطر الأصناف JSON: `[{"name","unit","qty","price","total","invoiceNo","date","note"}]`.
+  TextColumn get itemsJson => text().withDefault(const Constant('[]'))();
+
+  /// إجمالي القائمة بعملة الفاتورة (محسوب عند الحفظ).
   RealColumn get amount => real().withDefault(const Constant(0))();
 
-  /// تاريخ التوقيع والبداية والنهاية.
-  TextColumn get signDate => text().withDefault(const Constant(''))();
-  TextColumn get startDate => text().withDefault(const Constant(''))();
+  /// تاريخ انتهاء اختياري — للتنبيه عند التأخر.
   TextColumn get endDate => text().withDefault(const Constant(''))();
 
-  /// الحالة: `open` (قيد التنفيذ) | `done` (منفَّذ) | `canceled` (ملغى).
   TextColumn get status => text().withDefault(const Constant('open'))();
-
-  /// ملخص البنود.
-  TextColumn get itemsSummary => text().withDefault(const Constant(''))();
 
   TextColumn get notes => text().withDefault(const Constant(''))();
 
@@ -226,6 +234,81 @@ class LinkPurchaseContracts extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
   DateTimeColumn get updatedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// مسير عهدة — كشف حسابٍ لعهدةٍ تشغيلية (العهدة والمنصرف والمرتجع والمتبقي)
+/// بتنسيق ملف Excel المعتمد. أسطره في [LinkCustodySheetRows].
+class LinkCustodySheets extends Table {
+  TextColumn get id => text()();
+
+  /// رقم العهدة التشغيلية: «2» أو «2 ورقم 3».
+  TextColumn get sheetNo => text().withDefault(const Constant(''))();
+
+  /// عنوان المسير للتعريف به في القائمة.
+  TextColumn get title => text().withDefault(const Constant(''))();
+
+  /// سعر الصرف الافتراضي للأسطر الجديدة.
+  RealColumn get defaultRate => real().withDefault(const Constant(410))();
+
+  TextColumn get notes => text().withDefault(const Constant(''))();
+
+  TextColumn get createdBy => text().withDefault(const Constant(''))();
+
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  DateTimeColumn get updatedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// سطر في مسير العهدة. الأعمدة بترتيب ملف Excel.
+class LinkCustodySheetRows extends Table {
+  TextColumn get id => text()();
+
+  TextColumn get sheetId => text()();
+
+  /// ترتيب السطر في المسير.
+  IntColumn get seq => integer().withDefault(const Constant(0))();
+
+  /// التاريخ (YYYY-MM-DD) — يدوي.
+  TextColumn get date => text().withDefault(const Constant(''))();
+
+  /// مبلغ العهدة (سعودي).
+  RealColumn get grantSar => real().withDefault(const Constant(0))();
+
+  /// المرتجع.
+  RealColumn get returnSar => real().withDefault(const Constant(0))();
+  RealColumn get returnYer => real().withDefault(const Constant(0))();
+
+  /// المبلغ المنصرف — إدخال اليمني يحسب السعودي = اليمني ÷ سعر الصرف.
+  RealColumn get spentSar => real().withDefault(const Constant(0))();
+  RealColumn get spentYer => real().withDefault(const Constant(0))();
+
+  RealColumn get rate => real().withDefault(const Constant(410))();
+
+  /// الاسم (المستلم أو الأجير…).
+  TextColumn get person => text().withDefault(const Constant(''))();
+
+  /// البيان.
+  TextColumn get statement => text().withDefault(const Constant(''))();
+
+  /// الفئة (أصول ثابتة، صيانة، أجور…).
+  TextColumn get category => text().withDefault(const Constant(''))();
+
+  /// رقم القيد.
+  TextColumn get entryNo => text().withDefault(const Constant(''))();
+
+  /// رقم الفاتورة — تكراره يُلوَّن.
+  TextColumn get invoiceNo => text().withDefault(const Constant(''))();
+
+  /// اسم المحل.
+  TextColumn get shop => text().withDefault(const Constant(''))();
+
+  TextColumn get notes => text().withDefault(const Constant(''))();
 
   @override
   Set<Column> get primaryKey => {id};

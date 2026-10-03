@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/ids.dart';
+import '../../core/print/contract_print.dart';
+import '../../core/print/custody_sheet_print.dart';
+import '../../core/print/print_format.dart';
 import '../../core/security/perm.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
@@ -12,6 +15,9 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/linkage_repo.dart';
 import '../../domain/access_control.dart';
+import '../../domain/custody_sheet.dart';
+import 'contract_editor.dart';
+import 'custody_sheet_editor.dart';
 import 'link_export.dart';
 
 String _d(String iso) {
@@ -43,12 +49,16 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
   List<LinkFinCustody>? _custodies;
   List<LinkClearance>? _clearances;
   List<LinkPurchaseContract>? _contracts;
+  List<LinkCustodySheet>? _sheets;
+  Map<String, CustodyTotals> _sheetTotals = const {};
+  Map<String, int> _sheetRowCount = const {};
   List<String> _holders = const [];
 
   bool get _canCreate => widget.perm.has('linkages', PermAction.create);
   bool get _canEdit => widget.perm.has('linkages', PermAction.edit);
   bool get _canDelete => widget.perm.has('linkages', PermAction.delete);
   bool get _canExport => widget.perm.has('linkages', PermAction.export);
+  bool get _canPrint => widget.perm.has('linkages', PermAction.print);
 
   @override
   void initState() {
@@ -67,8 +77,18 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
     final clearances = await widget.repo.clearances();
     final contracts = await widget.repo.contracts();
     final holders = await widget.repo.terms('holder');
+    final sheets = await widget.repo.custodySheets();
+    final allRows = await widget.repo.db.select(widget.repo.db.linkCustodySheetRows).get();
+    final byId = <String, List<CustodyRowValues>>{};
+    for (final r in allRows) {
+      (byId[r.sheetId] ??= []).add(CustodyRowValues(
+          grantSar: r.grantSar, returnSar: r.returnSar, returnYer: r.returnYer, spentSar: r.spentSar, spentYer: r.spentYer, rate: r.rate));
+    }
     if (!mounted) return;
     setState(() {
+      _sheets = sheets;
+      _sheetTotals = {for (final e in byId.entries) e.key: custodyTotals(e.value)};
+      _sheetRowCount = {for (final e in byId.entries) e.key: e.value.length};
       _custodies = custodies;
       _clearances = clearances;
       _contracts = contracts;
@@ -229,16 +249,47 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
   Future<void> _addOrEditContract([LinkPurchaseContract? initial]) async {
     if (initial == null && !_canCreate) return showImdToast(context, '✖ لا تملك صلاحية التسجيل', error: true);
     if (initial != null && !_canEdit) return showImdToast(context, '✖ لا تملك صلاحية التعديل', error: true);
-    final saved = await showImdModal<bool>(
-      context,
-      title: initial == null ? 'عقد مشتريات جديد' : 'تعديل العقد: ${initial.title}',
-      icon: 'clipboard',
-      maxWidth: 780,
-      builder: (ctx) => _ContractSheet(initial: initial, actor: widget.perm.email),
-    );
-    if (saved == true) {
+    final saved = await openContractEditor(context, initial: initial, actor: widget.perm.email, canPrint: _canPrint);
+    if (saved) {
       await _load();
       if (mounted) showImdToast(context, '✔ حُفظ العقد');
+    }
+  }
+
+  Future<void> _printContract(LinkPurchaseContract c) async {
+    if (!_canPrint) return showImdToast(context, '✖ لا تملك صلاحية الطباعة', error: true);
+    try {
+      await ContractPrint.print(widget.repo.db, c);
+    } catch (e) {
+      if (mounted) showImdToast(context, '✖ تعذّرت الطباعة: $e', error: true);
+    }
+  }
+
+  // ───────────────── مسير العهدة ─────────────────
+
+  List<LinkCustodySheet> get _sheetRows {
+    final q = _q.text.trim().toLowerCase();
+    return (_sheets ?? const <LinkCustodySheet>[])
+        .where((s) => q.isEmpty || [s.sheetNo, s.title, s.notes].join(' ').toLowerCase().contains(q))
+        .toList();
+  }
+
+  Future<void> _addOrEditSheet([LinkCustodySheet? initial]) async {
+    if (initial == null && !_canCreate) return showImdToast(context, '✖ لا تملك صلاحية التسجيل', error: true);
+    if (initial != null && !_canEdit) return showImdToast(context, '✖ لا تملك صلاحية التعديل', error: true);
+    final saved = await openCustodySheetEditor(context, initial: initial, actor: widget.perm.email, canPrint: _canPrint);
+    if (saved) {
+      await _load();
+      if (mounted) showImdToast(context, '✔ حُفظ مسير العهدة');
+    }
+  }
+
+  Future<void> _printSheet(LinkCustodySheet s) async {
+    if (!_canPrint) return showImdToast(context, '✖ لا تملك صلاحية الطباعة', error: true);
+    try {
+      await CustodySheetPrint.print(widget.repo.db, s, await widget.repo.sheetRows(s.id));
+    } catch (e) {
+      if (mounted) showImdToast(context, '✖ تعذّرت الطباعة: $e', error: true);
     }
   }
 
@@ -248,7 +299,7 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
       context,
       sheetName: 'عقود المشتريات',
       fileName: 'عقود-المشتريات-${isoDay(DateTime.now())}.xlsx',
-      headers: const ['م', 'الرقم', 'الموضوع', 'المورد', 'القيمة', 'التوقيع', 'البداية', 'النهاية', 'الحالة'],
+      headers: const ['م', 'الرقم', 'التصنيف', 'المحل / التاجر', 'العملة', 'الإجمالي', 'التاريخ', 'الحالة'],
       rows: [
         for (var i = 0; i < rows.length; i++)
           [
@@ -256,14 +307,13 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
             rows[i].contractNo,
             rows[i].title,
             rows[i].supplier,
-            nf(rows[i].amount),
-            _d(rows[i].signDate),
-            _d(rows[i].startDate),
-            _d(rows[i].endDate),
+            LinkCurrency.label(rows[i].currency),
+            printNum(rows[i].amount),
+            _d(rows[i].listDate),
             LinkContractStatus.label(rows[i].status),
           ],
       ],
-      numericColumns: const {0, 4},
+      numericColumns: const {0, 5},
     );
   }
 
@@ -278,6 +328,7 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
           ImdTab('custody', 'العهد', icon: 'shield'),
           ImdTab('clearances', 'الإخلاءات', icon: 'check-circle'),
           ImdTab('contracts', 'العقود', icon: 'clipboard'),
+          ImdTab('sheets', 'مسير العهدة', icon: 'dollar'),
         ],
         value: _sub,
         onChanged: _switch,
@@ -287,6 +338,8 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
         ..._custodyView(c)
       else if (_sub == 'clearances')
         ..._clearanceView(c)
+      else if (_sub == 'sheets')
+        ..._sheetView(c)
       else
         ..._contractView(c),
     ]);
@@ -442,17 +495,85 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
     ];
   }
 
+  List<Widget> _sheetView(ImdColors c) {
+    final all = _sheets ?? const <LinkCustodySheet>[];
+    final granted = all.fold<double>(0, (s, e) => s + (_sheetTotals[e.id]?.granted ?? 0));
+    final spent = all.fold<double>(0, (s, e) => s + (_sheetTotals[e.id]?.spent ?? 0));
+    return [
+      ImdKpis(children: [
+        ImdKpi(label: 'المسيرات', value: nf(all.length), icon: 'dollar', color: c.accent),
+        ImdKpi(label: 'إجمالي العهد (سعودي)', value: nf(granted), icon: 'shield', color: c.warn),
+        ImdKpi(label: 'إجمالي المنصرف (سعودي)', value: nf(spent), icon: 'upload', color: c.info),
+        ImdKpi(label: 'المتبقي (سعودي)', value: nf(granted - spent), icon: 'check-circle', color: granted - spent < 0 ? c.danger : c.success),
+      ]),
+      ImdSearchBar(
+        controller: _q,
+        hint: 'بحث برقم العهدة أو عنوان المسير…',
+        onChanged: (_) => setState(() {}),
+        actions: [
+          if (_canCreate) ImdButton(label: 'مسير عهدة جديد', icon: 'plus', onPressed: _addOrEditSheet),
+        ],
+      ),
+      if (_sheets == null)
+        const ImdLd('جارٍ تحميل المسيرات…')
+      else if (_sheetRows.isEmpty)
+        const ImdEmptyBox('لا مسيراتٍ مطابقة')
+      else
+        ImdTable(
+          columns: const [
+            ImdCol('رقم العهدة'),
+            ImdCol('العنوان', flex: 2),
+            ImdCol('الأسطر', numeric: true),
+            ImdCol('إجمالي العهدة', numeric: true),
+            ImdCol('المنصرف', numeric: true),
+            ImdCol('المتبقي', numeric: true),
+            ImdCol(''),
+          ],
+          rows: [
+            for (final s in _sheetRows)
+              [
+                Text(s.sheetNo.isEmpty ? '—' : s.sheetNo, style: TextStyle(fontWeight: FontWeight.w700, color: c.text)),
+                Text(s.title.isEmpty ? '—' : s.title, style: TextStyle(fontWeight: FontWeight.w600, color: c.text)),
+                Text(nf(_sheetRowCount[s.id] ?? 0)),
+                Text(printMoney(_sheetTotals[s.id]?.granted ?? 0)),
+                Text(printMoney(_sheetTotals[s.id]?.spent ?? 0)),
+                Text(printMoney(_sheetTotals[s.id]?.remaining ?? 0),
+                    style: TextStyle(fontWeight: FontWeight.w700, color: (_sheetTotals[s.id]?.remaining ?? 0) < 0 ? c.danger : c.text)),
+                Wrap(spacing: 6, runSpacing: 6, children: [
+                  if (_canPrint) ImdIconButton(icon: 'printer', tooltip: 'طباعة المسير', onPressed: () => _printSheet(s)),
+                  ImdIconButton(icon: 'edit', tooltip: _canEdit ? 'فتح وتعديل' : 'عرض', onPressed: () => _addOrEditSheet(s)),
+                  if (_canDelete)
+                    ImdIconButton(
+                        icon: 'trash',
+                        tooltip: 'حذف',
+                        kind: ImdBtnKind.danger,
+                        onPressed: () async {
+                          if (!await imdConfirm(context, 'حذف مسير العهدة رقم ${s.sheetNo} وكل أسطره نهائيًّا؟', ok: 'حذف', danger: true)) return;
+                          await widget.repo.deleteCustodySheet(s, actor: widget.perm.email);
+                          await _load();
+                        }),
+                ]),
+              ],
+          ],
+          cards: true,
+          empty: 'لا مسيراتٍ مطابقة',
+          onRowTap: null,
+        ),
+    ];
+  }
+
   List<Widget> _contractView(ImdColors c) {
     final all = _contracts ?? const <LinkPurchaseContract>[];
     return [
       ImdKpis(children: [
         ImdKpi(label: 'العقود', value: nf(all.length), icon: 'clipboard', color: c.accent),
-        ImdKpi(label: 'القيمة الإجمالية', value: nf(all.fold<double>(0, (s, e) => s + e.amount)), icon: 'dollar', color: c.info),
+        ImdKpi(label: 'إجمالي بالسعودي', value: nf(all.where((e) => e.currency == LinkCurrency.sar).fold<double>(0, (s, e) => s + e.amount)), icon: 'dollar', color: c.info),
+        ImdKpi(label: 'إجمالي باليمني', value: nf(all.where((e) => e.currency == LinkCurrency.yer).fold<double>(0, (s, e) => s + e.amount)), icon: 'dollar', color: c.warn),
         ImdKpi(label: 'قيد التنفيذ', value: nf(all.where((e) => e.status == LinkContractStatus.open).length), icon: 'hourglass', color: c.warn),
       ]),
       ImdSearchBar(
         controller: _q,
-        hint: 'بحث بالرقم أو الموضوع أو المورد…',
+        hint: 'بحث بالرقم أو التصنيف أو التاجر أو الأصناف…',
         onChanged: (_) => setState(() {}),
         actions: [
           ImdSegmented<String>(
@@ -477,11 +598,11 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
         ImdTable(
           columns: const [
             ImdCol('الرقم'),
-            ImdCol('الموضوع', flex: 2),
-            ImdCol('المورد'),
-            ImdCol('القيمة', numeric: true),
-            ImdCol('التوقيع'),
-            ImdCol('النهاية'),
+            ImdCol('التصنيف', flex: 2),
+            ImdCol('المحل / التاجر', flex: 2),
+            ImdCol('العملة'),
+            ImdCol('الإجمالي', numeric: true),
+            ImdCol('التاريخ'),
             ImdCol('الحالة'),
             ImdCol(''),
           ],
@@ -498,11 +619,12 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
       Text(e.contractNo.isEmpty ? '—' : e.contractNo, style: TextStyle(fontWeight: FontWeight.w700, color: c.text)),
       Text(e.title, style: TextStyle(fontWeight: FontWeight.w600, color: c.text)),
       Text(e.supplier.isEmpty ? '—' : e.supplier),
-      Text(nf(e.amount)),
-      Text(_d(e.signDate)),
-      Text(_d(e.endDate)),
+      ImdChip(LinkCurrency.label(e.currency), tone: e.currency == LinkCurrency.yer ? ImdTone.pend : ImdTone.info),
+      Text(printNum(e.amount)),
+      Text(_d(e.listDate)),
       ImdChip(LinkContractStatus.label(e.status), tone: LinkContractStatus.tone(e.status)),
       Wrap(spacing: 6, runSpacing: 6, children: [
+        if (_canPrint) ImdIconButton(icon: 'printer', tooltip: 'طباعة العقد', onPressed: () => _printContract(e)),
         if (e.status == LinkContractStatus.open && _canCreate)
           ImdIconButton(
               icon: 'check-circle',
@@ -763,90 +885,6 @@ class _ClearanceSheetState extends State<_ClearanceSheet> {
       Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.end, children: [
         ImdButton.outline(label: 'إلغاء', onPressed: _busy ? null : () => Navigator.of(context).pop(false)),
         ImdButton(label: 'تسجيل الإخلاء', icon: 'check-circle', busy: _busy, onPressed: () => _save(context)),
-      ]),
-    ]);
-  }
-}
-
-class _ContractSheet extends StatefulWidget {
-  const _ContractSheet({required this.initial, required this.actor});
-
-  final LinkPurchaseContract? initial;
-  final String actor;
-
-  @override
-  State<_ContractSheet> createState() => _ContractSheetState();
-}
-
-class _ContractSheetState extends State<_ContractSheet> {
-  late final _no = TextEditingController(text: widget.initial?.contractNo ?? '');
-  late final _title = TextEditingController(text: widget.initial?.title ?? '');
-  late final _supplier = TextEditingController(text: widget.initial?.supplier ?? '');
-  late final _amount = TextEditingController(text: widget.initial == null || widget.initial!.amount == 0 ? '' : widget.initial!.amount.toString());
-  late final _items = TextEditingController(text: widget.initial?.itemsSummary ?? '');
-  late final _notes = TextEditingController(text: widget.initial?.notes ?? '');
-  late String _signDate = widget.initial?.signDate ?? '';
-  late String _startDate = widget.initial?.startDate ?? '';
-  late String _endDate = widget.initial?.endDate ?? '';
-  late String _status = widget.initial?.status ?? LinkContractStatus.open;
-  bool _busy = false;
-
-  @override
-  void dispose() {
-    for (final c in [_no, _title, _supplier, _amount, _items, _notes]) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
-  Future<void> _save(BuildContext ctx) async {
-    if (_title.text.trim().isEmpty) return showImdToast(ctx, '✖ موضوع العقد مطلوب', error: true);
-    setState(() => _busy = true);
-    final repo = LinkageRepo(ctx.read<AppDatabase>());
-    final data = LinkPurchaseContractsCompanion(
-      contractNo: Value(_no.text.trim()),
-      title: Value(_title.text.trim()),
-      supplier: Value(_supplier.text.trim()),
-      amount: Value(double.tryParse(_amount.text.trim()) ?? 0),
-      signDate: Value(_signDate),
-      startDate: Value(_startDate),
-      endDate: Value(_endDate),
-      status: Value(_status),
-      itemsSummary: Value(_items.text.trim()),
-      notes: Value(_notes.text.trim()),
-      updatedAt: Value(DateTime.now()),
-    );
-    if (widget.initial == null) {
-      await repo.insertContract(
-        data.copyWith(id: Value(Ids.next('lk')), createdBy: Value(widget.actor), createdAt: Value(DateTime.now())),
-        actor: widget.actor,
-      );
-    } else {
-      await repo.updateContract(widget.initial!, data, actor: widget.actor);
-    }
-    if (!ctx.mounted) return;
-    Navigator.of(ctx).pop(true);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      ImdGrid(columns: 4, minItemWidth: 165, gap: 10, children: [
-        ImdLabeled('رقم العقد', ImdFld(controller: _no)),
-        ImdLabeled('الموضوع *', ImdFld(controller: _title)),
-        ImdLabeled('المورد', ImdFld(controller: _supplier)),
-        ImdLabeled('القيمة', ImdFld(controller: _amount, number: true)),
-        ImdLabeled('تاريخ التوقيع', ImdDateField(value: _signDate, onChanged: (v) => setState(() => _signDate = v))),
-        ImdLabeled('تاريخ البداية', ImdDateField(value: _startDate, onChanged: (v) => setState(() => _startDate = v))),
-        ImdLabeled('تاريخ النهاية', ImdDateField(value: _endDate, onChanged: (v) => setState(() => _endDate = v))),
-        ImdLabeled('الحالة', ImdSelect<String>(items: [for (final e in LinkContractStatus.meta.entries) (e.key, e.value.$1)], value: _status, onChanged: (v) => setState(() => _status = v ?? LinkContractStatus.open))),
-      ]),
-      ImdLabeled('ملخص البنود', ImdFld(controller: _items, maxLines: 2)),
-      ImdLabeled('ملاحظات', ImdFld(controller: _notes)),
-      const SizedBox(height: 14),
-      Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.end, children: [
-        ImdButton.outline(label: 'إلغاء', onPressed: _busy ? null : () => Navigator.of(context).pop(false)),
-        ImdButton(label: 'حفظ العقد', icon: 'save', busy: _busy, onPressed: () => _save(context)),
       ]),
     ]);
   }

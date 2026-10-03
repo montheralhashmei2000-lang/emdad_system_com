@@ -805,6 +805,26 @@ class DataExporter {
                 'settledAt': m.settledAt.toIso8601String(),
               })
           .toList(),
+      // البرقيات والارتباطات: تُنقل بتسلسل Drift الجاهز (toJson) فلا قائمة حقولٍ
+      // ثانية تنحرف عن الجدول؛ واختبار الذهاب والإياب يفحص كل عمود.
+      'cables': (await _rows(db.cables, ids('cables'), (t) => t.id)).map((e) => e.toJson()).toList(),
+      'linkPersons': (await _rows(db.linkPersons, ids('link_persons'), (t) => t.id)).map((e) => e.toJson()).toList(),
+      'linkStatusLogs':
+          (await _rows(db.linkStatusLogs, ids('link_status_logs'), (t) => t.id)).map((e) => e.toJson()).toList(),
+      'linkFinCustodies':
+          (await _rows(db.linkFinCustodies, ids('link_fin_custodies'), (t) => t.id)).map((e) => e.toJson()).toList(),
+      'linkClearances':
+          (await _rows(db.linkClearances, ids('link_clearances'), (t) => t.id)).map((e) => e.toJson()).toList(),
+      'linkPurchaseContracts': (await _rows(db.linkPurchaseContracts, ids('link_purchase_contracts'), (t) => t.id))
+          .map((e) => e.toJson())
+          .toList(),
+      'linkArmaments':
+          (await _rows(db.linkArmaments, ids('link_armaments'), (t) => t.id)).map((e) => e.toJson()).toList(),
+      'linkCustodySheets':
+          (await _rows(db.linkCustodySheets, ids('link_custody_sheets'), (t) => t.id)).map((e) => e.toJson()).toList(),
+      'linkCustodySheetRows': (await _rows(db.linkCustodySheetRows, ids('link_custody_sheet_rows'), (t) => t.id))
+          .map((e) => e.toJson())
+          .toList(),
       'settings':
           (await _rows(db.appSettings, ids('app_settings'), (t) => t.key))
               .where((s) => !SettingsRepo.localOnlyKeys.contains(s.key))

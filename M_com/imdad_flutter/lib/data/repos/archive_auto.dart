@@ -23,6 +23,8 @@ const List<(String, String, String)> kArchiveOps = [
   ('rationOrder', 'طلبيات الإعاشة', 'clipboard'),
   ('stocktake', 'مستندات الجرد', 'clipboard'),
   ('cable', 'نماذج البرقيات', 'mail'),
+  ('contract', 'عقود الشراء', 'clipboard'),
+  ('custodySheet', 'مسيرات العهدة', 'dollar'),
   ('report', 'التقارير والمطبوعات', 'file'),
 ];
 
