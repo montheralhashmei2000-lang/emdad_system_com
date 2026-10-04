@@ -4,6 +4,28 @@ import 'package:flutter/rendering.dart';
 import 'imd_icon.dart';
 import 'imd_tokens.dart';
 
+/// صندوقٌ بعرضٍ **مفضَّل** لا يتجاوز المتاح: `min(width, ما يتّسع له الأب)`.
+///
+/// بديلُ `SizedBox(width: 220, …)` في أشرطة الفلاتر والنماذج. القاعدة (CLAUDE.md)
+/// تمنع الأبعاد الثابتة؛ وهذا يُبقي العرض المعتاد على سطح المكتب ويتقلّص تلقائيًّا
+/// على الشاشة الضيقة بدل أن يفيض. في سياقٍ غير محدود العرض (صفّ بلا Flexible)
+/// يُستعمل [width] كما هو. لا يصلح داخل خلايا الجداول (تقيس أبعادها الذاتية)،
+/// ولا داخل `IntrinsicWidth` كحوارات AlertDialog.
+class ImdFit extends StatelessWidget {
+  const ImdFit({super.key, required this.width, required this.child});
+
+  final double width;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, cons) => SizedBox(
+          width: cons.hasBoundedWidth && cons.maxWidth < width ? cons.maxWidth : width,
+          child: child,
+        ),
+      );
+}
+
 /// شبكة المؤشرات: auto-fit بحد أدنى 210، وأربعة أعمدة عند ≥1200،
 /// وعمودان بفجوة 8 على الجوال، وعمود واحد ≤420.
 class ImdKpis extends StatelessWidget {

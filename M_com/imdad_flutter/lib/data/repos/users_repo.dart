@@ -4,8 +4,10 @@ import 'package:drift/drift.dart';
 
 import '../db/app_database.dart';
 import '../../core/security/password_hash.dart';
+import '../../core/security/warehouse_scope.dart';
 import '../../domain/access_control.dart';
 import 'audit_repo.dart';
+import '../../core/error_log.dart';
 
 /// إدارة المستخدمين والأدوار ونطاق المستودعات.
 /// كل عمليات هذه الفئة مقصورة على من يملك صلاحية إدارة المستخدمين —
@@ -25,18 +27,16 @@ class UsersRepo {
     try {
       final v = jsonDecode(user.roles);
       if (v is List) return v.map((e) => e.toString()).toList();
-    } catch (_) {}
+    } catch (err, stack) {
+      ErrorLogger.log('users.rolesJson', err, stack);
+    }
     return const [];
   }
 
-  static List<String>? scopeOf(User user) {
-    if (user.warehouseScope == 'ALL') return null;
-    try {
-      final v = jsonDecode(user.warehouseScope);
-      if (v is List) return v.map((e) => e.toString()).toList();
-    } catch (_) {}
-    return null;
-  }
+  /// نطاق المستودعات: `null` ⇒ كل المستودعات. التالف يُرجع قائمةً فارغة
+  /// (فشل مغلق) — انظر [parseWarehouseScope].
+  static List<String>? scopeOf(User user) =>
+      parseWarehouseScope(user.warehouseScope, source: 'users.scopeJson');
 
   static String scopeLabel(User user) {
     final scope = scopeOf(user);

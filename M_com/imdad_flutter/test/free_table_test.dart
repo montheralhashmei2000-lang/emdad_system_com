@@ -12,10 +12,10 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('الجدول الحر: ترميز وفك وصيغة قديمة', () {
-    final t = FreeTable(
+    const t = FreeTable(
       title: 'المرسَل إليهم',
-      cols: const [FreeCol('الاسم', 6), FreeCol('الرتبة', 3), FreeCol('ملاحظة', 4)],
-      rows: const [
+      cols: [FreeCol('الاسم', 6), FreeCol('الرتبة', 3), FreeCol('ملاحظة', 4)],
+      rows: [
         ['أحمد', 'رائد', ''],
         ['', '', ''],
       ],
@@ -48,7 +48,7 @@ void main() {
     }
 
     final withTable = await make(
-        'a', FreeTable(cols: const [FreeCol('الجهة', 5), FreeCol('تاريخ الاستلام', 3)], rows: const [['شعبة', '2026']]).encode());
+        'a', const FreeTable(cols: [FreeCol('الجهة', 5), FreeCol('تاريخ الاستلام', 3)], rows: [['شعبة', '2026']]).encode());
     final without = await make('b', '[]');
     expect(String.fromCharCodes((await CablePrint.build(db, withTable)).take(5)), '%PDF-');
     expect((await CablePrint.build(db, without)).isNotEmpty, isTrue);
@@ -58,10 +58,10 @@ void main() {
     final db = AppDatabase.forTesting(NativeDatabase.memory());
     addTearDown(db.close);
     final repo = LinkageRepo(db);
-    await repo.insertContract(LinkPurchaseContractsCompanion(
-      id: const Value('h'),
-      title: const Value('بهارات'),
-      invoiceNo: const Value('446'),
+    await repo.insertContract(const LinkPurchaseContractsCompanion(
+      id: Value('h'),
+      title: Value('بهارات'),
+      invoiceNo: Value('446'),
     ));
     await repo.insertContract(LinkPurchaseContractsCompanion(
       id: const Value('i'),

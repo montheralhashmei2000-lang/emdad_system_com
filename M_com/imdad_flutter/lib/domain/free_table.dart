@@ -6,6 +6,7 @@
 library;
 
 import 'dart:convert';
+import '../core/error_log.dart';
 
 /// عمودٌ: عنوانه وعرضه النسبي (يتناسب مع بقية الأعمدة).
 class FreeCol {
@@ -65,7 +66,9 @@ class FreeTable {
         ];
         return FreeTable(title: '${raw['title'] ?? ''}', cols: cols, rows: rows.isEmpty ? [List.filled(cols.length, '')] : rows);
       }
-    } catch (_) {}
+    } catch (err, stack) {
+      ErrorLogger.log('freeTable.parse', err, stack);
+    }
     return FreeTable.starter();
   }
 

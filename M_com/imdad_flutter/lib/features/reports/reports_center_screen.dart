@@ -16,6 +16,7 @@ import '../../data/repos/settings_repo.dart';
 import 'actual_entitlement_screen.dart';
 import 'camp_ledger_screen.dart';
 import 'camp_settlement_screen.dart';
+import '../../core/ui/imd_layout.dart';
 
 /// مركز التقارير — نقل `reports-center.js`: قائمة جانبية بتسعة تقارير،
 /// فلاتر مخصصة لكل تقرير، ملخّص برقائق، جدول قابل للفرز بسطر إجمالي،
@@ -484,7 +485,7 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
                     _run();
                   },
                 ),
-                SizedBox(
+                ImdFit(
                   width: 240,
                   child: ImdFld(
                     controller: _q,
@@ -614,7 +615,7 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
                       _run();
                     },
                   ),
-                  SizedBox(
+                  ImdFit(
                     width: 170,
                     child: ImdLabeled(
                       'من تاريخ',
@@ -628,7 +629,7 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
                       ),
                     ),
                   ),
-                  SizedBox(
+                  ImdFit(
                     width: 170,
                     child: ImdLabeled(
                       'إلى تاريخ',
@@ -645,7 +646,7 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
                 ]),
           ));
         case 'date':
-          fields.add(SizedBox(
+          fields.add(ImdFit(
             width: 190,
             child: ImdLabeled(
               x.label,
@@ -663,7 +664,7 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
           if (!opts.any((o) => o.$1 == f[x.key])) {
             f[x.key] = opts.isEmpty ? '' : opts.first.$1;
           }
-          fields.add(SizedBox(
+          fields.add(ImdFit(
             width: 220,
             child: ImdLabeled(
               x.label,

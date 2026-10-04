@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sqlcipher_flutter_libs/sqlcipher_flutter_libs.dart';
 import 'package:sqlite3/open.dart';
 import 'package:sqlite3/common.dart';
 import 'package:sqlite3/sqlite3.dart';
+import '../../core/error_log.dart';
 
 /// تشفير قاعدة البيانات على الجهاز (SQLCipher — AES-256).
 ///
@@ -21,6 +23,12 @@ class DbCipher {
 
   static const _storage = FlutterSecureStorage();
   static const String _keyName = 'imdad.db.key';
+
+  /// اسم ملف القاعدة في مجلد بيانات التطبيق.
+  static const String fileName = 'imdad.sqlite';
+
+  /// لاحقة النسخة غير المشفّرة التي يتركها الترحيل القديم.
+  static const String plainBackupSuffix = '.plain.bak';
 
   /// يقرأ مفتاح القاعدة، ويولّده عند أول تشغيل.
   static Future<String> loadKey() async {
@@ -63,8 +71,9 @@ class DbCipher {
   /// ترحيل قاعدة قديمة غير مشفّرة إلى نسخة مشفّرة بالمفتاح نفسه.
   ///
   /// يُنفَّذ مرة واحدة قبل أول فتح: تُصدَّر البيانات إلى ملف جديد عبر
-  /// `sqlcipher_export`، ويُحتفظ بالأصل باسم `.plain.bak` حتى لا يضيع شيء إن
-  /// انقطع الترحيل في منتصفه.
+  /// `sqlcipher_export`، ويُحتفظ بالأصل باسم `.plain.bak` إلى أن تُفتح النسخة
+  /// المشفّرة وتُطابق الأصل، ثم يُحذف: بقاؤه نسخةً مقروءةً بكل البيانات يُبطل
+  /// التشفير. فشل حذفه يُسجَّل تحذيرًا ولا يُفشل الترحيل.
   static Future<bool> migratePlainFile(File file, String keyHex) async {
     if (!file.existsSync()) return false;
     if (!_looksPlain(file)) return false;
@@ -72,14 +81,30 @@ class DbCipher {
     final encrypted = File('${file.path}.enc');
     if (encrypted.existsSync()) encrypted.deleteSync();
 
+    int sourceObjects;
     final db = sqlite3.open(file.path);
     try {
       if (!isEncrypted(db)) return false; // المكتبة ليست SQLCipher: لا ترحيل
+      sourceObjects = _objectCount(db);
       db.execute("ATTACH DATABASE '${encrypted.path}' AS enc KEY \"x'$keyHex'\"");
       db.execute("SELECT sqlcipher_export('enc')");
       db.execute('DETACH DATABASE enc');
     } finally {
       db.dispose();
+    }
+
+    // لا يُستبدل الأصل قبل التأكد أن النسخة المشفّرة تُفتح بالمفتاح وتحمل
+    // البيانات نفسها؛ وإلا بقي الأصل سليمًا والتشغيل التالي يعيد المحاولة.
+    if (!_verifyEncrypted(encrypted, keyHex, sourceObjects)) {
+      try {
+        encrypted.deleteSync();
+      } catch (err, stack) {
+        ErrorLogger.log('db.cleanupEncrypted', err, stack);
+      }
+      throw StateError(
+        'تعذّر التحقق من النسخة المشفّرة لقاعدة البيانات، فبقيت القاعدة الأصلية كما هي. '
+        'أعد تشغيل التطبيق للمحاولة من جديد.',
+      );
     }
 
     // القاعدة تعمل بوضع WAL، فيرافق الملفَ ملفّا `-wal` و`-shm`. لو بقيا بعد
@@ -99,7 +124,72 @@ class DbCipher {
         'النسخة المشفّرة محفوظة في ${encrypted.path}',
       );
     }
+
+    // النسخة المشفّرة تعمل الآن؛ الأصل المقروء لم يعد له مبرر.
+    final backup = File('${file.path}$plainBackupSuffix');
+    try {
+      backup.deleteSync();
+    } catch (e) {
+      debugPrint(
+        'DbCipher: تعذّر حذف النسخة غير المشفّرة ${backup.path} ($e) — احذفها يدويًا لأنها تحوي بيانات مقروءة.',
+      );
+    }
+    _dropSidecars(backup);
     return true;
+  }
+
+  /// يحذف أي `*.plain.bak` بجوار [file] — بقايا ترحيلٍ قديم كان يتركها — **بشرط**
+  /// أن تكون القاعدة المشفّرة سليمة (ليست عادية، وتُفتح بالمفتاح، وفيها مخطط).
+  /// وإلا بقيت النسخ كما هي: قد تكون الوحيدة التي تحوي البيانات.
+  ///
+  /// يعيد مسارات ما حُذف. ما تعذّر حذفه يُسجَّل تحذيرًا ولا يُرمى.
+  static List<String> removeStalePlainBackups(File file, String keyHex) {
+    final dir = file.parent;
+    if (!dir.existsSync()) return const [];
+    final stale = [
+      for (final e in dir.listSync().whereType<File>())
+        if (e.path.endsWith(plainBackupSuffix)) e,
+    ];
+    if (stale.isEmpty) return const [];
+
+    final healthy = file.existsSync() && !_looksPlain(file) && _verifyEncrypted(file, keyHex, 1, atLeast: true);
+    if (!healthy) return const [];
+
+    final removed = <String>[];
+    for (final f in stale) {
+      try {
+        f.deleteSync();
+        removed.add(f.path);
+        _dropSidecars(f);
+      } catch (e) {
+        debugPrint('DbCipher: تعذّر حذف النسخة غير المشفّرة ${f.path} ($e) — احذفها يدويًا.');
+      }
+    }
+    return removed;
+  }
+
+  /// عدد كائنات المخطط (جداول وفهارس…) — بصمة سريعة لمطابقة الأصل بالنسخة.
+  static int _objectCount(CommonDatabase db) =>
+      db.select('SELECT COUNT(*) AS c FROM sqlite_master').first['c'] as int;
+
+  /// يفتح [file] بالمفتاح ويتأكد أنه يُقرأ ويحمل [expected] كائنًا من المخطط
+  /// (أو [expected] فأكثر إن كان [atLeast]).
+  static bool _verifyEncrypted(File file, String keyHex, int expected, {bool atLeast = false}) {
+    Database? db;
+    try {
+      db = sqlite3.open(file.path);
+      applyKey(db, keyHex);
+      final n = _objectCount(db);
+      return atLeast ? n >= expected : n == expected;
+    } catch (_) {
+      return false;
+    } finally {
+      try {
+        db?.dispose();
+      } catch (err, stack) {
+        ErrorLogger.log('db.dispose', err, stack);
+      }
+    }
   }
 
   static void _dropSidecars(File file) {
@@ -108,7 +198,9 @@ class DbCipher {
       if (f.existsSync()) {
         try {
           f.deleteSync();
-        } catch (_) {}
+        } catch (err, stack) {
+          ErrorLogger.log('db.sidecar', err, stack);
+        }
       }
     }
   }
@@ -128,7 +220,9 @@ class DbCipher {
     } finally {
       try {
         handle?.closeSync();
-      } catch (_) {}
+      } catch (err, stack) {
+        ErrorLogger.log('db.closeHandle', err, stack);
+      }
     }
   }
 }

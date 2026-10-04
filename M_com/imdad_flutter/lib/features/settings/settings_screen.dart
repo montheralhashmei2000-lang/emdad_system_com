@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/security/auth_service.dart';
 import '../../core/security/esign.dart';
+import '../../core/security/idle_lock.dart';
 import '../../core/security/perm.dart';
 import '../../core/ui/imd_charts.dart';
 import '../../core/ui/imd_drop_zone.dart';
@@ -16,9 +17,11 @@ import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_layout.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
+import '../../data/backup/backup_scheduler.dart';
 import '../../data/db/app_database.dart';
 import '../catalog/authorities_screen.dart';
 import '../sync/sync_screen.dart';
+import 'backup_schedule_card.dart';
 import 'branding_screen.dart';
 import 'device_activation_screen.dart';
 import 'forms_designer_screen.dart';
@@ -577,6 +580,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ? ImdEmbedScope(child: screen)
       : const ImdEmptyState.noPermission(message: 'لا تملك صلاحية هذا القسم — تواصل مع مدير النظام');
 
+  static T? _readOrNull<T>(BuildContext context) {
+    try {
+      return context.read<T>();
+    } on ProviderNotFoundException {
+      return null;
+    }
+  }
+
   /// كل لوحة: (القسم، نصها للبحث، الودجة).
   List<(String, String, Widget)> _panels() {
     final c = context.imd;
@@ -584,15 +595,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final user = auth.currentUser;
     final name = user == null ? '—' : (user.name.isNotEmpty ? user.name : user.email);
     final role = user?.role == 'admin' ? 'مدير النظام' : 'مستخدم';
+    // غير موجود في الاختبارات التي تبني الشاشة بلا القفل التلقائي.
+    final IdleLock? idle = _readOrNull<IdleLock>(context);
 
     return [
       (
         'archiveAuto',
         'الأرشفة التلقائية أرشيف السندات التقارير المطبوعة الاستلام الصرف التحويل المرتجعات الجرد',
-        ImdPanel(
+        const ImdPanel(
           title: 'الأرشفة التلقائية عند الطباعة',
           icon: 'zap',
-          child: const ArchiveAutoSettingsCard(),
+          child: ArchiveAutoSettingsCard(),
         ),
       ),
       (
@@ -602,7 +615,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           centerVertically: true,
           child: Wrap(spacing: 18, runSpacing: 14, crossAxisAlignment: WrapCrossAlignment.center, children: [
             ImdScoreRing(percent: _score),
-            SizedBox(
+            ImdFit(
               width: 260,
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
                 Text('درجة الجاهزية الحالية',
@@ -647,7 +660,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   if (mounted) _toast('✔ حُدِّثت بيانات الشاشة');
                 },
               ),
+              if (idle != null) ImdButton.outline(label: 'قفل الشاشة الآن', icon: 'lock', small: true, onPressed: idle.lockNow),
             ]),
+            if (idle != null) ...[
+              const SizedBox(height: 12),
+              ImdLabeled(
+                'القفل التلقائي بعد الخمول',
+                ImdSelect<int>(
+                  items: [for (final m in IdleLock.choices) (m, m == 0 ? 'معطّل' : 'بعد $m دقيقة بلا نشاط')],
+                  value: IdleLock.choices.contains(idle.minutes) ? idle.minutes : IdleLock.defaultMinutes,
+                  onChanged: (v) async {
+                    await idle.setMinutes(v ?? IdleLock.defaultMinutes);
+                    if (mounted) {
+                      setState(() {});
+                      _toast(idle.enabled ? '✔ يُقفل النظام بعد ${idle.minutes} دقيقة خمول' : '⚠ عُطّل القفل التلقائي');
+                    }
+                  },
+                ),
+              ),
+              const ImdNote('عند القفل تبقى الشاشات مفتوحة خلف الغطاء ولا يضيع عمل؛ تُفتح بكلمة مرورك.'),
+            ],
           ]),
         ),
       ),
@@ -975,6 +1007,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
         ),
       ),
+      if (_perm.admin && _readOrNull<BackupScheduler>(context) != null)
+        (
+          'backup',
+          'النسخ الاحتياطي التلقائي المشفّر جدولة كلمة مرور مجلد',
+          const BackupScheduleCard(),
+        ),
       (
         'health',
         'فحص سلامة النظام اتساق البيانات السجلات اليتيمة',

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import '../../core/error_log.dart';
 
 /// مرفقٌ ماليّ محفوظ على قرص هذا الجهاز (صورة أو PDF).
 class FinAttachment {
@@ -68,6 +69,8 @@ class FinanceFiles {
     try {
       final f = File(path);
       if (await f.exists()) await f.delete();
-    } catch (_) {}
+    } catch (err, stack) {
+      ErrorLogger.log('finance.fileDelete', err, stack);
+    }
   }
 }

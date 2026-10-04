@@ -12,7 +12,7 @@ import '../../core/security/pbkdf2.dart';
 /// مقروءًا بالكامل: أسماء الوحدات والأرصدة وكل الحركات. من يأخذ الملف يحصل على
 /// كل ما يحميه التشفير — فكان الباب الخلفي مفتوحًا بعد إحكام الباب الأمامي.
 ///
-/// الصيغة: `IMDBK1` + ملح (١٦) + متجه تهيئة (١٢) + نص مشفَّر بـAES-256-GCM.
+/// الصيغة: `IMDBK2` (310,000 دورة؛ والقديمة `IMDBK1` بـ 60,000 تبقى تُفتح) + ملح (١٦) + متجه تهيئة (١٢) + نص مشفَّر بـAES-256-GCM.
 /// المفتاح يُشتق من كلمة المرور بـPBKDF2، فلا يُحفظ المفتاح في أي مكان.
 ///
 /// **المقايضة:** نسيان كلمة المرور يعني ضياع هذه النسخة نهائيًا — لا باب خلفيًا
@@ -21,20 +21,30 @@ class BackupCrypto {
   const BackupCrypto._();
 
   /// بادئة تميّز الملف المشفَّر عن JSON العادي، فيُعرف نوعه قبل فتحه.
-  static const List<int> magic = [0x49, 0x4D, 0x44, 0x42, 0x4B, 0x31]; // IMDBK1
+  /// البادئة تحدد عدد دورات الاشتقاق، فلا حاجة لحقل إضافي في الترويسة.
+  static const List<int> magic = [0x49, 0x4D, 0x44, 0x42, 0x4B, 0x32]; // IMDBK2
+
+  /// بادئة النسخ القديمة (60,000 دورة) — تُقرأ ولا تُكتب.
+  static const List<int> magicV1 = [0x49, 0x4D, 0x44, 0x42, 0x4B, 0x31]; // IMDBK1
 
   static const int _saltLength = 16;
   static const int _ivLength = 12;
 
   /// دورات الاشتقاق — أعلى من دورات المزامنة لأن الملف قد يُسرق ويُهاجَم
   /// بلا حدّ زمني، بخلاف جلسة المزامنة قصيرة العمر.
-  static const int iterations = 60000;
+  static const int iterations = 310000;
+
+  /// دورات النسخ القديمة `IMDBK1`.
+  static const int legacyIterations = 60000;
 
   /// هل هذا الملف نسخة احتياطية مشفّرة؟
-  static bool isEncrypted(List<int> bytes) {
-    if (bytes.length < magic.length) return false;
-    for (var i = 0; i < magic.length; i++) {
-      if (bytes[i] != magic[i]) return false;
+  static bool isEncrypted(List<int> bytes) =>
+      _startsWith(bytes, magic) || _startsWith(bytes, magicV1);
+
+  static bool _startsWith(List<int> bytes, List<int> prefix) {
+    if (bytes.length < prefix.length) return false;
+    for (var i = 0; i < prefix.length; i++) {
+      if (bytes[i] != prefix[i]) return false;
     }
     return true;
   }
@@ -47,7 +57,7 @@ class BackupCrypto {
     final iv = Uint8List.fromList(List.generate(_ivLength, (_) => rnd.nextInt(256)));
 
     final cipher = GCMBlockCipher(AESEngine())
-      ..init(true, AEADParameters(KeyParameter(_keyOf(password, salt)), 128, iv, Uint8List(0)));
+      ..init(true, AEADParameters(KeyParameter(_keyOf(password, salt, iterations)), 128, iv, Uint8List(0)));
     final body = cipher.process(Uint8List.fromList(utf8.encode(json)));
 
     return Uint8List.fromList([...magic, ...salt, ...iv, ...body]);
@@ -62,12 +72,14 @@ class BackupCrypto {
     if (bytes.length <= headerLength + 16) {
       throw const BackupError('ملف النسخة الاحتياطية ناقص أو تالف');
     }
+    // النسخ القديمة بدوراتها القديمة — وبهذا لا تضيع نسخةٌ أُخذت قبل الرفع.
+    final rounds = _startsWith(bytes, magic) ? iterations : legacyIterations;
     final salt = Uint8List.fromList(bytes.sublist(6, 6 + _saltLength));
     final iv = Uint8List.fromList(bytes.sublist(6 + _saltLength, headerLength));
     final body = Uint8List.fromList(bytes.sublist(headerLength));
 
     final cipher = GCMBlockCipher(AESEngine())
-      ..init(false, AEADParameters(KeyParameter(_keyOf(password, salt)), 128, iv, Uint8List(0)));
+      ..init(false, AEADParameters(KeyParameter(_keyOf(password, salt, rounds)), 128, iv, Uint8List(0)));
     try {
       return utf8.decode(cipher.process(body));
     } on InvalidCipherTextException {
@@ -78,8 +90,8 @@ class BackupCrypto {
     }
   }
 
-  static Uint8List _keyOf(String password, Uint8List salt) =>
-      Pbkdf2.derive(utf8.encode(password), salt, iterations: iterations, length: 32);
+  static Uint8List _keyOf(String password, Uint8List salt, int rounds) =>
+      Pbkdf2.derive(utf8.encode(password), salt, iterations: rounds, length: 32);
 }
 
 /// خطأ نسخة احتياطية برسالة جاهزة للعرض.

@@ -31,7 +31,9 @@ dependencies:
   shared_preferences: ^2.3.2
   file_picker: ^8.1.2
   image_picker: ^1.1.2 # تصوير الفاتورة بكاميرا الهاتف (أندرويد/iOS؛ على ويندوز اختيار ملف ممسوح)
-  flutter_tesseract_ocr: ^0.4.31 # OCR مجاني دون إنترنت على أندرويد (Tesseract + تدريب عربي)
+  flutter_tesseract_ocr:
+    # نسخة محلية معدَّلة تُبنى مع Gradle 9 / AGP 9 — انظر packages/flutter_tesseract_ocr/README_FORK.md
+    path: packages/flutter_tesseract_ocr # OCR مجاني دون إنترنت على أندرويد (Tesseract + تدريب عربي)
   excel: ^4.0.3
   # قراءة ملفات xlsx الواقعية: حزمة excel ترفض ملفات Excel العربية التي تعرّف تنسيقات أرقام
   # مخصصة بمعرّفات أقل من ١٦٤ (وهو شائع)، فللاستيراد قارئ بسيط فوق هاتين الحزمتين.

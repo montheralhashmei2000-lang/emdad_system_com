@@ -12,6 +12,7 @@ import 'doc_numbering.dart';
 import 'finance_files.dart';
 import '../db/app_database.dart';
 import 'audit_repo.dart';
+import '../../core/error_log.dart';
 
 /// حالات الفرد وبياناتها للعرض — المصدر الوحيد للمفاتيح والنبرات.
 class LinkStatus {
@@ -205,7 +206,7 @@ class LinkageRepo {
   }) async {
     final rows = await db.select(db.linkPersons).get();
     final query = q.trim().toLowerCase();
-    var out = rows.where((p) {
+    final out = rows.where((p) {
       if (status.isNotEmpty && p.status != status) return false;
       if (subUnit.isNotEmpty && p.subUnit != subUnit) return false;
       if (camp.isNotEmpty && p.camp != camp) return false;
@@ -330,10 +331,10 @@ class LinkageRepo {
     final today = isoDay(DateTime.now());
     await (db.update(db.linkPersons)..where((t) => t.id.equals(p.id))).write(
       LinkPersonsCompanion(
-        status: Value(LinkStatus.present),
+        status: const Value(LinkStatus.present),
         statusFrom: Value(today),
-        statusTo: Value(''),
-        statusDays: Value(0),
+        statusTo: const Value(''),
+        statusDays: const Value(0),
         updatedAt: Value(DateTime.now()),
       ),
     );
@@ -468,7 +469,7 @@ class LinkageRepo {
 
   Future<void> updateCustody(LinkFinCustody c, LinkFinCustodiesCompanion e, {String actor = ''}) async {
     final no = e.custodyNo.present ? e.custodyNo.value.trim() : c.custodyNo;
-    if (no.isEmpty) throw LinkBlocked('رقم العهدة مطلوب');
+    if (no.isEmpty) throw const LinkBlocked('رقم العهدة مطلوب');
     if (no != c.custodyNo && await custodyNoTaken(no, excludeId: c.id)) {
       throw LinkBlocked('رقم العهدة «$no» مستخدم لعهدة أخرى');
     }
@@ -477,11 +478,11 @@ class LinkageRepo {
       final moneyChanged = (e.amount.present && e.amount.value != c.amount) ||
           (e.currency.present && e.currency.value != c.currency) ||
           (e.kind.present && e.kind.value != c.kind);
-      if (moneyChanged) throw LinkBlocked('العهدة مُخلَّاة — لا يُعدَّل مبلغها أو عملتها أو نوعها. احذف الإخلاء أولًا.');
+      if (moneyChanged) throw const LinkBlocked('العهدة مُخلَّاة — لا يُعدَّل مبلغها أو عملتها أو نوعها. احذف الإخلاء أولًا.');
     }
     // الإلغاء لا يجوز لعهدةٍ لها إخلاء.
     if (e.status.present && e.status.value == CustodyStatus.canceled && c.status == CustodyStatus.cleared) {
-      throw LinkBlocked('لا تُلغى عهدة مُخلَّاة');
+      throw const LinkBlocked('لا تُلغى عهدة مُخلَّاة');
     }
     final status = e.status.present ? e.status.value : c.status;
     await (db.update(db.linkFinCustodies)..where((t) => t.id.equals(c.id))).write(
@@ -757,7 +758,9 @@ class LinkageRepo {
     var code = 'XXXX';
     try {
       code = await DocNumbering(db).deviceCode();
-    } catch (_) {}
+    } catch (err, stack) {
+      ErrorLogger.log('linkage.deviceCode', err, stack);
+    }
     final now = DateTime.now();
     final head = 'إخلاء-$code-${now.year}${now.month.toString().padLeft(2, '0')}-';
     final rows = await db.select(db.linkClearances).get();
@@ -1242,12 +1245,53 @@ class LinkageRepo {
     );
   }
 
+  // ───────────────── استلام مبلغ مالي ─────────────────
+
+  /// سندات استلام المبالغ، الأحدث أولًا.
+  Future<List<LinkMoneyReceipt>> moneyReceipts() async {
+    final rows = await db.select(db.linkMoneyReceipts).get();
+    rows.sort((a, b) {
+      final byDate = b.receiptDate.compareTo(a.receiptDate);
+      return byDate != 0 ? byDate : b.createdAt.compareTo(a.createdAt);
+    });
+    return rows;
+  }
+
+  /// يحفظ السند: جديدًا إن لم يوجد، وإلا تعديلًا.
+  Future<void> saveMoneyReceipt(LinkMoneyReceiptsCompanion e, {String actor = ''}) async {
+    final existing = await (db.select(db.linkMoneyReceipts)..where((t) => t.id.equals(e.id.value))).getSingleOrNull();
+    if (existing == null) {
+      await db.into(db.linkMoneyReceipts).insert(e);
+    } else {
+      await (db.update(db.linkMoneyReceipts)..where((t) => t.id.equals(e.id.value)))
+          .write(e.copyWith(updatedAt: Value(DateTime.now())));
+    }
+    await AuditRepo(db).log(
+      action: existing == null ? 'linkage.money_receipt.create' : 'linkage.money_receipt.update',
+      entityType: 'linkage',
+      summary: '${existing == null ? 'تسجيل' : 'تعديل'} سند استلام مبلغ مالي — المستلم: ${e.receiverName.present ? e.receiverName.value : ''}',
+      risk: AuditRepo.riskNormal,
+      actorEmail: actor,
+    );
+  }
+
+  Future<void> deleteMoneyReceipt(LinkMoneyReceipt r, {String actor = ''}) async {
+    await (db.delete(db.linkMoneyReceipts)..where((t) => t.id.equals(r.id))).go();
+    await AuditRepo(db).log(
+      action: 'linkage.money_receipt.delete',
+      entityType: 'linkage',
+      summary: 'حذف سند استلام مبلغ مالي — المستلم: ${r.receiverName}',
+      risk: AuditRepo.riskHigh,
+      actorEmail: actor,
+    );
+  }
+
   // ───────────────── التسليح ─────────────────
 
   Future<List<LinkArmament>> armaments({String q = '', String view = ''}) async {
     final rows = await db.select(db.linkArmaments).get();
     final query = q.trim().toLowerCase();
-    var out = rows.where((a) {
+    final out = rows.where((a) {
       if (view == 'out' && a.returned) return false;
       if (view == 'returned' && !a.returned) return false;
       if (query.isEmpty) return true;
@@ -1276,12 +1320,27 @@ class LinkageRepo {
     );
   }
 
+  /// تعديل سجل تسليحٍ محفوظ (السلاح والقرون والذخيرة والتاريخ والملاحظات).
+  Future<void> updateArmament(String id, LinkArmamentsCompanion e, {String actor = ''}) async {
+    await (db.update(db.linkArmaments)..where((t) => t.id.equals(id))).write(
+      e.copyWith(updatedAt: Value(DateTime.now())),
+    );
+    await AuditRepo(db).log(
+      action: 'linkage.armament.update',
+      entityType: 'linkage',
+      summary:
+          'تعديل سجل تسليح «${e.weaponType.present ? e.weaponType.value : ''}» للفرد ${e.personName.present ? e.personName.value : ''}',
+      risk: AuditRepo.riskNormal,
+      actorEmail: actor,
+    );
+  }
+
   /// ردّ السلاح بتاريخه.
   Future<void> returnArmament(LinkArmament a,
       {required String returnedDate, String actor = ''}) async {
     await (db.update(db.linkArmaments)..where((t) => t.id.equals(a.id))).write(
       LinkArmamentsCompanion(
-        returned: Value(true),
+        returned: const Value(true),
         returnedDate: Value(returnedDate),
         updatedAt: Value(DateTime.now()),
       ),

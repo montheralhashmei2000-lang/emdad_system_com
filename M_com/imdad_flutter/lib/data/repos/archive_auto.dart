@@ -25,6 +25,7 @@ const List<(String, String, String)> kArchiveOps = [
   ('cable', 'نماذج البرقيات', 'mail'),
   ('contract', 'عقود الشراء', 'clipboard'),
   ('custodySheet', 'مسيرات العهدة', 'dollar'),
+  ('moneyReceipt', 'سندات استلام المبالغ', 'dollar'),
   ('report', 'التقارير والمطبوعات', 'file'),
 ];
 

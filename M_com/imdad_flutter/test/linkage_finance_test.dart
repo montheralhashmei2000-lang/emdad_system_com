@@ -45,8 +45,8 @@ void main() {
   });
 
   test('إخلاء عقد ينفّذه، وحذفه يعيده قيد التنفيذ', () async {
-    await repo.insertContract(LinkPurchaseContractsCompanion(
-        id: const Value('k1'), title: const Value('توريد أرز'), supplier: const Value('مورد'), amount: const Value(9000)));
+    await repo.insertContract(const LinkPurchaseContractsCompanion(
+        id: Value('k1'), title: Value('توريد أرز'), supplier: Value('مورد'), amount: Value(9000)));
     await repo.addClearance(kind: LinkClearanceKind.contract, refId: 'k1', clearanceDate: '2026-10-03');
     expect((await repo.contracts()).single.status, LinkContractStatus.done);
 

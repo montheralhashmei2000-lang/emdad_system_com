@@ -30,7 +30,7 @@ Future<void> showAssetBarcodeSheet(BuildContext context, Asset asset) {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: ImdFixedColors.paper,
             border: Border.all(color: ctx.imd.ring),
             borderRadius: BorderRadius.circular(12),
           ),
@@ -107,7 +107,7 @@ class _Code128Painter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     // الخلفية بيضاء دائمًا ولو كانت الواجهة داكنة: الماسح يقرأ التباين، وباركود
     // أبيض على أسود لا يُقرأ بأكثر الأجهزة.
-    canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white);
+    canvas.drawRect(Offset.zero & size, Paint()..color = ImdFixedColors.paper);
     final paint = Paint()..color = const Color(0xFF000000);
     try {
       for (final e in bc.Barcode.code128().make(code, width: size.width, height: size.height)) {

@@ -14,6 +14,7 @@ import '../../domain/access_control.dart';
 import '../../domain/print_layout.dart';
 import '../home/home_shell.dart';
 import '../inventory/doc_kit.dart';
+import '../../core/ui/imd_layout.dart';
 
 /// مصمم النماذج المطبوعة — مقابل `renderFormsDesigner()` في `forms-ux.js`:
 /// ترويسة الجهة، حقول أعلى الصفحة، بيانات السند، تنسيق جدول الأصناف،
@@ -181,7 +182,7 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
       },
       child: ImdStickyPage(
       sticky: ImdStickyActions(children: [
-        SizedBox(
+        ImdFit(
           width: 170,
           child: ImdSelect<String>(
             dense: true,
@@ -318,7 +319,7 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
               enabled: w,
               onChanged: (a) => _update(_layout.copyWith(table: _table(firstColAlign: a))),
             ),
-            SizedBox(
+            ImdFit(
               width: 150,
               child: ImdLabeled(
                 'حجم خط الجدول',
@@ -547,7 +548,7 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.end, children: [
-        SizedBox(
+        ImdFit(
           width: 320,
           child: ImdLabeled(
             'النص',
@@ -559,7 +560,7 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
             size: 11,
           ),
         ),
-        SizedBox(
+        ImdFit(
           width: 110,
           child: ImdLabeled(
             'الحجم',
@@ -635,7 +636,7 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.end, children: [
-        SizedBox(
+        ImdFit(
           width: 280,
           child: ImdLabeled(
             'عنوان الحقل',

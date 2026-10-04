@@ -486,7 +486,7 @@ class _SyncScreenState extends State<SyncScreen> {
         ImdLabeled(
           'رمز الاقتران (٦ أرقام)',
           Row(children: [
-            SizedBox(width: 150, child: ImdFld(controller: _code, number: true)),
+            ImdFit(width: 150, child: ImdFld(controller: _code, number: true)),
             const SizedBox(width: 8),
             ImdButton(
               label: 'اقتران',

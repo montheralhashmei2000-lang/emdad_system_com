@@ -1,5 +1,6 @@
 import 'package:barcode/barcode.dart' as bc;
 import 'package:flutter/material.dart';
+import 'imd_tokens.dart';
 
 /// رمز QR يُمسح بكاميرا أي جهاز (ماسح التطبيق أو كاميرا الهاتف).
 ///
@@ -36,7 +37,7 @@ class _QrPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white);
+    canvas.drawRect(Offset.zero & size, Paint()..color = ImdFixedColors.paper);
     final pad = size.shortestSide * _quiet;
     final side = size.shortestSide - pad * 2;
     final paint = Paint()..color = const Color(0xFF000000);

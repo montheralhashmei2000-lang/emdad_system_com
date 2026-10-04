@@ -107,7 +107,15 @@ class SettingsRepo {
   /// مفاتيح خاصة بهذا الجهاز لا تغادره بالمزامنة أبدًا: رمز تفعيله ومعرّفه (وعلى
   /// جهاز الإدارة مفتاح المالك الخاص)، وسجلّ الأجهزة المُصدَر لها، وختوم الإلغاء
   /// (تسافر بقناتها الخاصة `deviceRevocations`). كان التصدير يحملها كلها.
-  static const Set<String> localOnlyKeys = {'device', 'devices', 'revocations', 'ocr'};
+  static const Set<String> localOnlyKeys = {
+    'device', 'devices', 'revocations', 'ocr',
+    // قفل الدخول والجلسة: حالةُ هذا الجهاز وحده، ولا يجوز أن يسافر أو يُستورد.
+    'authSession', 'authLocks',
+    // إعدادات أمان الجهاز: مهلة القفل التلقائي.
+    'security',
+    // جدولة النسخ الاحتياطي: مجلد الجهاز وآخر تشغيلة.
+    'backupSchedule',
+  };
 
   static const String printLayoutKey = 'printLayout';
   static const String orgKey = 'org';

@@ -1075,6 +1075,7 @@ class AppSettings extends Table {
   LinkCustodySheets,
   LinkCustodySheetRows,
   LinkArmaments,
+  LinkMoneyReceipts,
   LinkFinanceLedger,
   Cables,
 ])

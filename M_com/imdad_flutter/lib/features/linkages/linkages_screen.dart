@@ -20,6 +20,8 @@ import 'link_armament.dart';
 import 'link_export.dart';
 import 'link_finances.dart';
 import 'link_person_sheets.dart';
+import 'roster_picker.dart';
+import 'roster_tables.dart';
 
 String _d(String iso) {
   final dt = DateTime.tryParse(iso);
@@ -216,16 +218,9 @@ class _LinkPersonnelTabState extends State<LinkPersonnelTab> {
     if (mounted) showImdToast(context, '✔ حُذف الفرد');
   }
 
-  List<String> _rowText(int i, LinkPerson p) => [
-    '${i + 1}', p.fullName, p.militaryNo, p.rank, p.phone, p.phone2,
-    p.subUnit, p.camp, p.section, p.job, LinkStatus.label(p.status),
-    _d(p.statusFrom), p.statusTo.isEmpty ? '—' : _d(p.statusTo), nf(p.statusDays),
-  ];
+  List<String> _rowText(int i, LinkPerson p) => rosterRow(i, p);
 
-  static const _headers = [
-    'م', 'الاسم', 'الرقم العسكري', 'الرتبة', 'الهاتف', 'هاتف آخر',
-    'الوحدة الفرعية', 'المعسكر', 'القسم', 'العمل', 'الحالة', 'من', 'إلى', 'أيام',
-  ];
+  static const _headers = rosterHeaders;
 
   Future<void> _exportExcel({bool selectedOnly = false}) async {
     if (!_canExport) return showImdToast(context, '✖ لا تملك صلاحية التصدير', error: true);
@@ -240,13 +235,26 @@ class _LinkPersonnelTabState extends State<LinkPersonnelTab> {
   Future<void> _printRoster() async {
     if (!_canPrint) return showImdToast(context, '✖ لا تملك صلاحية الطباعة', error: true);
     final list = _sortedPersons();
+    // المستخدم يحدّد الجداول المراد طباعتها (الكشف الكامل مختارٌ افتراضيًّا).
+    final chosen = await pickRosterTables(context, list);
+    if (chosen == null || chosen.isEmpty || !mounted) return;
+    const signatures = ['امضاء مسؤول الشاشة\n....................', 'قائد الوحدة\n....................'];
+    final note = 'عدد الأفراد: ${nf(list.length)} · ${arDate(DateTime.now())}';
     try {
-      await DocumentPdf.printDoc(doc: PrintDoc(
-        title: 'كشف القوة البشرية للإمداد والتموين', landscape: true,
-        headers: _headers, rows: [for (var i = 0; i < list.length; i++) _rowText(i, list[i])],
-        footerNote: 'عدد الأفراد: ${nf(list.length)} · ${arDate(DateTime.now())}',
-        signatureLines: const ['امضاء مسؤول الشاشة\n....................', 'قائد الوحدة\n....................'],
-      ));
+      await DocumentPdf.printDoc(
+        doc: chosen.length == 1 && chosen.contains(rosterFullKey)
+            // الكشف وحده: الجدول الأصلي كما كان.
+            ? PrintDoc(
+                title: 'كشف القوة البشرية للإمداد والتموين', landscape: true,
+                headers: _headers, rows: [for (var i = 0; i < list.length; i++) _rowText(i, list[i])],
+                footerNote: note, signatureLines: signatures,
+              )
+            : PrintDoc(
+                title: 'كشف القوة البشرية للإمداد والتموين', landscape: true,
+                sections: buildRosterSections(list, chosen),
+                footerNote: note, signatureLines: signatures,
+              ),
+      );
     } catch (e) {
       if (mounted) showImdToast(context, '✖ تعذّرت الطباعة: $e', error: true);
     }

@@ -141,14 +141,14 @@ class _Label extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ImdFixedColors.paper,
         border: Border.all(color: const Color(0xFFBBBBBB)),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Column(children: [
         Text(l.name,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black, fontFamily: ImdSizes.font)),
+            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: ImdFixedColors.ink, fontFamily: ImdSizes.font)),
         Text('كود: ${l.code}', style: const TextStyle(fontSize: 9, color: Color(0xFF555555))),
         Barcode128View(l.barcode),
       ]),

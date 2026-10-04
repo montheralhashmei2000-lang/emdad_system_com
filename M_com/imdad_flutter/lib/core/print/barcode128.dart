@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../ui/imd_tokens.dart';
 
 /// باركود Code 128-B — الجداول والمجموع الاختباري وفق المواصفة.
 class Barcode128 {
@@ -69,8 +70,8 @@ class _BarcodePainter extends CustomPainter {
     canvas.save();
     canvas.translate(dx, dy);
     canvas.scale(scale);
-    canvas.drawRect(Rect.fromLTWH(0, 0, total, 74), Paint()..color = Colors.white);
-    final black = Paint()..color = Colors.black;
+    canvas.drawRect(Rect.fromLTWH(0, 0, total, 74), Paint()..color = ImdFixedColors.paper);
+    final black = Paint()..color = ImdFixedColors.ink;
     var x = 0.0;
     var bar = true;
     for (final w in mods) {
@@ -79,7 +80,7 @@ class _BarcodePainter extends CustomPainter {
       bar = !bar;
     }
     final tp = TextPainter(
-      text: TextSpan(text: value, style: const TextStyle(fontSize: 9, color: Colors.black, fontFamily: 'monospace')),
+      text: TextSpan(text: value, style: const TextStyle(fontSize: 9, color: ImdFixedColors.ink, fontFamily: 'monospace')),
       textDirection: TextDirection.ltr,
     )..layout();
     tp.paint(canvas, Offset(total / 2 - tp.width / 2, 72 - tp.height + 2));

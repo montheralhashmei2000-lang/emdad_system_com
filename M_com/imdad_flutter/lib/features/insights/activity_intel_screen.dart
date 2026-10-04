@@ -311,7 +311,7 @@ class _ActivityIntelScreenState extends State<ActivityIntelScreen> {
           centerVertically: true,
           child: Wrap(spacing: 18, runSpacing: 14, crossAxisAlignment: WrapCrossAlignment.center, children: [
             ImdScoreRing(percent: _score),
-            SizedBox(
+            ImdFit(
               width: 260,
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
                 Text('قراءة الانحرافات',

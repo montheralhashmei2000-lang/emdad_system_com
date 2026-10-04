@@ -115,7 +115,7 @@ class _ImdFreeTableEditorState extends State<ImdFreeTableEditor> {
   Widget build(BuildContext context) {
     final c = context.imd;
     return LayoutBuilder(builder: (context, box) {
-      final fixed = _numW + _actW;
+      const fixed = _numW + _actW;
       final minTotal = fixed + _cols.length * (_minCol + _handle);
       final total = box.maxWidth.isFinite && box.maxWidth > minTotal ? box.maxWidth : minTotal;
       final weightSum = _cols.fold<double>(0, (s, e) => s + e.weight);

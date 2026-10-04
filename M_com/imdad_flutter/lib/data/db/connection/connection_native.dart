@@ -12,7 +12,7 @@ import '../db_cipher.dart';
 QueryExecutor openConnection() {
   return LazyDatabase(() async {
     final dir = await getApplicationSupportDirectory();
-    final file = File(p.join(dir.path, 'imdad.sqlite'));
+    final file = File(p.join(dir.path, DbCipher.fileName));
 
     final key = await DbCipher.loadKey();
     // الترحيل يجري على هذا الخيط، فيحتاج توجيه المكتبة هنا أيضًا.

@@ -14,6 +14,7 @@ import '../../data/repos/daily_repo.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../domain/access_control.dart';
 import '../inventory/doc_kit.dart';
+import '../../core/ui/imd_layout.dart';
 
 /// التفريدة اليومية — نقل `renderTafreeda()`:
 /// تبويبان (تسجيل التفريدة / أرشيف التفريدات)، وطريقتا إدخال لا تُجمعان:
@@ -451,7 +452,7 @@ class _StrengthScreenState extends State<StrengthScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // شريط الوحدات المختارة
         Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.end, children: [
-          SizedBox(
+          ImdFit(
             width: 150,
             child: ImdLabeled(
               'التاريخ',
@@ -465,7 +466,7 @@ class _StrengthScreenState extends State<StrengthScreen> {
               size: 11,
             ),
           ),
-          SizedBox(
+          ImdFit(
             width: 260,
             child: ImdLabeled(
               'المعسكر الرئيسي *',
@@ -481,7 +482,7 @@ class _StrengthScreenState extends State<StrengthScreen> {
               size: 11,
             ),
           ),
-          SizedBox(
+          ImdFit(
             width: 160,
             child: ImdLabeled(
               'نسبة الزيادة % (مرة واحدة)',
@@ -676,13 +677,13 @@ class _StrengthScreenState extends State<StrengthScreen> {
       icon: 'folder',
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.end, children: [
-          SizedBox(
+          ImdFit(
             width: 150,
             child: ImdLabeled('من تاريخ',
                 ImdDateField(value: _archDate, onChanged: (v) => setState(() => _archDate = v)),
                 size: 11),
           ),
-          SizedBox(
+          ImdFit(
             width: 240,
             child: ImdLabeled(
               'المعسكر',

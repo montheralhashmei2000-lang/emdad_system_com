@@ -10,6 +10,7 @@ import '../../data/repos/alerts_repo.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../domain/stock_alerts.dart';
 import '../../domain/stock_forecast.dart';
+import '../../core/ui/imd_layout.dart';
 
 /// تنبيهات المخزون: الأصناف تحت حدها الأدنى، والدفعات القريبة من انتهاء صلاحيتها،
 /// وتوقّع نفاد الأصناف من الاستهلاك والمقررات.
@@ -129,7 +130,7 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
   Widget _expiryView() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Align(
           alignment: AlignmentDirectional.centerStart,
-          child: SizedBox(
+          child: ImdFit(
             width: 220,
             child: ImdSelect<int>(
               dense: true,

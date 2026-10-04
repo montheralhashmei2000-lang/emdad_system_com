@@ -422,3 +422,22 @@ List<BoxShadow> imdShadowOverlay(ImdColors c) => [
         offset: const Offset(0, 12),
       ),
     ];
+
+/// ألوانٌ **لا تتبع السمة عمدًا**: وظيفتها التباين الثابت، لا المظهر.
+///
+/// ورقُ الباركود وQR أبيضٌ ووحداتُهما سوداء في الفاتح والداكن معًا، وإلا فشلت
+/// قراءتها بالماسح؛ وشاشة الكاميرا سوداء خلف الصورة الحيّة دائمًا. تُقرأ من هنا
+/// لا من `Colors.*` حتى يبقى كل لونٍ في التطبيق معرَّفًا في ملف الرموز.
+abstract final class ImdFixedColors {
+  /// خلفية الباركود/QR وورق الطباعة.
+  static const Color paper = Color(0xFFFFFFFF);
+
+  /// وحدات الباركود/QR ونصها.
+  static const Color ink = Color(0xFF000000);
+
+  /// خلفية شاشة الماسح فوق الكاميرا.
+  static const Color cameraBackdrop = ink;
+
+  /// نصوص وأيقونات الماسح فوق الكاميرا.
+  static const Color cameraForeground = paper;
+}

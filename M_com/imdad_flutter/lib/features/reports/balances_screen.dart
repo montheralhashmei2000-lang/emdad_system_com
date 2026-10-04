@@ -15,6 +15,7 @@ import '../../data/repos/movements_repo.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/stock_alerts.dart';
+import '../../core/ui/imd_layout.dart';
 
 /// الأرصدة الحالية — نقل `renderBalances()` / `balPaint()`:
 /// كشف لحظي بأرصدة الأصناف (الافتتاحي + الوارد − المنصرف ± التحويلات) مع رقائق
@@ -176,7 +177,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
             hint: 'بحث بالكود أو الاسم أو التصنيف…',
             onChanged: (_) => setState(() {}),
             actions: [
-              SizedBox(
+              ImdFit(
                 width: 220,
                 child: ImdSelect<String>(
                   dense: true,

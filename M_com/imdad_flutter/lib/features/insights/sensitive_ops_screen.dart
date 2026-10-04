@@ -279,7 +279,7 @@ class _SensitiveOpsScreenState extends State<SensitiveOpsScreen> {
           centerVertically: true,
           child: Wrap(spacing: 18, runSpacing: 14, crossAxisAlignment: WrapCrossAlignment.center, children: [
             ImdScoreRing(percent: score),
-            SizedBox(
+            ImdFit(
               width: 260,
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
                 Text('مؤشر انضباط المراجعة',
@@ -316,7 +316,7 @@ class _SensitiveOpsScreenState extends State<SensitiveOpsScreen> {
               hint: 'بحث بالمرجع أو الجهة أو الوصف…',
               onChanged: (_) => setState(() {}),
               actions: [
-                SizedBox(
+                ImdFit(
                   width: 180,
                   child: ImdSelect<String>(
                     dense: true,

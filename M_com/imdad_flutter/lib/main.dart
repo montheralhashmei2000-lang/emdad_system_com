@@ -1,23 +1,33 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show debugPrint, kReleaseMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'core/error_log.dart';
 import 'core/print/print_preview.dart';
 import 'core/security/auth_service.dart';
+import 'core/security/idle_lock.dart';
+import 'core/security/owner_key.dart';
 import 'core/ui/imd_fonts.dart';
 import 'core/ui/imd_layout.dart';
 import 'core/ui/imd_screen_actions.dart';
 import 'core/ui/imd_widgets.dart';
 import 'core/ui/imd_window.dart';
 import 'core/theme/app_theme.dart';
+import 'data/backup/backup_scheduler.dart';
 import 'data/db/app_database.dart';
+import 'data/db/db_cipher.dart';
+import 'data/repos/audit_repo.dart';
 import 'data/repos/camp_ledger_repo.dart';
 import 'data/repos/settings_repo.dart';
 import 'data/sync/auto_sync.dart';
+import 'features/auth/idle_lock_host.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_shell.dart';
 import 'features/settings/device_activation_screen.dart';
@@ -25,9 +35,20 @@ import 'features/settings/device_activation_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // نسخة التوزيع بلا مفتاح مالك تعمل بلا تفعيل على أي جهاز — لا تُشغَّل أبدًا.
+  // (الفحص المبكر قبل البناء: `dart run tool/check_release.dart`.)
+  if (kReleaseMode && !OwnerKey.isConfigured) {
+    throw StateError(
+      'نسخة الإصدار بُنيت بلا مفتاح مالك (OwnerKey.publicKey فارغ). '
+      'ولّد مفتاحًا بـ tool/make_owner_key.dart وأعد البناء.',
+    );
+  }
+
   final db = AppDatabase();
+  _wireErrorLogger(db);
   final auth = AuthService(db);
   final restored = await auth.restoreSession();
+  await _cleanupPlainBackups(db);
   final identity = await SettingsRepo(db).identity();
 
   if (ImdWindow.supported) {
@@ -64,6 +85,40 @@ Future<void> main() async {
     themeMode: ImdTheme.parse(identity.themePref),
     fontFamily: identity.fontFamily,
   ));
+}
+
+/// يربط [ErrorLogger] بسجل التدقيق (للحرجة) وبإشعار المستخدم (SnackBar).
+void _wireErrorLogger(AppDatabase db) {
+  ErrorLogger.sink = (e) => AuditRepo(db).log(
+        action: 'error.critical',
+        entityType: 'نظام',
+        summary: '${e.source}: ${e.message.length > 160 ? '${e.message.substring(0, 160)}…' : e.message}',
+        details: {'source': e.source, 'type': e.type},
+      );
+  ErrorLogger.userNotifier = (message) {
+    final ctx = imdNavigatorKey.currentContext;
+    if (ctx != null && ctx.mounted) showImdToast(ctx, '⚠ $message', error: false);
+  };
+}
+
+/// تنظيف الإقلاع: نسخ `*.plain.bak` غير المشفّرة التي تركها الترحيل القديم تُحذف
+/// متى سلمت القاعدة المشفّرة، ويُسجَّل ذلك في سجل التدقيق. لا يمنع الإقلاع أبدًا.
+Future<void> _cleanupPlainBackups(AppDatabase db) async {
+  try {
+    final dir = await getApplicationSupportDirectory();
+    final file = File(p.join(dir.path, DbCipher.fileName));
+    final removed = DbCipher.removeStalePlainBackups(file, await DbCipher.loadKey());
+    if (removed.isEmpty) return;
+    await AuditRepo(db).log(
+      action: 'db.cleanup_plain_backup',
+      entityType: 'قاعدة البيانات',
+      summary: 'حُذفت ${removed.length} نسخة غير مشفّرة قديمة (plain.bak) بعد التأكد من سلامة القاعدة المشفّرة',
+      details: {'files': [for (final f in removed) p.basename(f)]},
+      risk: AuditRepo.riskHigh,
+    );
+  } catch (e) {
+    debugPrint('تعذّر تنظيف النسخ غير المشفّرة: $e');
+  }
 }
 
 /// تفضيل السمة المحفوظ في شاشة الهوية — يطبَّق على التطبيق كله
@@ -125,6 +180,12 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
   late bool _signedIn = widget.signedIn;
   late final ImdTheme _theme = ImdTheme(widget.themeMode, widget.fontFamily);
 
+  /// القفل التلقائي بعد الخمول — يعمل ما دام المستخدم مسجَّلًا.
+  late final IdleLock _idle = IdleLock(widget.db);
+
+  /// النسخ الاحتياطي المشفّر المجدول — يعمل في الخلفية ما دام التطبيق مفتوحًا.
+  late final BackupScheduler _backup = BackupScheduler(widget.db);
+
   /// المزامنة التلقائية تبدأ مع التطبيق لا مع شاشة المزامنة: جهاز الفرع قد لا
   /// يفتح تلك الشاشة شهرًا كاملًا، والمقصود أن يزامن بلا أن يفتحها أحد.
   late final AutoSyncService _autoSync = AutoSyncService(widget.db);
@@ -136,9 +197,14 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
   @override
   void initState() {
     super.initState();
+    // الإعداد يُقرأ من القاعدة ثم تبدأ المراقبة إن كانت الجلسة مستعادة.
+    _idle.load().then((_) {
+      if (mounted && _signedIn) _idle.activate();
+    });
     // بعد أول إطار: الإقلاع لا ينتظر الشبكة، وفشلها لا يمنع ظهور الواجهة.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _autoSync.refresh();
+      _backup.start();
       // تصفية الشهر المنقضي إن أُذن بها — تتحقق بنفسها من الإذن وانقضاء الشهر.
       CampLedgerRepo(widget.db).autoSettleIfDue().catchError(
             (_) => const SettlementResult(ok: false, error: ''),
@@ -160,6 +226,14 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
 
   void _syncMica() => ImdWindow.syncMica(_theme.mode);
 
+  /// تسجيل الخروج: من الشريط الرئيسي أو من غطاء القفل.
+  Future<void> _signOut() async {
+    _idle.deactivate();
+    await widget.auth.logout();
+    if (mounted) setState(() => _signedIn = false);
+    await ImdWindow.login();
+  }
+
   @override
   void dispose() {
     if (Platform.isWindows) {
@@ -167,6 +241,8 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
       _theme.removeListener(_syncMica);
     }
     _autoSync.dispose();
+    _idle.dispose();
+    _backup.dispose();
     super.dispose();
   }
 
@@ -208,6 +284,8 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
         Provider<ImdScreenActions>.value(value: _screenActions),
         ChangeNotifierProvider<ImdTheme>.value(value: _theme),
         ChangeNotifierProvider<AutoSyncService>.value(value: _autoSync),
+        ChangeNotifierProvider<IdleLock>.value(value: _idle),
+        ChangeNotifierProvider<BackupScheduler>.value(value: _backup),
       ],
       child: Consumer<ImdTheme>(
         builder: (context, theme, _) => MaterialApp(
@@ -226,7 +304,11 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
           GlobalCupertinoLocalizations.delegate,
         ],
         builder: (context, child) {
-          final body = child ?? const SizedBox.shrink();
+          final content = child ?? const SizedBox.shrink();
+          // بعد تسجيل الدخول: رصد الخمول وغطاء القفل فوق كل شيء (حتى الحوارات).
+          final body = _signedIn
+              ? IdleLockHost(lock: _idle, auth: widget.auth, onSignOut: _signOut, child: content)
+              : content;
           return MediaQuery(
             data: imdClampedMediaQuery(MediaQuery.of(context)),
             child: Directionality(
@@ -249,16 +331,13 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
           ));
         },
         home: _signedIn
-            ? HomeShell(onSignOut: () async {
-                await widget.auth.logout();
-                if (mounted) setState(() => _signedIn = false);
-                await ImdWindow.login();
-              })
+            ? HomeShell(onSignOut: _signOut)
             : _DeviceGate(
                 db: widget.db,
                 auth: widget.auth,
                 onSignedIn: () async {
                   await ImdWindow.main();
+                  _idle.activate();
                   if (mounted) setState(() => _signedIn = true);
                 },
               ),

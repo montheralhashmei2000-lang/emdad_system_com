@@ -81,7 +81,7 @@ class _ScanManyPageState extends State<_ScanManyPage> {
   Widget build(BuildContext context) {
     final c = context.imd;
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: ImdFixedColors.cameraBackdrop,
       body: Stack(
         children: [
           MobileScanner(controller: _ctrl, onDetect: _onDetect),
@@ -103,7 +103,7 @@ class _ScanManyPageState extends State<_ScanManyPage> {
                 const Spacer(),
                 IconButton(
                   onPressed: () => _ctrl.toggleTorch(),
-                  icon: const ImdIcon('zap', size: 22, color: Colors.white),
+                  icon: const ImdIcon('zap', size: 22, color: ImdFixedColors.cameraForeground),
                 ),
               ]),
             ),
@@ -115,12 +115,12 @@ class _ScanManyPageState extends State<_ScanManyPage> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: (_error ? c.danger : Colors.black).withValues(alpha: 0.7),
+                color: (_error ? c.danger : ImdFixedColors.cameraBackdrop).withValues(alpha: 0.7),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(_last,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
+                  style: const TextStyle(color: ImdFixedColors.cameraForeground, fontSize: 15, fontWeight: FontWeight.w700)),
             ),
           ),
         ],
@@ -173,7 +173,7 @@ class _ScanPageState extends State<_ScanPage> {
   Widget build(BuildContext context) {
     final c = context.imd;
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: ImdFixedColors.cameraBackdrop,
       body: Stack(
         children: [
           MobileScanner(
@@ -204,7 +204,7 @@ class _ScanPageState extends State<_ScanPage> {
                 const Spacer(),
                 IconButton(
                   onPressed: () => _ctrl.toggleTorch(),
-                  icon: const ImdIcon('zap', size: 22, color: Colors.white),
+                  icon: const ImdIcon('zap', size: 22, color: ImdFixedColors.cameraForeground),
                 ),
               ]),
             ),
@@ -214,7 +214,7 @@ class _ScanPageState extends State<_ScanPage> {
             right: 0,
             bottom: 40,
             child: Text('وجّه الكاميرا نحو الباركود',
-                textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 15)),
+                textAlign: TextAlign.center, style: TextStyle(color: ImdFixedColors.cameraForeground, fontSize: 15)),
           ),
         ],
       ),

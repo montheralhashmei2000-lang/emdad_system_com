@@ -18,6 +18,7 @@ import '../../data/repos/movements_repo.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/line_consolidation.dart';
+import '../../core/ui/imd_layout.dart';
 
 /// الأرصدة الافتتاحية:
 /// بحث + طباعة كشف + جدول (الكود، الصنف، الحالة، الرصيد الافتتاحي، إجراء).
@@ -297,7 +298,7 @@ class _OpeningScreenState extends State<OpeningScreen> {
             hint: 'بحث بالكود أو الاسم…',
             onChanged: (_) => setState(() {}),
             actions: [
-              SizedBox(
+              ImdFit(
                 width: 220,
                 child: ImdSelect<String>(
                   dense: true,

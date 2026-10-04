@@ -10,6 +10,7 @@ import '../../core/ui/imd_layout.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
+import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/linkage_repo.dart';
 import '../../domain/access_control.dart';
 import 'link_export.dart';
@@ -83,14 +84,64 @@ class _LinkArmamentTabState extends State<LinkArmamentTab> {
       showImdToast(context, 'السجل يحفظ لقطة اسم الفرد فقط — ملفه غير موجود');
       return;
     }
+    // أزرار الملف تعمل كما في شاشة القوة البشرية: التعديل وتغيير الحالة.
     await showLinkPersonProfile(
       context,
       repo: widget.repo,
       person: person,
-      onEdit: () {},
-      onStatus: () {},
+      onEdit: () => _editPerson(person),
+      onStatus: () => _changeStatus(person),
     );
     await _load();
+  }
+
+  Future<void> _editPerson(LinkPerson p) async {
+    if (!_canEdit) return showImdToast(context, '✖ لا تملك صلاحية التعديل', error: true);
+    final repo = widget.repo;
+    await repo.ensureSeedTerms();
+    final terms = {
+      'section': await repo.terms('section'),
+      'job': await repo.terms('job'),
+      'subunit': await repo.terms('subunit'),
+      'status': await repo.terms('status'),
+    };
+    final camps = {
+      for (final u in await CatalogRepo(repo.db).camps())
+        if (u.name.trim().isNotEmpty) u.name.trim(),
+    }.toList()
+      ..sort();
+    if (!mounted) return;
+    final ok = await showLinkPersonForm(context, repo: repo, camps: camps, terms: terms, initial: p, actor: widget.perm.email);
+    if (ok) {
+      await _load();
+      if (mounted) showImdToast(context, '✔ حُفظت بيانات الفرد');
+    }
+  }
+
+  Future<void> _changeStatus(LinkPerson p) async {
+    if (!_canEdit) return showImdToast(context, '✖ لا تملك صلاحية تغيير الحالات', error: true);
+    final ok = p.status == LinkStatus.present
+        ? await showLinkStatusChange(context, repo: widget.repo, person: p, actor: widget.perm.email)
+        : await showLinkReturnAction(context, repo: widget.repo, person: p, actor: widget.perm.email);
+    if (ok) {
+      await _load();
+      if (mounted) showImdToast(context, '✔ سُجّلت الحالة');
+    }
+  }
+
+  Future<void> _edit(LinkArmament a) async {
+    if (!_canEdit) return showImdToast(context, '✖ لا تملك صلاحية التعديل', error: true);
+    final saved = await showImdModal<bool>(
+      context,
+      title: 'تعديل تسليم: ${a.personName}',
+      icon: 'edit',
+      maxWidth: 700,
+      builder: (ctx) => _ArmamentSheet(persons: _persons, initial: a),
+    );
+    if (saved == true) {
+      await _load();
+      if (mounted) showImdToast(context, '✔ حُفظ التعديل');
+    }
   }
 
   Future<void> _add() async {
@@ -115,7 +166,7 @@ class _LinkArmamentTabState extends State<LinkArmamentTab> {
       context,
       sheetName: 'تسليح الإمداد',
       fileName: 'تسليح-الإمداد-${isoDay(DateTime.now())}.xlsx',
-      headers: const ['م', 'الفرد', 'الرقم العسكري', 'نوع السلاح', 'المسلسل', 'الكمية', 'تاريخ التسليم', 'حالة السلاح', 'الحالة'],
+      headers: const ['م', 'الفرد', 'الرقم العسكري', 'نوع السلاح', 'المسلسل', 'الكمية', 'عدد القرون', 'نوع القرون', 'الذخيرة المستلمة', 'تاريخ التسليم', 'حالة السلاح', 'الحالة'],
       rows: [
         for (var i = 0; i < rows.length; i++)
           [
@@ -125,12 +176,15 @@ class _LinkArmamentTabState extends State<LinkArmamentTab> {
             rows[i].weaponType,
             rows[i].serialNo,
             nf(rows[i].qty),
+            nf(rows[i].magazines),
+            rows[i].magazineType,
+            nf(rows[i].ammoQty),
             _d(rows[i].assignedDate),
             rows[i].condition,
             rows[i].returned ? 'رُدِّد ${_d(rows[i].returnedDate)}' : 'مسلَّم',
           ],
       ],
-      numericColumns: const {0, 5},
+      numericColumns: const {0, 5, 6, 8},
     );
   }
 
@@ -202,6 +256,8 @@ class _LinkArmamentTabState extends State<LinkArmamentTab> {
             ImdCol('نوع السلاح'),
             ImdCol('المسلسل'),
             ImdCol('الكمية', numeric: true),
+            ImdCol('القرون'),
+            ImdCol('الذخيرة', numeric: true),
             ImdCol('تاريخ التسليم'),
             ImdCol('حالة السلاح'),
             ImdCol('الحالة'),
@@ -226,6 +282,10 @@ class _LinkArmamentTabState extends State<LinkArmamentTab> {
       Text(a.weaponType.isEmpty ? '—' : a.weaponType, style: TextStyle(fontWeight: FontWeight.w600, color: c.text)),
       Text(a.serialNo.isEmpty ? '—' : a.serialNo),
       Text(nf(a.qty)),
+      Text(a.magazines == 0 && a.magazineType.isEmpty
+          ? '—'
+          : [if (a.magazines > 0) nf(a.magazines), if (a.magazineType.isNotEmpty) a.magazineType].join(' · ')),
+      Text(a.ammoQty > 0 ? nf(a.ammoQty) : '—'),
       Text(_d(a.assignedDate)),
       Text(a.condition.isEmpty ? '—' : a.condition),
       ImdChip(
@@ -235,6 +295,7 @@ class _LinkArmamentTabState extends State<LinkArmamentTab> {
       ),
       Wrap(spacing: 6, runSpacing: 6, children: [
         ImdIconButton(icon: 'user', tooltip: 'ملف الفرد', onPressed: () => _openPerson(a.personId)),
+        if (_canEdit) ImdIconButton(icon: 'edit', tooltip: 'تعديل التسليم', onPressed: () => _edit(a)),
         if (!a.returned && _canEdit) ImdIconButton(icon: 'undo', tooltip: 'ردّ السلاح', onPressed: () => _return(a)),
         if (_canDelete)
           ImdIconButton(
@@ -257,9 +318,12 @@ class _LinkArmamentTabState extends State<LinkArmamentTab> {
 // ═════════════════════ نموذج التسليم ═════════════════════
 
 class _ArmamentSheet extends StatefulWidget {
-  const _ArmamentSheet({required this.persons});
+  const _ArmamentSheet({required this.persons, this.initial});
 
   final List<LinkPerson> persons;
+
+  /// سجلٌّ محفوظ يُعدَّل بدل تسجيل تسليمٍ جديد.
+  final LinkArmament? initial;
 
   @override
   State<_ArmamentSheet> createState() => _ArmamentSheetState();
@@ -272,14 +336,35 @@ class _ArmamentSheetState extends State<_ArmamentSheet> {
   final _qty = TextEditingController(text: '1');
   final _condition = TextEditingController();
   final _notes = TextEditingController();
+  final _mags = TextEditingController();
+  final _magType = TextEditingController();
+  final _ammo = TextEditingController();
   String _assignedDate = isoDay(DateTime.now());
   bool _busy = false;
 
   static const _conditions = ['جيد', 'يحتاج صيانة', 'تالف'];
+  static const _magTypes = ['صيني', 'روسي'];
+
+  @override
+  void initState() {
+    super.initState();
+    final a = widget.initial;
+    if (a == null) return;
+    _personId = a.personId;
+    _weapon.text = a.weaponType;
+    _serial.text = a.serialNo;
+    _qty.text = '${a.qty}';
+    _condition.text = a.condition;
+    _notes.text = a.notes;
+    _mags.text = a.magazines > 0 ? '${a.magazines}' : '';
+    _magType.text = a.magazineType;
+    _ammo.text = a.ammoQty > 0 ? '${a.ammoQty}' : '';
+    _assignedDate = a.assignedDate.isEmpty ? _assignedDate : a.assignedDate;
+  }
 
   @override
   void dispose() {
-    for (final c in [_weapon, _serial, _qty, _condition, _notes]) {
+    for (final c in [_weapon, _serial, _qty, _condition, _notes, _mags, _magType, _ammo]) {
       c.dispose();
     }
     super.dispose();
@@ -298,21 +383,28 @@ class _ArmamentSheetState extends State<_ArmamentSheet> {
     final person = widget.persons.firstWhere((p) => p.id == _personId);
     final repo = LinkageRepo(context.read<AppDatabase>());
     try {
-      await repo.insertArmament(
-        LinkArmamentsCompanion(
-          id: Value(Ids.next('la')),
-          personId: Value(person.id),
-          personName: Value(person.fullName),
-          personMilitaryNo: Value(person.militaryNo),
-          weaponType: Value(_weapon.text.trim()),
-          serialNo: Value(_serial.text.trim()),
-          qty: Value(int.tryParse(_qty.text.trim()) ?? 1),
-          assignedDate: Value(_assignedDate),
-          condition: Value(_condition.text.trim()),
-          notes: Value(_notes.text.trim()),
-          createdAt: Value(DateTime.now()),
-        ),
+      final initial = widget.initial;
+      final companion = LinkArmamentsCompanion(
+        id: Value(initial?.id ?? Ids.next('la')),
+        personId: Value(person.id),
+        personName: Value(person.fullName),
+        personMilitaryNo: Value(person.militaryNo),
+        weaponType: Value(_weapon.text.trim()),
+        serialNo: Value(_serial.text.trim()),
+        qty: Value(int.tryParse(_qty.text.trim()) ?? 1),
+        magazines: Value(int.tryParse(_mags.text.trim()) ?? 0),
+        magazineType: Value(_magType.text.trim()),
+        ammoQty: Value(int.tryParse(_ammo.text.trim()) ?? 0),
+        assignedDate: Value(_assignedDate),
+        condition: Value(_condition.text.trim()),
+        notes: Value(_notes.text.trim()),
+        createdAt: initial == null ? Value(DateTime.now()) : const Value.absent(),
       );
+      if (initial == null) {
+        await repo.insertArmament(companion);
+      } else {
+        await repo.updateArmament(initial.id, companion);
+      }
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (e) {
@@ -333,11 +425,16 @@ class _ArmamentSheetState extends State<_ArmamentSheet> {
         ImdLabeled('حالة السلاح', ImdFld(controller: _condition, suggestions: _conditions)),
         ImdLabeled('تاريخ التسليم', ImdDateField(value: _assignedDate, onChanged: (v) => setState(() => _assignedDate = v))),
       ]),
+      ImdGrid(columns: 3, minItemWidth: 150, gap: 10, children: [
+        ImdLabeled('عدد القرون (المخازن)', ImdFld(controller: _mags, number: true)),
+        ImdLabeled('نوع القرون', ImdFld(controller: _magType, hint: 'صيني / روسي / نص حر', suggestions: _magTypes)),
+        ImdLabeled('عدد الذخيرة المستلمة', ImdFld(controller: _ammo, number: true)),
+      ]),
       ImdLabeled('ملاحظات', ImdFld(controller: _notes)),
       const SizedBox(height: 14),
       Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.end, children: [
         ImdButton.outline(label: 'إلغاء', onPressed: _busy ? null : () => Navigator.of(context).pop(false)),
-        ImdButton(label: 'تسجيل التسليم', icon: 'save', busy: _busy, onPressed: _save),
+        ImdButton(label: widget.initial == null ? 'تسجيل التسليم' : 'حفظ التعديل', icon: 'save', busy: _busy, onPressed: _save),
       ]),
     ]);
   }

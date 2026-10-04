@@ -11,6 +11,7 @@ import '../../domain/free_table.dart';
 import '../ui/imd_format.dart';
 import 'military_print.dart';
 import 'voucher_print.dart';
+import '../../core/error_log.dart';
 
 /// طباعة نموذج «برقية صادرة/واردة» المعتمد.
 ///
@@ -141,7 +142,9 @@ class CablePrint {
     if (logo == null) {
       try {
         logo = (await rootBundle.load('assets/logo.png')).buffer.asUint8List();
-      } catch (_) {}
+      } catch (err, stack) {
+        ErrorLogger.log('print.cable.logo', err, stack);
+      }
     }
     final theme = await engine.pdfTheme();
     final pdf = pw.Document(theme: theme);
@@ -328,6 +331,8 @@ class CablePrint {
         pdfBytes: bytes,
         fileName: 'برقية-${c.cableNo}.pdf',
       );
-    } catch (_) {}
+    } catch (err, stack) {
+      ErrorLogger.critical('archive.cable', err, stack: stack, userMessage: 'طُبعت البرقية لكن تعذّرت أرشفتها تلقائيًّا');
+    }
   }
 }

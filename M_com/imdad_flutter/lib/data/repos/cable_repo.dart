@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../db/app_database.dart';
 import 'audit_repo.dart';
+import '../../core/error_log.dart';
 
 /// اتجاه البرقية.
 class CableDirection {
@@ -125,7 +126,7 @@ class CableRepo {
   }) async {
     final rows = await db.select(db.cables).get();
     final query = q.trim().toLowerCase();
-    var out = rows.where((c) {
+    final out = rows.where((c) {
       if (direction.isNotEmpty && c.direction != direction) return false;
       if (status.isNotEmpty && c.status != status) return false;
       if (classification.isNotEmpty && c.classification != classification) {
@@ -303,7 +304,9 @@ class CableRepo {
       if (await old.exists()) {
         try {
           await old.delete();
-        } catch (_) {}
+        } catch (err, stack) {
+          ErrorLogger.log('cable.attachmentDelete', err, stack);
+        }
       }
     }
 
@@ -340,7 +343,9 @@ class CableRepo {
       if (await f.exists()) {
         try {
           await f.delete();
-        } catch (_) {}
+        } catch (err, stack) {
+          ErrorLogger.log('cable.attachmentDelete', err, stack);
+        }
       }
     }
     await (db.update(db.cables)..where((t) => t.id.equals(c.id))).write(
@@ -376,7 +381,9 @@ class CableRepo {
       if (await f.exists()) {
         try {
           await f.delete();
-        } catch (_) {}
+        } catch (err, stack) {
+          ErrorLogger.log('cable.attachmentDelete', err, stack);
+        }
       }
     }
     await (db.delete(db.cables)..where((t) => t.id.equals(c.id))).go();

@@ -13,6 +13,7 @@ import '../../data/repos/audit_repo.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/users_repo.dart';
 import '../../domain/access_control.dart';
+import '../../core/ui/imd_layout.dart';
 
 /// مركز المستخدمين والصلاحيات — نقل `renderUsersAccess()`:
 /// قائمة الحسابات مع الدور والحالة، وإنشاء حساب محلي جديد،
@@ -280,7 +281,7 @@ class _UsersScreenState extends State<UsersScreen> {
               if (!allWarehouses)
                 Wrap(spacing: 12, runSpacing: 8, children: [
                   for (final w in _warehouses)
-                    SizedBox(
+                    ImdFit(
                       width: 220,
                       child: ImdCheckbox(
                         value: scope.contains(w.name),

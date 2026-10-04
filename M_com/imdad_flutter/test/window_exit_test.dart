@@ -13,12 +13,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  final realExit = ImdWindow.processExit;
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     ImdWindow.onBeforeExit = null;
+    // على ويندوز يُنهي `exit` الحقيقي عملية الاختبار نفسها.
+    ImdWindow.processExit = (_) {};
   });
 
-  tearDown(() => ImdWindow.onBeforeExit = null);
+  tearDown(() {
+    ImdWindow.onBeforeExit = null;
+    ImdWindow.processExit = realExit;
+  });
 
   group('الإنهاء قبل الإغلاق', () {
     test('الخروج يُنفّذ الإنهاء المسجَّل', () async {

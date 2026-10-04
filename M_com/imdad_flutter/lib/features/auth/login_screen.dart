@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../core/security/auth_service.dart';
+import '../../data/db/app_database.dart';
+import 'change_password_dialog.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_tokens.dart';
@@ -94,10 +96,44 @@ class _LoginScreenState extends State<LoginScreen> {
         await prefs.remove(_rememberedUserKey);
       }
       if (!mounted) return;
+      // قبل الانتقال: المرسِل والقاعدة يُلتقطان الآن، فالشاشة تُستبدل بعد قليل.
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      final db = context.read<AppDatabase>();
+      final laterColor = Theme.of(context).colorScheme.inversePrimary;
+      final user = res.user;
+      final weak = user != null &&
+          AuthService.shouldSuggestPasswordChange(role: user.role, password: _pass.text);
       widget.onSignedIn();
+      if (weak && messenger != null) _offerPasswordUpgrade(messenger, db, user.id, laterColor);
       return;
     }
     _lErr(res.message);
+  }
+
+  /// تنبيه لا يمنع الدخول: كلمة المرور أقصر من الحد الجديد (٨ أحرف).
+  /// «غيّرها الآن» يفتح نافذة التغيير، و«لاحقًا» يُغلق التنبيه.
+  void _offerPasswordUpgrade(ScaffoldMessengerState messenger, AppDatabase db, String userId, Color laterColor) {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 15),
+        // «لاحقًا» داخل المحتوى لأن SnackBar يقبل إجراءً واحدًا فقط.
+        content: Row(children: [
+          const Expanded(
+            child: Text('كلمة مرورك أقصر من ${AuthService.minPasswordLength} أحرف — يُنصح بتغييرها.'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: laterColor),
+            onPressed: messenger.hideCurrentSnackBar,
+            child: const Text('لاحقًا'),
+          ),
+        ]),
+        action: SnackBarAction(
+          label: 'غيّرها الآن',
+          onPressed: () => showChangePasswordDialog(db: db, userId: userId),
+        ),
+      ));
   }
 
   Future<void> _exit() async {

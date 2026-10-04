@@ -54,13 +54,28 @@ android {
 
     buildTypes {
         release {
-            // يوقَّع بمفتاح الإصدار إن وُجد key.properties، وإلا بمفتاح التصحيح.
-            signingConfig = if (keystorePropertiesFile.exists()) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
-            }
+            // يوقَّع دائمًا بمفتاح الإصدار — لا رجوع إلى مفتاح التصحيح أبدًا.
+            // غياب key.properties يوقف البناء في الحارس أدناه قبل أي تنفيذ.
+            signingConfig = signingConfigs.getByName("release")
         }
+    }
+}
+
+// حارس التوقيع: أي مهمة إصدار (assembleRelease / bundleRelease / ...) تُوقَف برسالة
+// واضحة إن غاب key.properties أو نقصت مفاتيحه. بناء debug لا يتأثر.
+gradle.taskGraph.whenReady {
+    val releaseRequested = allTasks.any { it.project == project && it.name.contains("Release", ignoreCase = true) }
+    if (!releaseRequested) return@whenReady
+    if (!keystorePropertiesFile.exists()) {
+        throw GradleException(
+            "release build requires android/key.properties with signing config " +
+                "(keyAlias, keyPassword, storeFile, storePassword) — refusing to sign with the debug key."
+        )
+    }
+    val missing = listOf("keyAlias", "keyPassword", "storeFile", "storePassword")
+        .filter { keystoreProperties.getProperty(it).isNullOrBlank() }
+    if (missing.isNotEmpty()) {
+        throw GradleException("release build requires android/key.properties with signing config; missing: " + missing.joinToString())
     }
 }
 

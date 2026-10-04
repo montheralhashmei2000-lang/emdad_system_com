@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,7 +9,9 @@ import 'package:imdad/data/migration/backup_crypto.dart';
 import 'package:imdad/data/migration/data_export.dart';
 import 'package:imdad/data/migration/legacy_import.dart';
 import 'package:imdad/data/repos/catalog_repo.dart';
+import 'package:imdad/core/security/pbkdf2.dart';
 import 'package:path/path.dart' as p;
+import 'package:pointycastle/export.dart';
 
 /// ملف النسخة الاحتياطية كان JSON مقروءًا بالكامل رغم أن قاعدة البيانات مشفّرة
 /// — باب خلفي مفتوح خلف باب أمامي محكم. هذه الاختبارات تحرس إغلاقه.
@@ -118,6 +121,21 @@ void main() {
         throwsA(isA<BackupError>()),
       );
       expect(await CatalogRepo(other).items(), isEmpty, reason: 'لا يُستورد شيء عند الرفض');
+    });
+
+    test('النسخة القديمة IMDBK1 (60,000 دورة) تبقى تُفتح، والجديدة IMDBK2', () {
+      final salt = Uint8List.fromList(List.generate(16, (i) => i));
+      final iv = Uint8List.fromList(List.generate(12, (i) => 100 + i));
+      final key = Pbkdf2.derive(utf8.encode('قديمة'), salt, iterations: 60000, length: 32);
+      final cipher = GCMBlockCipher(AESEngine())
+        ..init(true, AEADParameters(KeyParameter(key), 128, iv, Uint8List(0)));
+      final body = cipher.process(Uint8List.fromList(utf8.encode('{"old":true}')));
+      final legacy = Uint8List.fromList([...BackupCrypto.magicV1, ...salt, ...iv, ...body]);
+
+      expect(BackupCrypto.isEncrypted(legacy), isTrue);
+      expect(BackupCrypto.open(legacy, 'قديمة'), '{"old":true}');
+      expect(BackupCrypto.seal('{}', 'جديدة').sublist(0, 6), BackupCrypto.magic);
+      expect(BackupCrypto.iterations, 310000);
     });
 
     test('الملف المشفَّر يُكتشف بالبادئة لا بالامتداد', () async {

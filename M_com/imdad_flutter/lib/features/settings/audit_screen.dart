@@ -11,6 +11,7 @@ import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../inventory/doc_kit.dart';
+import '../../core/ui/imd_layout.dart';
 
 /// سجل النشاط والتدقيق — نقل `renderAuditTrail()` / `audPaint()`:
 /// بطاقة لكل حدث فيها مستوى الخطورة ونوع النشاط والملخّص والتاريخ،
@@ -155,7 +156,7 @@ class _AuditScreenState extends State<AuditScreen> {
             hint: 'بحث بالمرجع أو المستخدم أو الملخص أو الكيان…',
             onChanged: (_) => setState(() {}),
             actions: [
-              SizedBox(
+              ImdFit(
                 width: 220,
                 child: ImdSelect<String>(
                   dense: true,
@@ -164,7 +165,7 @@ class _AuditScreenState extends State<AuditScreen> {
                   onChanged: (v) => setState(() => _action = v ?? 'ALL'),
                 ),
               ),
-              SizedBox(
+              ImdFit(
                 width: 180,
                 child: ImdSelect<String>(
                   dense: true,

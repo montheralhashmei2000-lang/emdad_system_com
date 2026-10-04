@@ -166,6 +166,7 @@ class _PersonFormState extends State<_PersonForm> {
     }
     // الرقم العسكري مكتوبٌ يدويًّا — يُفحص ألا يملكه فردٌ آخر.
     final owner = await widget.repo.militaryNoOwner(_mil.text, excludeId: widget.initial?.id ?? '');
+    if (!mounted) return;
     if (owner.isNotEmpty) {
       showImdToast(context, '✖ الرقم العسكري «${_mil.text.trim()}» مسجَّل مسبقًا للفرد: $owner', error: true);
       return;

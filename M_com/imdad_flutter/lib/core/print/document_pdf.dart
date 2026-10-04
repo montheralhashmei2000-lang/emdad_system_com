@@ -11,6 +11,7 @@ import '../../data/repos/archive_auto.dart';
 import '../../domain/print_layout.dart';
 import '../ui/imd_fonts.dart';
 import 'print_preview.dart';
+import '../../core/error_log.dart';
 
 /// بناء مستندات PDF عربية (RTL) وفق تخطيط الطباعة القابل للضبط.
 /// يُستخدم لسندات الاستلام والصرف والتحويل والمرتجعات وتقارير المركز.
@@ -178,22 +179,30 @@ class DocumentPdf {
     required PrintDoc doc,
     PrintLayout layout = PrintLayout.defaults,
   }) async {
+    // قاعدة البيانات تُحلّ من سياق التطبيق **قبل** أي await: السياق لا يُستعمل
+    // بعد فجوة غير متزامنة. فشلُ الحلّ أو الأرشفة لا يمنع طباعةً تمّت.
+    AppDatabase? archiveDb;
+    try {
+      final ctx = imdNavigatorKey.currentContext;
+      if (ctx != null) archiveDb = Provider.of<AppDatabase>(ctx, listen: false);
+    } catch (_) {
+      // متوقع: لا سياق تطبيق أو لا مزوِّد قاعدة بيانات (اختبار أو طباعة من خلفية): تُطبع الوثيقة بلا أرشفة.
+    }
+
     final bytes = await build(doc: doc, layout: layout);
     await showPrintPreview(bytes, name: doc.title);
     // الأرشفة التلقائية للتقارير والمطبوعات — إن مُكِّنت من الإعدادات.
-    // قاعدة البيانات تُحلّ من سياق التطبيق، وفشلُ الأرشفة لا يمنع طباعةً تمّت.
+    if (archiveDb == null) return;
     try {
-      final ctx = imdNavigatorKey.currentContext;
-      if (ctx != null) {
-        final db = Provider.of<AppDatabase>(ctx, listen: false);
-        await ArchiveAuto(db).onDocumentPrinted(
-          op: 'report',
-          title: doc.title,
-          pdfBytes: bytes,
-          fileName: '${doc.title.replaceAll(' ', '-')}.pdf',
-        );
-      }
-    } catch (_) {}
+      await ArchiveAuto(archiveDb).onDocumentPrinted(
+        op: 'report',
+        title: doc.title,
+        pdfBytes: bytes,
+        fileName: '${doc.title.replaceAll(' ', '-')}.pdf',
+      );
+    } catch (err, stack) {
+      ErrorLogger.critical('archive.report', err, stack: stack, userMessage: 'طُبع المستند لكن تعذّرت أرشفته تلقائيًّا');
+    }
   }
 
   static Future<void> share({

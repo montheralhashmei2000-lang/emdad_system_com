@@ -170,6 +170,7 @@ class _CablesScreenState extends State<CablesScreen> {
         withData: false,
       );
       if (res == null || res.files.isEmpty) return;
+      if (!mounted) return;
       final path = res.files.first.path;
       if (path == null || path.isEmpty) {
         return showImdToast(context, '✖ تعذّر الوصول لمسار الملف', error: true);
@@ -202,7 +203,9 @@ class _CablesScreenState extends State<CablesScreen> {
   Future<void> _openPdf(Cable c) async {
     if (c.attachPath.isEmpty) return;
     final f = File(c.attachPath);
-    if (!await f.exists()) {
+    final exists = await f.exists();
+    if (!mounted) return;
+    if (!exists) {
       return showImdToast(context, '✖ الملف غير موجود على القرص', error: true);
     }
     final ok = await _repo.verifyAttachment(c);

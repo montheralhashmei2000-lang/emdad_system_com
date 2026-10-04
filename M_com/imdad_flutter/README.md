@@ -1,5 +1,7 @@
 # نظام الإمداد والتموين — تطبيق Flutter
 
+[![CI](https://github.com/montheralhashmei2000-lang/emdad_system_com/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/montheralhashmei2000-lang/emdad_system_com/actions/workflows/ci.yml)
+
 تطبيق أصلي لإدارة المستودعات والإمداد يعمل **دون إنترنت** على **أندرويد** و**ويندوز**:
 الأصناف والمستودعات، والاستلام والصرف والتحويل والمرتجعات، والأرصدة الافتتاحية والجرد،
 والتغذية اليومية والاستحقاقات، والتقارير والطباعة الرسمية، وسجل التدقيق،
@@ -24,11 +26,21 @@
 ```bash
 cd M_com/imdad_flutter
 flutter pub get
-dart run build_runner build --delete-conflicting-outputs   # توليد كود Drift
+dart run build_runner build --delete-conflicting-outputs   # ⚠ إلزامي — توليد كود Drift
 ```
 
-ملفات `*.g.dart` **لا تُرفع إلى المستودع**. أعد أمر `build_runner` بعد أي تعديل على
-جداول `lib/data/db/app_database.dart`، وإلا ظهرت مئات الأخطاء في المحلل.
+> **⚠ خطوة `build_runner` إلزامية، لا اختيارية.** ملفات `*.g.dart` (قاعدة البيانات، ونحو
+> 52 ألف سطر) **لا تُرفع إلى المستودع**، فبدونها لا يُبنى المشروع أصلًا: يظهر في المحلل
+> مئات الأخطاء من نوع «Undefined class» و«Target of URI doesn't exist»، ويفشل `flutter run`
+> و`flutter test` و`flutter build`.
+>
+> شغّلها:
+> - بعد أول `git clone` أو `git pull` يغيّر ملفات الجداول؛
+> - **بعد أي تعديل** على الجداول في `lib/data/db/` (`app_database.dart` أو `linkage_tables.dart` أو
+>   `archive_tables.dart` أو `cable_tables.dart`) — إضافة جدول أو عمود؛
+> - بعد `flutter clean`.
+>
+> تستغرق نحو دقيقة إلى دقيقتين. وفي GitHub Actions تُشغَّل قبل التحليل والاختبارات.
 
 على ويندوز يؤدي السكربت `tool\setup.ps1` الخطوات كلها، ومعها التحليل والاختبارات:
 
@@ -54,7 +66,8 @@ flutter test      # كل الاختبارات في test/
 ```
 
 الفحصان نفساهما يعملان تلقائيًا في GitHub Actions مع كل دفع يمس هذا المجلد
-(`.github/workflows/flutter.yml` في جذر المستودع).
+(`.github/workflows/ci.yml` في جذر المستودع) عند الدفع إلى `main` وعند أي طلب دمج إليه:
+`pub get` ← `build_runner` ← `analyze` ← `test`.
 
 أداة لقطات الشاشات للمقارنة بنسخة الويب:
 
@@ -86,6 +99,21 @@ flutter build windows --release    # ⇐ build/windows/x64/runner/Release/
 ```
 
 انسخ مجلد `Release` كاملًا: الملف التنفيذي وحده لا يعمل بدون المكتبات المجاورة له.
+
+### بناء الإصدارين معًا (مُوصى به)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tooluild_release.ps1
+```
+
+يشغّل أولًا `dart run tool/check_release.dart` ويتوقف إن كان مفتاح المالك فارغًا أو
+`android/key.properties` غائبًا، ثم يبني ويندوز و`apk` بوضع release. أي خطوة تفشل توقف
+السكربت بنفس رمز خروجها.
+
+> **توقيع الإصدار على أندرويد:** `flutter build apk --release` (و`appbundle`) **يفشل** برسالة
+> `release build requires android/key.properties with signing config` إن غاب
+> `android/key.properties` أو نقصت مفاتيحه (`keyAlias` و`keyPassword` و`storeFile` و`storePassword`).
+> لا يُوقَّع الإصدار بمفتاح التصحيح أبدًا. بناء `debug` لا يتأثر.
 
 ### رقم الإصدار
 

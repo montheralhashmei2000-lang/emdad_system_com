@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import '../../core/ids.dart';
 import '../db/app_database.dart';
+import '../../core/error_log.dart';
 
 /// سجل التدقيق: أثر لا يُحذف للأحداث الحساسة (تعديل سند، إلغاؤه، اعتماد جرد،
 /// تغيير صلاحيات، إنشاء مستخدم، محاولات دخول فاشلة).
@@ -100,7 +101,9 @@ class AuditRepo {
             logDate: Value(DateTime.now().toIso8601String().substring(0, 10)),
             details: Value(jsonEncode(details)),
           ));
-    } catch (_) {}
+    } catch (err, stack) {
+      ErrorLogger.critical('audit.write', err, stack: stack, userMessage: 'تعذّر تسجيل حدثٍ في سجل التدقيق');
+    }
   }
 
   Future<List<AuditLog>> recent({int limit = 300, String risk = '', String query = ''}) async {

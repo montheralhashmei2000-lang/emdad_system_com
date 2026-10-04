@@ -1303,7 +1303,7 @@ class ImdCyBox extends StatelessWidget {
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                     color: c.noteText)),
-            SizedBox(
+            ImdFit(
                 width: 180,
                 child: ImdSelect<String>(
                     value: value,

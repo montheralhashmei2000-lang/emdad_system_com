@@ -9,6 +9,7 @@ import 'invoice_models.dart';
 import 'invoice_text_parser.dart';
 import 'ocr_engine.dart';
 import 'ocr_words.dart';
+import '../../core/error_log.dart';
 
 /// يقرأ فاتورة (صورة أو PDF) بمحرك OCR محلي مجاني ثم يحلّل نصّها إلى حقولها.
 /// **لا يُرسل شيء خارج الجهاز، ولا يحتاج إنترنت.**
@@ -87,7 +88,9 @@ class InvoiceScanner {
     } finally {
       try {
         await dir.delete(recursive: true);
-      } catch (_) {}
+      } catch (err, stack) {
+        ErrorLogger.log('ocr.tempCleanup', err, stack);
+      }
     }
   }
 

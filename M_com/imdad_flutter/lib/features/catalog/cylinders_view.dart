@@ -80,7 +80,7 @@ class _CylindersViewState extends State<CylindersView> {
         ImdICard(
           child: Align(
             alignment: AlignmentDirectional.centerStart,
-            child: SizedBox(
+            child: ImdFit(
               width: 280,
               child: ImdLabeled(
                 'الصنف',

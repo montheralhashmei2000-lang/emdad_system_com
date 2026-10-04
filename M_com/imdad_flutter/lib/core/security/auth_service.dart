@@ -4,9 +4,12 @@ import 'package:drift/drift.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/db/app_database.dart';
+import '../../data/repos/settings_repo.dart';
 import 'password_hash.dart';
+import 'warehouse_scope.dart';
 import '../../data/sync/sync_marks.dart';
 import '../../data/sync/sync_trust.dart';
+import '../../core/error_log.dart';
 
 /// نتيجة محاولة الدخول
 enum AuthStatus { ok, badCredentials, locked, inactive, notApproved }
@@ -34,16 +37,34 @@ class AuthResult {
 ///   تجزئتها بالعدد الحالي تلقائيًا عند أول دخول ناجح.
 /// • قفل الدخول بعد 5 محاولات خاطئة لمدة 3 دقائق (لكل اسم مستخدم).
 /// • مدة الجلسة 12 ساعة ثم يُطلب الدخول من جديد.
+/// • عدّاد المحاولات والجلسة (المعرّف ووقت البدء) محفوظان في قاعدة البيانات
+///   المشفّرة (SQLCipher) لا في `SharedPreferences` المقروءة والقابلة للتعديل
+///   بملفٍّ نصي. القيم القديمة في `SharedPreferences` تُنقل مرةً واحدة عند أول
+///   قراءة ثم تُمسح، فلا تسقط الجلسات القائمة عند الترقية.
 class AuthService {
   AuthService(this.db);
 
   final AppDatabase db;
 
+  /// الحد الأدنى لطول كلمة المرور عند إنشاء الحساب أو تغييرها.
+  static const int minPasswordLength = 8;
+
+  /// هل يُنبَّه هذا المستخدم لتغيير كلمة مروره بعد الدخول؟ كلمته أقصر من الحد
+  /// الحالي ([minPasswordLength]) وليس مديرًا (المدراء لا يُزعَجون بالتنبيه).
+  static bool shouldSuggestPasswordChange({required String role, required String password}) =>
+      role != 'admin' && password.length < minPasswordLength;
+
   static const int maxAttempts = 5;
   static const Duration lockDuration = Duration(minutes: 3); // AUTHCORE.LOCK_MS = 180000
   static const Duration sessionDuration = Duration(hours: 12);
+  // مفاتيح التخزين القديم في SharedPreferences — للترحيل والمسح فقط.
   static const String _kSessionUser = 'imdad.session.userId';
   static const String _kSessionStart = 'imdad.session.startedAt';
+  static const String _kLockPrefix = 'imdad.auth.lock.';
+
+  // مفاتيح قاعدة البيانات (جدول الإعدادات، محلية فقط: SettingsRepo.localOnlyKeys).
+  static const String _sessionKey = 'authSession';
+  static const String _locksKey = 'authLocks';
 
   User? _current;
   User? get currentUser => _current;
@@ -104,8 +125,7 @@ class AuthService {
     // المطابقة غير حساسة لحالة الأحرف، فالعدّاد كذلك: وإلا أخذ كل شكل للاسم
     // (admin / Admin / ADMIN …) خمس محاولات مستقلة وسقط القفل.
     final lockKey = user.toLowerCase();
-    final prefs = await SharedPreferences.getInstance();
-    final st = _lockRead(prefs, lockKey);
+    final st = await _lockRead(lockKey);
     final now = DateTime.now().millisecondsSinceEpoch;
     if (st.until > now) {
       final remaining = Duration(milliseconds: st.until - now);
@@ -133,7 +153,7 @@ class AuthService {
       final ns = st.fails + 1 >= maxAttempts
           ? _LockState(0, now + lockDuration.inMilliseconds)
           : _LockState(st.fails + 1, 0);
-      await _lockStore(prefs, lockKey, ns);
+      await _lockStore(lockKey, ns);
       if (ns.until > now) {
         return const AuthResult(
           status: AuthStatus.locked,
@@ -161,7 +181,7 @@ class AuthService {
       );
     }
 
-    await _lockStore(prefs, lockKey, const _LockState(0, 0));
+    await _lockStore(lockKey, const _LockState(0, 0));
     final account = await _upgradeHash(found, password);
     await _startSession(account);
     return AuthResult(status: AuthStatus.ok, user: account, message: '🌐 تم الدخول محليًا (بدون إنترنت)');
@@ -213,44 +233,92 @@ class AuthService {
     // لظنّ الجهاز أنه استلمها فلا يطلبها مرة أخرى أبدًا.
     await SyncTrust(db).resetPullWatermarks();
 
+    await SettingsRepo(db).write(_locksKey, {});
     final prefs = await SharedPreferences.getInstance();
-    for (final k in prefs.getKeys().where((k) => k.startsWith('imdad.auth.lock.')).toList()) {
+    for (final k in prefs.getKeys().where((k) => k.startsWith(_kLockPrefix)).toList()) {
       await prefs.remove(k);
     }
     await logout();
   }
 
-  static _LockState _lockRead(SharedPreferences prefs, String user) {
+  /// حالة القفل لمستخدم. إن لم توجد في القاعدة وُجد قديمها في SharedPreferences
+  /// فيُنقل إلى القاعدة ويُمسح من هناك.
+  Future<_LockState> _lockRead(String user) async {
+    final repo = SettingsRepo(db);
+    final locks = await repo.read(_locksKey);
+    final inDb = locks[user];
+    if (inDb is Map) return _LockState.fromMap(inDb);
+
+    final prefs = await SharedPreferences.getInstance();
+    final legacyRaw = prefs.getString('$_kLockPrefix$user');
+    if (legacyRaw == null) return const _LockState(0, 0);
+    _LockState legacy = const _LockState(0, 0);
     try {
-      final o = jsonDecode(prefs.getString('imdad.auth.lock.$user') ?? '{}') as Map;
-      return _LockState((o['fails'] as num?)?.toInt() ?? 0, (o['until'] as num?)?.toInt() ?? 0);
-    } catch (_) {
-      return const _LockState(0, 0);
+      legacy = _LockState.fromMap(jsonDecode(legacyRaw) as Map);
+    } catch (err, stack) {
+      ErrorLogger.log('auth.legacyLock', err, stack);
     }
+    locks[user] = legacy.toMap();
+    await repo.write(_locksKey, locks);
+    await prefs.remove('$_kLockPrefix$user');
+    return legacy;
   }
 
-  static Future<void> _lockStore(SharedPreferences prefs, String user, _LockState s) =>
-      prefs.setString('imdad.auth.lock.$user', jsonEncode({'fails': s.fails, 'until': s.until}));
+  Future<void> _lockStore(String user, _LockState s) async {
+    final repo = SettingsRepo(db);
+    final locks = await repo.read(_locksKey);
+    if (s.fails == 0 && s.until == 0) {
+      locks.remove(user); // لا حاجة لسطر صفري
+    } else {
+      locks[user] = s.toMap();
+    }
+    await repo.write(_locksKey, locks);
+    // لا يبقى نظيرٌ قديم يُحيي العدّاد بعد تصفيره.
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('$_kLockPrefix$user');
+  }
+
+  /// الجلسة المحفوظة: (المعرّف، وقت البدء بالمللي ثانية) أو `null`.
+  /// إن لم توجد في القاعدة وُجدت قديمةً في SharedPreferences فتُنقل (ترحيلٌ
+  /// لمرةٍ واحدة يُبقي الجلسات القائمة صالحة).
+  Future<(String, int)?> _readSession() async {
+    final repo = SettingsRepo(db);
+    final map = await repo.read(_sessionKey);
+    final id = map['userId'];
+    final at = map['startedAt'];
+    if (id is String && id.isNotEmpty && at is num) return (id, at.toInt());
+
+    final prefs = await SharedPreferences.getInstance();
+    final legacyId = prefs.getString(_kSessionUser);
+    final legacyAt = prefs.getInt(_kSessionStart);
+    if (legacyId == null || legacyAt == null) return null;
+    await repo.write(_sessionKey, {'userId': legacyId, 'startedAt': legacyAt});
+    await _clearLegacySession(prefs);
+    return (legacyId, legacyAt);
+  }
+
+  Future<void> _clearLegacySession(SharedPreferences prefs) async {
+    await prefs.remove(_kSessionUser);
+    await prefs.remove(_kSessionStart);
+  }
 
   /// استعادة جلسة سارية (أقل من 12 ساعة) بعد إعادة فتح التطبيق.
   /// هل انتهت مدة الجلسة (12 ساعة) أو أُوقف الحساب؟ تُستدعى دوريًا والتطبيق مفتوح.
   Future<bool> sessionExpired() async {
     if (_current == null) return true;
-    final prefs = await SharedPreferences.getInstance();
-    final startedMs = prefs.getInt(_kSessionStart);
-    if (startedMs == null) return true;
-    final started = DateTime.fromMillisecondsSinceEpoch(startedMs);
+    final session = await _readSession();
+    if (session == null) return true;
+    final started = DateTime.fromMillisecondsSinceEpoch(session.$2);
     if (DateTime.now().difference(started) >= sessionDuration) return true;
     final rows = await (db.select(db.users)..where((t) => t.id.equals(_current!.id))).get();
     return rows.isEmpty || !rows.first.active;
   }
 
   Future<User?> restoreSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    final id = prefs.getString(_kSessionUser);
-    final startedMs = prefs.getInt(_kSessionStart);
-    if (id == null || startedMs == null) return null;
-    final started = DateTime.fromMillisecondsSinceEpoch(startedMs);
+    final session = await _readSession();
+    if (session == null) return null;
+    final id = session.$1;
+    final started = DateTime.fromMillisecondsSinceEpoch(session.$2);
     if (DateTime.now().difference(started) >= sessionDuration) {
       await logout();
       return null;
@@ -266,16 +334,17 @@ class AuthService {
 
   Future<void> logout() async {
     _current = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_kSessionUser);
-    await prefs.remove(_kSessionStart);
+    await SettingsRepo(db).write(_sessionKey, {});
+    await _clearLegacySession(await SharedPreferences.getInstance());
   }
 
   Future<void> _startSession(User user) async {
     _current = user;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kSessionUser, user.id);
-    await prefs.setInt(_kSessionStart, DateTime.now().millisecondsSinceEpoch);
+    await SettingsRepo(db).write(_sessionKey, {
+      'userId': user.id,
+      'startedAt': DateTime.now().millisecondsSinceEpoch,
+    });
+    await _clearLegacySession(await SharedPreferences.getInstance());
   }
 
   /// صلاحيات المستخدم الحالي، مخزَّنةً JSON.
@@ -295,14 +364,11 @@ class AuthService {
     return false;
   }
 
-  /// نطاق المستودعات: ALL أو قائمة أسماء.
+  /// نطاق المستودعات: `null` ⇒ كل المستودعات (المدير أو `ALL`)، وإلا قائمة أسماء.
+  /// التالف يُرجع قائمةً فارغة (فشل مغلق) — انظر [parseWarehouseScope].
   List<String>? warehouseScopeOf(User user) {
-    if (user.role == 'admin' || user.warehouseScope == 'ALL') return null; // كل المستودعات
-    try {
-      final v = jsonDecode(user.warehouseScope);
-      if (v is List) return v.map((e) => e.toString()).toList();
-    } catch (_) {}
-    return null;
+    if (user.role == 'admin') return null;
+    return parseWarehouseScope(user.warehouseScope, source: 'auth.warehouseScope');
   }
 
   static String _normalizeUsername(String v) => v.trim();
@@ -314,7 +380,7 @@ class AuthService {
   }
 
   static void _validatePassword(String v) {
-    if (v.length < 6) throw ArgumentError('✖ كلمة المرور 6 أحرف على الأقل');
+    if (v.length < minPasswordLength) throw ArgumentError('✖ كلمة المرور $minPasswordLength أحرف على الأقل');
   }
 
   /// مدّةٌ بالمللي ثانية إلى نصٍّ مقروء.
@@ -326,6 +392,12 @@ class AuthService {
 
 class _LockState {
   const _LockState(this.fails, this.until);
+
+  factory _LockState.fromMap(Map o) =>
+      _LockState((o['fails'] as num?)?.toInt() ?? 0, (o['until'] as num?)?.toInt() ?? 0);
+
   final int fails;
   final int until;
+
+  Map<String, dynamic> toMap() => {'fails': fails, 'until': until};
 }

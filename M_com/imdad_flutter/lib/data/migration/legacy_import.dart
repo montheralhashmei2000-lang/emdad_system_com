@@ -9,6 +9,7 @@ import '../db/app_database.dart';
 import '../repos/settings_repo.dart';
 import 'backup_crypto.dart';
 import '../sync/sync_marks.dart';
+import '../../core/error_log.dart';
 
 /// ترحيل بيانات النظام السابق إلى قاعدة Drift.
 /// المصدر: ملف JSON مُصدَّر منه بالشكل:
@@ -758,6 +759,7 @@ class LegacyImporter {
     await run('linkClearances', 'link_clearances', 'الإخلاءات', db.linkClearances, LinkClearance.fromJson);
     await run('linkPurchaseContracts', 'link_purchase_contracts', 'عقود الشراء', db.linkPurchaseContracts,
         LinkPurchaseContract.fromJson);
+    await run('linkMoneyReceipts', 'link_money_receipts', 'سندات استلام المبالغ', db.linkMoneyReceipts, LinkMoneyReceipt.fromJson);
     await run('linkArmaments', 'link_armaments', 'التسليح', db.linkArmaments, LinkArmament.fromJson);
     await run('linkFinanceLedger', 'link_finance_ledger', 'قيود رصيد المالية', db.linkFinanceLedger, LinkFinanceLedgerData.fromJson);
     await run('linkCustodySheets', 'link_custody_sheets', 'مسيرات العهدة', db.linkCustodySheets, LinkCustodySheet.fromJson);
@@ -1295,7 +1297,9 @@ class LegacyImporter {
               }
             }
           }
-        } catch (_) {}
+        } catch (err, stack) {
+          ErrorLogger.log('import.itemUnits', err, stack);
+        }
       }
       // `entMeasureQty`: السجلات القديمة (بدون qtyUnit='measure') محفوظة بالوحدة الأساسية فتُحوَّل.
       final q = _d(r, 'qtyPerPerson');

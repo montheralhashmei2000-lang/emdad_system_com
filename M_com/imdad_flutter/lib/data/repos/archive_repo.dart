@@ -15,7 +15,7 @@ List<String> decodeTags(String raw) {
   try {
     final parsed = jsonDecode(raw);
     if (parsed is! List) return const [];
-    return [for (final e in parsed) '${e}'.trim()].where((t) => t.isNotEmpty).toList();
+    return [for (final e in parsed) '$e'.trim()].where((t) => t.isNotEmpty).toList();
   } catch (_) {
     // وسمٌ تالفٌ لا يُسقِط الشاشة: تعني القائمة الفارغة «بلا وسوم».
     return const [];
@@ -98,7 +98,7 @@ class ArchiveRepo {
 
     final q = query.trim().toLowerCase();
     final tagWanted = tag.trim();
-    var out = rows.where((r) {
+    final out = rows.where((r) {
       if (category.isNotEmpty && r.category != category) return false;
       if (warehouse.isNotEmpty && r.warehouse != warehouse) return false;
       if (docRef.isNotEmpty && r.docRef != docRef) return false;

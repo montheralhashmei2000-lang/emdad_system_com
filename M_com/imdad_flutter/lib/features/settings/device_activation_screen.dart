@@ -358,8 +358,8 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
       showImdToast(context, '✖ اسم المستخدم: ٣-٢٠ حرفًا إنجليزيًا/أرقام/نقطة/شرطة', error: true);
       return;
     }
-    if (_adminPass.text.length < 6) {
-      showImdToast(context, '✖ كلمة المرور ٦ أحرف على الأقل', error: true);
+    if (_adminPass.text.length < 8) {
+      showImdToast(context, '✖ كلمة المرور ٨ أحرف على الأقل', error: true);
       return;
     }
     if (_adminPass.text != _adminPass2.text) {

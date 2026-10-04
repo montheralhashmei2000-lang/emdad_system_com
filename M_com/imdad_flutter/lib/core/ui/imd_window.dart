@@ -6,6 +6,7 @@ import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart' show Window, WindowEffect;
 import 'package:window_manager/window_manager.dart';
+import '../../core/error_log.dart';
 
 /// وضعا نافذة سطح المكتب (ويندوز فقط؛ على غيره لا يفعل شيئًا).
 ///
@@ -131,18 +132,27 @@ class ImdWindow {
   /// المستخدم تعليقًا بعد تأكيد الخروج؛ فتُنهى العملية صراحةً بعد أن أُغلق كل ما
   /// يلزم إغلاقه (المنافذ، والجلسة). أندرويد يتولّى إنهاءه النظام بعد
   /// `SystemNavigator.pop` لذا لا يُنهى هنا.
+  /// إنهاء العملية. تُستبدل في الاختبارات وحدها: على ويندوز يقتل `io.exit`
+  /// عملية الاختبار نفسها فتظهر الاختبارات اللاحقة «لا تكتمل».
+  @visibleForTesting
+  static void Function(int code) processExit = io.exit;
+
   static Future<void> exit() async {
     final hook = onBeforeExit;
     if (hook != null) {
       try {
         await hook().timeout(exitGrace);
-      } catch (_) {}
+      } catch (err, stack) {
+        ErrorLogger.log('window.exitHook', err, stack);
+      }
     }
     if (!supported) return;
     try {
       await windowManager.destroy().timeout(destroyGrace);
-    } catch (_) {}
-    io.exit(0);
+    } catch (_) {
+      // متوقع: انتهت مهلة هدم النافذة أو رفضتها: تُنهى العملية بعدها صراحةً على أي حال.
+    }
+    processExit(0);
   }
 
   /// الإضافة غير مُهيّأة في الاختبارات وعلى غير ويندوز: لا يمنع ذلك الواجهة.

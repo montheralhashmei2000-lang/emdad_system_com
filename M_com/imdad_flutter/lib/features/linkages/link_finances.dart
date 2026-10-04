@@ -24,6 +24,7 @@ import 'finance_statement.dart';
 import 'custody_form.dart';
 import 'custody_sheet_editor.dart';
 import 'link_export.dart';
+import 'money_receipts_tab.dart';
 
 String _d(String iso) {
   final dt = DateTime.tryParse(iso);
@@ -48,7 +49,7 @@ class LinkFinancesTab extends StatefulWidget {
 }
 
 class _LinkFinancesTabState extends State<LinkFinancesTab> {
-  String _sub = 'custody'; // custody | clearances | contracts | sheets
+  String _sub = 'custody'; // custody | clearances | contracts | sheets | receipts
   final _q = TextEditingController();
   String _view = ''; // عامل تصفية الفرع الحالي
   List<LinkFinCustody>? _custodies;
@@ -532,6 +533,7 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
           ImdTab('clearances', 'الإخلاءات', icon: 'check-circle'),
           ImdTab('contracts', 'عقود الشراء', icon: 'clipboard'),
           ImdTab('sheets', 'مسير العهدة', icon: 'dollar'),
+          ImdTab('receipts', 'استلام مبلغ مالي', icon: 'file'),
         ],
         value: _sub,
         onChanged: _switch,
@@ -543,6 +545,8 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
         ..._clearanceView(c)
       else if (_sub == 'sheets')
         ..._sheetView(c)
+      else if (_sub == 'receipts')
+        MoneyReceiptsTab(repo: widget.repo, perm: widget.perm)
       else
         ..._contractView(c),
     ]);

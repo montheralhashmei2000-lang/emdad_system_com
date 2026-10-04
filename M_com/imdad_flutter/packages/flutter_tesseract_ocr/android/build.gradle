@@ -1,0 +1,34 @@
+group 'io.paratoner.flutter_tesseract_ocr'
+version '1.0'
+
+// نسخة معدَّلة من flutter_tesseract_ocr 0.4.31 (انظر ../README_FORK.md):
+// حُذف buildscript القديم (jcenter() محذوف في Gradle 9، وAGP 7.1.2 لا يصلح مع AGP 9)،
+// والإضافة تستعمل AGP الذي يطبّقه التطبيق المضيف.
+// مكتبة Tesseract4Android المحزَّمة محليًّا. تُعلَن كمستودع flatDir على كل المشاريع
+// (كالأصل) فتُعامَل تبعيةً خارجية؛ أما `files('...aar')` فيرفضها AGP عند تجميع AAR.
+rootProject.allprojects {
+    repositories {
+        flatDir {
+            dirs project(':flutter_tesseract_ocr').file('libs')
+        }
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    namespace "io.paratoner.flutter_tesseract_ocr"
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 21
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+    lint {
+        disable 'InvalidPackage'
+    }
+}
+
+dependencies {
+    api(name: 'tesseract4android-release', ext: 'aar')
+}

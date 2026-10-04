@@ -318,7 +318,7 @@ class _ExecutiveCmdScreenState extends State<ExecutiveCmdScreen> {
           centerVertically: true,
           child: Wrap(spacing: 18, runSpacing: 14, crossAxisAlignment: WrapCrossAlignment.center, children: [
             ImdScoreRing(percent: _execScore),
-            SizedBox(
+            ImdFit(
               width: 260,
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
                 Text('قراءة القائد التنفيذي',

@@ -275,10 +275,8 @@ class LanSync {
             break;
 
           case 'GET /info':
-            final map = await DataExporter(db).toMap();
-            final records = map.entries
-                .where((e) => e.value is List)
-                .fold<int>(0, (s, e) => s + (e.value as List).length);
+            // عدٌّ بـ COUNT(*) لكل جدول — لا تصدير القاعدة كلها لاستخراج رقم.
+            final records = await DataExporter(db).countRecords();
             await _sealed(request, session, SyncInfo(
               deviceName: deviceName,
               records: records,
@@ -324,7 +322,9 @@ class LanSync {
           request.response.statusCode = HttpStatus.internalServerError;
           request.response.write(jsonEncode({'ok': false, 'error': '$e'}));
           await request.response.close();
-        } catch (_) {}
+        } catch (_) {
+          // متوقع: الطرف الآخر أغلق الاتصال قبل أن نرد عليه بالخطأ: لا مستمع للردّ، والخطأ الأصلي معروض أعلاه.
+        }
         onEvent?.call('خطأ في طلب وارد: $e');
       }
     }
@@ -427,7 +427,9 @@ class LanSync {
         ..headers.contentType = ContentType.json
         ..write(jsonEncode({'ok': false, 'error': error}));
       await request.response.close();
-    } catch (_) {}
+    } catch (_) {
+      // متوقع: العميل قطع الاتصال قبل وصول الرفض: لا أحد ليُبلَّغ.
+    }
   }
 
   void _plainJson(HttpRequest request, Map<String, dynamic> body) {
@@ -509,7 +511,9 @@ class LanSync {
           device: '${map['device'] ?? ''}',
           id: '${map['id'] ?? ''}',
         );
-      } catch (_) {}
+      } catch (_) {
+        // متوقع: حزمة اكتشاف مشوّهة أو غريبة من الشبكة: تُهمَل ولا تُسجَّل (قد يغمرنا مرسِلٌ خبيث بها).
+      }
     });
 
     socket.send(utf8.encode(_hello), InternetAddress('255.255.255.255'), discoveryPort);

@@ -16,6 +16,7 @@ import '../../data/repos/stocktake_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/stocktake_scan.dart';
 import '../inventory/doc_kit.dart';
+import '../../core/ui/imd_layout.dart';
 
 /// إدارة الجرد المخزني — نقل `stocktake-center.js` بتبويباته الخمسة:
 /// إنشاء أمر جرد · العد الفعلي · تحليل الفروقات · التسوية والاعتماد · سجل الجرد.
@@ -601,7 +602,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
   /// منتقي أمر الجرد أعلى التبويبات (`orderPicker`).
   Widget _orderPicker({required bool onlyOpen}) {
     final list = onlyOpen ? _openOrders : _orders;
-    return SizedBox(
+    return ImdFit(
       width: 340,
       child: ImdLabeled(
         'أمر الجرد:',
@@ -749,7 +750,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
           ]),
           const SizedBox(height: 10),
           Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.end, children: [
-            SizedBox(
+            ImdFit(
               width: 340,
               child: ImdLabeled(
                 'إضافة صنف مكتشف:',

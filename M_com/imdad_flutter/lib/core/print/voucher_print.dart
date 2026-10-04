@@ -6,6 +6,7 @@ import '../../data/repos/archive_auto.dart';
 import '../../data/repos/signatures_repo.dart';
 import '../ui/imd_format.dart';
 import 'military_print.dart';
+import '../../core/error_log.dart';
 
 /// سطر سند للطباعة.
 class VoucherLine {
@@ -147,7 +148,9 @@ class VoucherPrint {
         pdfBytes: bytes,
         fileName: '${refNo.isEmpty ? title.replaceAll(' ', '-') : refNo}.pdf',
       );
-    } catch (_) {}
+    } catch (err, stack) {
+      ErrorLogger.critical('archive.voucher', err, stack: stack, userMessage: 'طُبع السند لكن تعذّرت أرشفته تلقائيًّا');
+    }
   }
 
   /// يبني المحرك من هوية الجهة المحفوظة (الشعار والأسطر والتذييل).

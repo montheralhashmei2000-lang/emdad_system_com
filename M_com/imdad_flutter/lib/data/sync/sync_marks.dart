@@ -124,6 +124,7 @@ class SyncMarks {
     'link_clearances': 'id',
     'link_purchase_contracts': 'id',
     'link_armaments': 'id',
+    'link_money_receipts': 'id',
     'link_custody_sheets': 'id',
     'link_custody_sheet_rows': 'id',
     'link_finance_ledger': 'id',

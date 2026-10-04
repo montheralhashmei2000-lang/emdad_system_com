@@ -11,6 +11,7 @@ import '../../domain/finance.dart';
 import 'military_print.dart';
 import 'print_format.dart';
 import 'voucher_print.dart';
+import '../../core/error_log.dart';
 
 /// طباعة «مسير العهدة» بتنسيق ملف الـPDF المعتمد: صفحة أفقية، ترويسة من
 /// مستويين (مبلغ العهدة / مرتجع / المبلغ المنصرف)، شبكة بحدود سوداء، أسطر
@@ -201,13 +202,14 @@ class CustodySheetPrint {
           ),
         );
 
+    // رقم العهدة واسم صاحبها **فوق** رؤوس الجدول (لا تحتها)، ويتكرران مع الرأس
+    // في كل صفحة، فيبقى الجدول نفسه كما هو.
+    final meta = pw.Row(children: [
+      metaBox('رقم العهدة', sheet.sheetNo.isEmpty ? '' : sheet.sheetNo),
+      metaBox('اسم صاحب العهدة', holder),
+    ]);
+
     final body = <pw.Widget>[
-      // ترويسة المسير: رقم العهدة واسم صاحبها.
-      pw.Row(children: [
-        metaBox('رقم العهدة', sheet.sheetNo.isEmpty ? '' : sheet.sheetNo),
-        metaBox('اسم صاحب العهدة', holder),
-      ]),
-      pw.SizedBox(height: 4),
       for (final r in rows)
         _row(r, h, size, dups.contains(normalizeInvoiceNo(r.invoiceNo)), yerSheet),
       _totalRow('اجمالي العهدة بالريال $curName', money(totals.granted), h, size, fill: _custodyFill),
@@ -232,7 +234,11 @@ class CustodySheetPrint {
       textDirection: pw.TextDirection.rtl,
       theme: theme,
       margin: const pw.EdgeInsets.all(16),
-      header: (ctx) => _head(h, size, curName),
+      header: (ctx) => pw.Column(children: [
+        meta,
+        pw.SizedBox(height: 4),
+        _head(h, size, curName),
+      ]),
       // أرقام الصفحات إن زادت عن صفحة.
       footer: (ctx) => ctx.pagesCount > 1
           ? pw.Padding(
@@ -258,6 +264,8 @@ class CustodySheetPrint {
         pdfBytes: bytes,
         fileName: '${name.replaceAll(' ', '-')}.pdf',
       );
-    } catch (_) {}
+    } catch (err, stack) {
+      ErrorLogger.critical('archive.custodySheet', err, stack: stack, userMessage: 'طُبع المسير لكن تعذّرت أرشفته تلقائيًّا');
+    }
   }
 }

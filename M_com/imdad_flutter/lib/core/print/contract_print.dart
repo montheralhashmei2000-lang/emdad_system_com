@@ -11,6 +11,7 @@ import '../../domain/arabic_words.dart';
 import 'military_print.dart';
 import 'print_format.dart';
 import 'voucher_print.dart';
+import '../../core/error_log.dart';
 
 /// طباعة «عقد الشراء» على النموذج المعتمد (قائمة الكمية المستهلكة).
 ///
@@ -205,7 +206,9 @@ class ContractPrint {
     if (logo == null) {
       try {
         logo = (await rootBundle.load('assets/logo.png')).buffer.asUint8List();
-      } catch (_) {}
+      } catch (err, stack) {
+        ErrorLogger.log('print.contract.logo', err, stack);
+      }
     }
     final theme = await engine.pdfTheme();
     final items = ContractItem.decode(c.itemsJson);
@@ -315,6 +318,8 @@ class ContractPrint {
         pdfBytes: bytes,
         fileName: '${name.replaceAll(' ', '-')}.pdf',
       );
-    } catch (_) {}
+    } catch (err, stack) {
+      ErrorLogger.critical('archive.contract', err, stack: stack, userMessage: 'طُبع العقد لكن تعذّرت أرشفته تلقائيًّا');
+    }
   }
 }

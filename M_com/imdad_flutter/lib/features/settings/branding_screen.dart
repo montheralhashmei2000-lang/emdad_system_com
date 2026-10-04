@@ -297,7 +297,9 @@ class _BrandingScreenState extends State<BrandingScreen> {
     if (_logo.isNotEmpty) {
       try {
         bytes = base64Decode(_logo);
-      } catch (_) {}
+      } catch (_) {
+        // متوقع: ترميز Base64 تالف للشعار: تعرض المعاينة الحرف «إ» بدل الصورة.
+      }
     }
     return Container(
       width: size,

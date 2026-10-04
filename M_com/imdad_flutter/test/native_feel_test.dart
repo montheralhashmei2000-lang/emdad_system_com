@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart';
@@ -147,7 +148,9 @@ void main() {
       expect(ImdDropZone.firstMatching(const [], exts), isNull);
     });
 
-    testWidgets('خارج ويندوز تُرجع الابن كما هو بلا غلاف', (tester) async {
+    // الغلاف مشروط بـ Platform.isWindows الحقيقي (لا يُحاكى في الاختبار)،
+    // فالتأكيد صالح خارج ويندوز فقط.
+    testWidgets('خارج ويندوز تُرجع الابن كما هو بلا غلاف', skip: Platform.isWindows, (tester) async {
       await tester.pumpWidget(host(const ImdDropZone(
         extensions: ['xlsx'],
         onFile: _ignore,

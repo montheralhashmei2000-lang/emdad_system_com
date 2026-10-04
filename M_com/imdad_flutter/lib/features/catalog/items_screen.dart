@@ -23,6 +23,7 @@ import '../../data/db/app_database.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../domain/stock_alerts.dart';
+import '../../core/error_log.dart';
 
 /// إدارة الأصناف بتبويباتها الست:
 /// القائمة، التصنيفات، بطاقة الصنف، الأرصدة، حركة الصنف، الباركودات.
@@ -1110,7 +1111,9 @@ class _ItemsScreenState extends State<ItemsScreen> {
       try {
         await (_db.update(_db.items)..where((t) => t.id.equals(x.id))).write(ItemsCompanion(barcode: Value(bc)));
         n++;
-      } catch (_) {}
+      } catch (err, stack) {
+        ErrorLogger.log('items.barcodeGenerate', err, stack);
+      }
     }
     if (!mounted) return;
     showImdToast(context, '✔ ولّد باركود لـ $n صنف');

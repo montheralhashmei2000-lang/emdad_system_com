@@ -411,6 +411,13 @@ class LinkArmaments extends Table {
   /// الكمية (سلاحٌ واحد غالبًا).
   IntColumn get qty => integer().withDefault(const Constant(1))();
 
+  /// عدد القرون (مخازن الذخيرة) المسلَّمة مع القطعة ونوعها: صيني أو روسي أو نصٌّ حر.
+  IntColumn get magazines => integer().withDefault(const Constant(0))();
+  TextColumn get magazineType => text().withDefault(const Constant(''))();
+
+  /// عدد الذخيرة المستلمة (طلقات).
+  IntColumn get ammoQty => integer().withDefault(const Constant(0))();
+
   /// تاريخ التسليم.
   TextColumn get assignedDate => text().withDefault(const Constant(''))();
 
@@ -422,6 +429,45 @@ class LinkArmaments extends Table {
   TextColumn get condition => text().withDefault(const Constant(''))();
 
   TextColumn get notes => text().withDefault(const Constant(''))();
+
+  TextColumn get createdBy => text().withDefault(const Constant(''))();
+
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  DateTimeColumn get updatedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// «استلام مبلغ مالي» — سندٌ يُطبع بنموذج الجهة (سندٌ واحدٌ في الصفحة).
+/// كل الحقول اختيارية: ما تُرك فارغًا يُطبع نقاطًا ليُملأ بخط اليد.
+class LinkMoneyReceipts extends Table {
+  TextColumn get id => text()();
+
+  /// «استلمت أنا / …» و«بصفتي …».
+  TextColumn get receiverName => text().withDefault(const Constant(''))();
+  TextColumn get capacity => text().withDefault(const Constant(''))();
+
+  /// المبلغ رقمًا وعملته؛ كتابتُه بالحروف تُشتق منه عند العرض والطباعة.
+  RealColumn get amount => real().withDefault(const Constant(0))();
+  TextColumn get currency => text().withDefault(const Constant('sar'))();
+
+  /// تاريخ السند (ISO) — فارغ ⇒ يُطبع فراغًا.
+  TextColumn get receiptDate => text().withDefault(const Constant(''))();
+
+  /// «وذلك مقابل …».
+  TextColumn get purpose => text().withDefault(const Constant(''))();
+
+  /// طريقة التسليم: `cash` | `transfer` | فارغ، ورقم الحوالة.
+  TextColumn get method => text().withDefault(const Constant(''))();
+  TextColumn get transferNo => text().withDefault(const Constant(''))();
+
+  /// بيانات المسلِّم (اسمه) — واسم المستلم هو [receiverName].
+  TextColumn get delivererName => text().withDefault(const Constant(''))();
+
+  /// «المرفقات» في الترويسة.
+  TextColumn get attachments => text().withDefault(const Constant(''))();
 
   TextColumn get createdBy => text().withDefault(const Constant(''))();
 

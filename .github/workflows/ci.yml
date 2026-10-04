@@ -1,26 +1,33 @@
-# فحص تطبيق Flutter (M_com/imdad_flutter) مع كل دفع أو طلب دمج يمسّه:
-# توليد كود Drift ثم التحليل الساكن ثم الاختبارات.
-name: Flutter
+# التكامل المستمر لتطبيق Flutter (M_com/imdad_flutter):
+# pub get ← توليد كود Drift ← التحليل الساكن ← الاختبارات.
+# يعمل عند الدفع إلى main وعند أي طلب دمج إليه، ويمسّ هذا المجلد وحده.
+name: CI
 
 on:
   push:
+    branches: [main]
     paths:
       - "M_com/imdad_flutter/**"
-      - ".github/workflows/flutter.yml"
+      - ".github/workflows/ci.yml"
   pull_request:
+    branches: [main]
     paths:
       - "M_com/imdad_flutter/**"
-      - ".github/workflows/flutter.yml"
+      - ".github/workflows/ci.yml"
   workflow_dispatch:
 
 concurrency:
-  group: flutter-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # الاختبارات تشمل اشتقاق PBKDF2 بـ 310 ألف دورة في وضع debug فتطول.
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: M_com/imdad_flutter
@@ -36,15 +43,15 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Dependencies
+      - name: flutter pub get
         run: flutter pub get
 
       # ملفات *.g.dart لا تُرفع إلى المستودع؛ تُولَّد هنا كما على جهاز المطوّر.
-      - name: Generate Drift code
+      - name: build_runner (Drift)
         run: dart run build_runner build --delete-conflicting-outputs
 
-      - name: Analyze
+      - name: flutter analyze
         run: flutter analyze
 
-      - name: Test
+      - name: flutter test
         run: flutter test

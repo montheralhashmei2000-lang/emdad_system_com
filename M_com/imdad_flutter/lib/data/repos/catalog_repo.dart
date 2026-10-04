@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import '../../core/ids.dart';
 import '../db/app_database.dart';
+import '../../core/error_log.dart';
 
 /// وحدة قياس الصنف (تُحفظ JSON داخل عمود units).
 class ItemUnit {
@@ -32,7 +33,9 @@ List<String> facilityIdsOf(BeneficiaryUnit u) {
       final out = [for (final v in raw) '$v'].where((v) => v.isNotEmpty).toList();
       if (out.isNotEmpty) return out;
     }
-  } catch (_) {}
+  } catch (err, stack) {
+    ErrorLogger.log('catalog.facilityIds', err, stack);
+  }
   return u.facilityId.isEmpty ? const [] : [u.facilityId];
 }
 
@@ -71,7 +74,9 @@ List<ItemUnit> unitsOfItem(Item item) {
           ),
       ].where((u) => u.name.isNotEmpty).toList();
     }
-  } catch (_) {}
+  } catch (err, stack) {
+    ErrorLogger.log('catalog.itemUnits', err, stack);
+  }
   return item.baseUnit.isEmpty
       ? const []
       : [ItemUnit(name: item.baseUnit, factor: 1, isBase: true)];
@@ -110,7 +115,9 @@ class CatalogRepo {
             .map((e) => ItemUnit.fromMap(e.cast<String, dynamic>()))
             .toList();
       }
-    } catch (_) {}
+    } catch (err, stack) {
+      ErrorLogger.log('catalog.itemUnits', err, stack);
+    }
     return [ItemUnit(name: item.baseUnit.isEmpty ? 'وحدة' : item.baseUnit, factor: 1, isBase: true)];
   }
 
@@ -215,7 +222,9 @@ class CatalogRepo {
     try {
       final raw = jsonDecode(w.campIds);
       if (raw is List) return raw.map((e) => e.toString()).toList();
-    } catch (_) {}
+    } catch (err, stack) {
+      ErrorLogger.log('catalog.campIds', err, stack);
+    }
     return const [];
   }
 

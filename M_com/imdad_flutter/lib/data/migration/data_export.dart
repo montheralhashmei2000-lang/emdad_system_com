@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show compute;
 
 import '../../core/security/device_activation.dart';
 import '../db/app_database.dart';
@@ -818,6 +819,8 @@ class DataExporter {
       'linkPurchaseContracts': (await _rows(db.linkPurchaseContracts, ids('link_purchase_contracts'), (t) => t.id))
           .map((e) => e.toJson())
           .toList(),
+      'linkMoneyReceipts':
+          (await _rows(db.linkMoneyReceipts, ids('link_money_receipts'), (t) => t.id)).map((e) => e.toJson()).toList(),
       'linkArmaments':
           (await _rows(db.linkArmaments, ids('link_armaments'), (t) => t.id)).map((e) => e.toJson()).toList(),
       'linkFinanceLedger':
@@ -841,6 +844,28 @@ class DataExporter {
           .map((m) => m.toMap())
           .toList(),
     };
+  }
+
+  /// عدد السجلات التي يحملها [toMap] لو صُدِّر كاملًا (بلا المستخدمين)، **دون
+  /// بناء الحمولة**: `COUNT(*)` لكل جدول مزامَن بدل قراءة كل الصفوف وتحويلها
+  /// إلى خرائط. يستعمله `GET /info` الذي يحتاج رقمًا واحدًا فقط.
+  ///
+  /// التطابق مع مجموع قوائم [toMap]: الجداول المزامَنة ([SyncMarks.entities])
+  /// ما عدا `users`، والإعدادات بعد استبعاد المفاتيح المحلية، وسطور `sync_marks`.
+  Future<int> countRecords() async {
+    var total = 0;
+    for (final t in db.allTables) {
+      final name = t.actualTableName;
+      if (name == 'users' || name == 'app_settings' || !SyncMarks.entities.containsKey(name)) continue;
+      final q = db.selectOnly(t)..addColumns([countAll()]);
+      total += (await q.getSingle()).read(countAll()) ?? 0;
+    }
+    final settings = db.selectOnly(db.appSettings)
+      ..addColumns([countAll()])
+      ..where(db.appSettings.key.isIn(SettingsRepo.localOnlyKeys).not());
+    total += (await settings.getSingle()).read(countAll()) ?? 0;
+    final marks = await db.customSelect('SELECT COUNT(*) AS c FROM ${SyncMarks.table}').getSingle();
+    return total + marks.read<int>('c');
   }
 
   /// سطور جدول واحد، مرشَّحة بمعرّفات ما تغيّر.
@@ -929,8 +954,13 @@ class DataExporter {
       await file.writeAsString(const JsonEncoder.withIndent('  ').convert(map));
       return (path: path, records: records, encrypted: false);
     }
-    await file.writeAsBytes(BackupCrypto.seal(jsonEncode(map), password),
-        flush: true);
+    // اشتقاق المفتاح (٣١٠ ألف دورة) يعمل في Isolate منفصل: النسخة المجدولة تجري
+    // والمستخدم يعمل، فلا يتجمد عليه الرسم.
+    final sealed = await compute(_sealTask, (map, password));
+    await file.writeAsBytes(sealed, flush: true);
     return (path: path, records: records, encrypted: true);
   }
 }
+
+/// تشفير النسخة داخل Isolate: ترميز JSON ثم [BackupCrypto.seal].
+Uint8List _sealTask((Map<String, dynamic>, String) a) => BackupCrypto.seal(jsonEncode(a.$1), a.$2);

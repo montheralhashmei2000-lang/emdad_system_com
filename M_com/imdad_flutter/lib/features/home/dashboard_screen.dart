@@ -120,8 +120,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return AlertDialog(
           title: const Text('تخصيص بطاقات المؤشرات'),
           content: SizedBox(
-            width: 460,
-            height: 380,
+            width: _dialogWidth(context),
+            height: _dialogHeight(context),
             child: ReorderableListView(
               buildDefaultDragHandles: false,
               // `onReorderItem` لا `onReorder`: الأخير يُسلّم فهرسًا محسوبًا
@@ -183,7 +183,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return AlertDialog(
           title: const Text('تخصيص الإجراءات السريعة'),
           content: SizedBox(
-            width: 460,
+            width: _dialogWidth(context),
             child: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 for (final action in available)
@@ -801,3 +801,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
+
+/// عرض حوار التخصيص: 460 على سطح المكتب، ويتقلّص مع الشاشة الضيقة.
+double _dialogWidth(BuildContext context) => (MediaQuery.sizeOf(context).width - 80).clamp(240.0, 460.0);
+
+/// ارتفاع قائمة التخصيص: 380 ولا يزيد عن 55% من ارتفاع الشاشة (الهاتف الأفقي).
+double _dialogHeight(BuildContext context) => (MediaQuery.sizeOf(context).height * 0.55).clamp(160.0, 380.0);

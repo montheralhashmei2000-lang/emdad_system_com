@@ -117,4 +117,23 @@ void main() {
       expect(File('${file.path}.plain.bak').existsSync(), isFalse);
     });
   });
+
+  group('تنظيف النسخ غير المشفّرة القديمة', () {
+    test('لا تُحذف إن لم تثبت سلامة القاعدة المشفّرة (قد تكون النسخة الوحيدة)', () async {
+      final file = dbFile('imdad.sqlite');
+      final db = AppDatabase.forTesting(NativeDatabase(file));
+      await db.customSelect('SELECT 1').get();
+      await db.close(); // قاعدة عادية غير مشفّرة
+      final bak = File('${file.path}${DbCipher.plainBackupSuffix}')..writeAsStringSync('old');
+
+      expect(DbCipher.removeStalePlainBackups(file, 'e' * 64), isEmpty);
+      expect(bak.existsSync(), isTrue);
+    });
+
+    test('بلا ملف قاعدة أو بلا نسخ قديمة لا يحدث شيء ولا استثناء', () {
+      expect(DbCipher.removeStalePlainBackups(dbFile('none.sqlite'), 'e' * 64), isEmpty);
+      final file = dbFile('imdad.sqlite')..writeAsStringSync('x');
+      expect(DbCipher.removeStalePlainBackups(file, 'e' * 64), isEmpty);
+    });
+  });
 }
