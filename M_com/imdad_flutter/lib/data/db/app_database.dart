@@ -1075,6 +1075,7 @@ class AppSettings extends Table {
   LinkCustodySheets,
   LinkCustodySheetRows,
   LinkArmaments,
+  LinkFinanceLedger,
   Cables,
 ])
 class AppDatabase extends _$AppDatabase {
@@ -1082,7 +1083,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 23;
+  int get schemaVersion => 24;
 
   /// الفهارس المخدومة فعليًا بالاستعلامات: البحث بالمرجع (فتح سند من سجل
   /// المستندات)، وبالحالة (الأوامر المعلقة والمسودات)، وبالمستودع والصنف
@@ -1145,6 +1146,9 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS ix_link_status_person ON link_status_logs (person_id)',
       'CREATE INDEX IF NOT EXISTS ix_link_custody_cleared ON link_fin_custodies (cleared)',
       'CREATE INDEX IF NOT EXISTS ix_link_clear_ref ON link_clearances (kind, ref_id)',
+      'CREATE INDEX IF NOT EXISTS ix_link_contract_custody ON link_purchase_contracts (custody_id)',
+      'CREATE INDEX IF NOT EXISTS ix_link_sheet_custody ON link_custody_sheets (custody_id)',
+      'CREATE INDEX IF NOT EXISTS ix_link_ledger_party ON link_finance_ledger (party_name)',
       'CREATE INDEX IF NOT EXISTS ix_link_contracts_status ON link_purchase_contracts (status)',
       'CREATE INDEX IF NOT EXISTS ix_link_sheet_rows ON link_custody_sheet_rows (sheet_id, seq)',
       'CREATE INDEX IF NOT EXISTS ix_link_arm_person ON link_armaments (person_id)',
@@ -1220,6 +1224,17 @@ class AppDatabase extends _$AppDatabase {
       }
     }
     return added;
+  }
+
+  /// ترحيل العهد القديمة إلى النموذج المالي الجديد دون حذف شيء:
+  /// الحالة من `cleared`، والمبلغ من `value_amount`، والجهة المسؤولة تصير
+  /// «مستلِمًا» لعهدة مسلَّمة (العهد القديمة كانت تُسلَّم لجهات).
+  /// يُستدعى عند أول فتح بعد v24؛ عامٌّ ليُختبر.
+  Future<void> backfillFinance() async {
+    await customStatement("UPDATE link_fin_custodies SET status = 'cleared' WHERE cleared = 1");
+    await customStatement('UPDATE link_fin_custodies SET amount = value_amount WHERE amount = 0 AND value_amount > 0');
+    await customStatement(
+        "UPDATE link_fin_custodies SET kind = 'delivered', receiver_name = holder WHERE holder <> '' AND receiver_name = ''");
   }
 
   /// يملأ القيم الفارغة في أعمدةٍ لا تقبل الفراغ.
@@ -1512,6 +1527,11 @@ class AppDatabase extends _$AppDatabase {
           if (from < 23) {
             await _createIfMissing(m, cables);
           }
+          // v24: النموذج المالي المتكامل — دفتر رصيد المالية (أعمدة العهد والإخلاء
+          // والعقد والمسير الجديدة يضيفها _ensureSchema بقيمها الافتراضية).
+          if (from < 24) {
+            await _createIfMissing(m, linkFinanceLedger);
+          }
           // v15: إصلاح ما خلّفه تنقّل القاعدة بين نسختين مختلفتي المخطط.
           //
           // يجري بعد كل ترقية لا في هذا الإصدار وحده: الانحراف قد يتكرر كلما
@@ -1524,7 +1544,11 @@ class AppDatabase extends _$AppDatabase {
           await customStatement('PRAGMA journal_mode = WAL');
           // المخطط يُطابَق بالواقع قبل أي شيء: الفهارس والملء الرجعي أدناه
           // تفترض أعمدةً موجودة، وهي قد لا تكون.
+          // العهد قبل v24 بلا عمود الحالة: يُلتقط ذلك قبل إضافة الأعمدة ليُرحَّل مرةً واحدة.
+          final custodyColsBefore = await _columnsOf('link_fin_custodies');
+          final needFinanceBackfill = custodyColsBefore.isNotEmpty && !custodyColsBefore.contains('status');
           final healed = await _ensureSchema();
+          if (needFinanceBackfill) await backfillFinance();
           if (healed > 0) await _repairNulls();
           await _createIndexes();
           await SyncMarks.install(this);

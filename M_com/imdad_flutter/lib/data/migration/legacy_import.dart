@@ -759,6 +759,7 @@ class LegacyImporter {
     await run('linkPurchaseContracts', 'link_purchase_contracts', 'عقود الشراء', db.linkPurchaseContracts,
         LinkPurchaseContract.fromJson);
     await run('linkArmaments', 'link_armaments', 'التسليح', db.linkArmaments, LinkArmament.fromJson);
+    await run('linkFinanceLedger', 'link_finance_ledger', 'قيود رصيد المالية', db.linkFinanceLedger, LinkFinanceLedgerData.fromJson);
     await run('linkCustodySheets', 'link_custody_sheets', 'مسيرات العهدة', db.linkCustodySheets, LinkCustodySheet.fromJson);
     await run('linkCustodySheetRows', 'link_custody_sheet_rows', 'أسطر مسيرات العهدة', db.linkCustodySheetRows,
         LinkCustodySheetRow.fromJson);

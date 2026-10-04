@@ -15,6 +15,7 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../domain/access_control.dart';
 import '../../data/repos/linkage_repo.dart';
+import '../../data/repos/catalog_repo.dart';
 import 'link_armament.dart';
 import 'link_export.dart';
 import 'link_finances.dart';
@@ -25,60 +26,44 @@ String _d(String iso) {
   return dt == null ? (iso.isEmpty ? '—' : arDigits(iso)) : arDate(dt);
 }
 
-class LinkagesScreen extends StatefulWidget {
-  const LinkagesScreen({super.key});
-  @override
-  State<LinkagesScreen> createState() => _LinkagesScreenState();
-}
+/// شاشة «المالية»: العهد والإخلاءات وعقود الشراء ومسير العهدة — تبويباتها داخل الشاشة.
+class LinkFinancesScreen extends StatelessWidget {
+  const LinkFinancesScreen({super.key});
 
-class _LinkagesScreenState extends State<LinkagesScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabs;
-  @override
-  void initState() {
-    super.initState();
-    _tabs = TabController(length: 4, vsync: this);
-  }
-  @override
-  void dispose() {
-    _tabs.dispose();
-    super.dispose();
-  }
   @override
   Widget build(BuildContext context) {
     final perm = Perm.of(context);
-    if (!perm.has('linkages') && !perm.has('personnel')) {
+    if (!perm.has('linkages')) {
       return const ImdPage(children: [ImdPanel(child: ImdEmptyState.noPermission())]);
     }
-    final repo = LinkageRepo(context.read<AppDatabase>());
     return ImdPage(children: [
       const ImdPageTitle(
-        title: 'مركز الارتباطات',
-        icon: 'link',
-        subtitle: 'القوة البشرية · التنبيهات · مالية الإمداد · التسليح',
+        title: 'المالية',
+        icon: 'dollar',
+        subtitle: 'العهد · الإخلاءات · عقود الشراء · مسير العهدة',
       ),
-      ImdPanel(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          TabBar(controller: _tabs, isScrollable: true, tabs: const [
-            Tab(text: 'القوة البشرية'),
-            Tab(text: 'التنبيهات'),
-            Tab(text: 'المالية'),
-            Tab(text: 'التسليح'),
-          ]),
-          const SizedBox(height: 12),
-          // التبويب المختار يُعرض في تدفق الصفحة نفسها (تمرير واحد) لا في ارتفاعٍ
-          // ثابت — فيتكيّف مع الجوال والحاسب دون فيض.
-          AnimatedBuilder(
-            animation: _tabs,
-            builder: (ctx, _) => switch (_tabs.index) {
-              0 => LinkPersonnelTab(repo: repo, perm: perm),
-              1 => _AlertsTab(repo: repo),
-              2 => LinkFinancesTab(repo: repo, perm: perm),
-              _ => LinkArmamentTab(repo: repo, perm: perm),
-            },
-          ),
-        ]),
+      ImdPanel(child: LinkFinancesTab(repo: LinkageRepo(context.read<AppDatabase>()), perm: perm)),
+    ]);
+  }
+}
+
+/// شاشة «التسليح»: الأسلحة المسلَّمة للأفراد وحالاتها.
+class LinkArmamentScreen extends StatelessWidget {
+  const LinkArmamentScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final perm = Perm.of(context);
+    if (!perm.has('linkages')) {
+      return const ImdPage(children: [ImdPanel(child: ImdEmptyState.noPermission())]);
+    }
+    return ImdPage(children: [
+      const ImdPageTitle(
+        title: 'التسليح',
+        icon: 'target',
+        subtitle: 'الأسلحة المسلَّمة للأفراد وحالاتها',
       ),
+      ImdPanel(child: LinkArmamentTab(repo: LinkageRepo(context.read<AppDatabase>()), perm: perm)),
     ]);
   }
 }
@@ -99,7 +84,7 @@ class _LinkPersonnelTabState extends State<LinkPersonnelTab> {
   bool _sortAsc = true;
   List<LinkPerson>? _persons;
   Map<String, List<LinkTerm>> _terms = const {};
-  List<Warehouse> _camps = const [];
+  List<String> _camps = const [];
   List<LinkAlert> _alerts = const [];
   bool _selectMode = false;
   final Set<String> _selected = {};
@@ -130,8 +115,10 @@ class _LinkPersonnelTabState extends State<LinkPersonnelTab> {
       'section': await widget.repo.terms('section'),
       'job': await widget.repo.terms('job'),
       'subunit': await widget.repo.terms('subunit'),
+      'status': await widget.repo.terms('status'),
     };
-    final camps = await widget.repo.db.select(widget.repo.db.warehouses).get();
+    // المعسكرات من دليل الوحدات المستفيدة (أسماء المعسكرات) لا من المستودعات.
+    final camps = {for (final u in await CatalogRepo(widget.repo.db).camps()) if (u.name.trim().isNotEmpty) u.name.trim()}.toList()..sort();
     final alerts = await widget.repo.getAlerts();
     if (!mounted) return;
     setState(() {
@@ -144,6 +131,13 @@ class _LinkPersonnelTabState extends State<LinkPersonnelTab> {
     await _load();
     if (mounted) showImdToast(context, '✔ تم التحديث');
   }
+
+  /// الحالات المعروفة ثم المضافة من المستخدم.
+  List<String> get _allStatuses => [
+        ...LinkStatus.meta.keys,
+        for (final t in _terms['status'] ?? const <LinkTerm>[])
+          if (!LinkStatus.meta.containsKey(t.name)) t.name,
+      ];
 
   bool get _hasFilter =>
       _q.text.trim().isNotEmpty || _status.isNotEmpty || _subUnit.isNotEmpty ||
@@ -222,12 +216,6 @@ class _LinkPersonnelTabState extends State<LinkPersonnelTab> {
     if (mounted) showImdToast(context, '✔ حُذف الفرد');
   }
 
-  Future<void> _manageTerms() async {
-    await showImdModal<void>(context, title: 'إدارة الأقسام والأعمال', icon: 'sliders', maxWidth: 640,
-      builder: (ctx) => _TermsSheet(repo: widget.repo, terms: _terms));
-    await _load();
-  }
-
   List<String> _rowText(int i, LinkPerson p) => [
     '${i + 1}', p.fullName, p.militaryNo, p.rank, p.phone, p.phone2,
     p.subUnit, p.camp, p.section, p.job, LinkStatus.label(p.status),
@@ -284,10 +272,10 @@ class _LinkPersonnelTabState extends State<LinkPersonnelTab> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       ImdKpis(children: [
         ImdKpi(label: 'إجمالي القوة', value: nf(all.length), icon: 'users', color: c.accent),
-        for (final e in LinkStatus.meta.entries)
-          ImdKpi(label: e.value.$1, value: nf(all.where((p) => p.status == e.key).length),
-            icon: e.key == LinkStatus.present ? 'check-circle' : 'clock',
-            color: ImdChip.colors(c, e.value.$2).$2),
+        for (final e in _allStatuses)
+          ImdKpi(label: LinkStatus.label(e), value: nf(all.where((p) => p.status == e).length),
+            icon: e == LinkStatus.present ? 'check-circle' : 'clock',
+            color: ImdChip.colors(c, LinkStatus.tone(e)).$2),
       ]),
       if (_alerts.isNotEmpty) ...[
         const SizedBox(height: 10),
@@ -307,7 +295,7 @@ class _LinkPersonnelTabState extends State<LinkPersonnelTab> {
               Expanded(
                   child: Text(
                       critical > 0
-                          ? '$critical تنبيه حرج · $high عالي — راجع تبويب التنبيهات'
+                          ? '$critical تنبيه حرج · $high عالي — تجدها في جرس التنبيهات أعلى الشاشة'
                           : '${_alerts.length} تنبيه يحتاج انتباهك',
                       style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: c.text))),
             ]),
@@ -319,13 +307,13 @@ class _LinkPersonnelTabState extends State<LinkPersonnelTab> {
         ImdGrid(columns: 6, minItemWidth: 165, gap: 12, children: [
           ImdLabeled('بحث', ImdFld(controller: _q, hint: 'الاسم، الرقم العسكري، الهاتف…', onChanged: _onSearchChanged)),
           ImdLabeled('الحالة', ImdSelect<String>(
-            items: [('', 'الكل'), for (final e in LinkStatus.meta.entries) (e.key, e.value.$1)],
+            items: [('', 'الكل'), for (final e in _allStatuses) (e, LinkStatus.label(e))],
             value: _status, onChanged: (v) { setState(() => _status = v ?? ''); _load(); })),
           ImdLabeled('الوحدة الفرعية', ImdSelect<String>(
             items: [('', 'الكل'), for (final t in _terms['subunit'] ?? const <LinkTerm>[]) (t.name, t.name)],
             value: _subUnit, onChanged: (v) { setState(() => _subUnit = v ?? ''); _load(); })),
           ImdLabeled('المعسكر', ImdSelect<String>(
-            items: [('', 'الكل'), for (final w in _camps) (w.name, w.name)],
+            items: [('', 'الكل'), for (final w in {..._camps, if (_camp.isNotEmpty) _camp}) (w, w)],
             value: _camp, onChanged: (v) { setState(() => _camp = v ?? ''); _load(); })),
           ImdLabeled('القسم', ImdSelect<String>(
             items: [('', 'الكل'), for (final t in _terms['section'] ?? const <LinkTerm>[]) (t.name, t.name)],
@@ -337,7 +325,6 @@ class _LinkPersonnelTabState extends State<LinkPersonnelTab> {
         const SizedBox(height: 12),
         Wrap(spacing: 8, runSpacing: 8, children: [
           if (_canCreate) ImdButton(label: 'إضافة فرد', icon: 'plus', small: true, onPressed: _addPerson),
-          ImdButton.outline(label: 'إدارة الأقسام والأعمال', icon: 'sliders', small: true, onPressed: _manageTerms),
           ImdButton.outline(label: 'تحديث', icon: 'refresh', small: true, onPressed: _refresh),
           if (_hasFilter) ImdButton.outline(label: 'مسح المرشحات', icon: 'eraser', small: true, onPressed: () {
             _q.clear(); setState(() { _status = _subUnit = _camp = _section = _job = ''; }); _load();
@@ -424,90 +411,33 @@ class _LinkPersonnelTabState extends State<LinkPersonnelTab> {
   }
 }
 
-class _AlertsTab extends StatefulWidget {
-  const _AlertsTab({required this.repo});
+class LinkTermsPanel extends StatefulWidget {
+  const LinkTermsPanel({super.key, required this.repo, this.canEdit = false});
   final LinkageRepo repo;
+
+  /// إضافة المسميات وحذفها تحتاج صلاحية التعديل؛ الافتراضي قراءةٌ فقط.
+  final bool canEdit;
   @override
-  State<_AlertsTab> createState() => _AlertsTabState();
+  State<LinkTermsPanel> createState() => _LinkTermsPanelState();
 }
 
-class _AlertsTabState extends State<_AlertsTab> {
-  List<LinkAlert>? _alerts;
-  @override
-  void initState() { super.initState(); _load(); }
-  Future<void> _load() async {
-    final a = await widget.repo.getAlerts();
-    if (mounted) setState(() => _alerts = a);
-  }
-  Color _sevColor(ImdColors c, LinkAlertSeverity s) => switch (s) {
-    LinkAlertSeverity.critical => c.danger,
-    LinkAlertSeverity.high => c.warn,
-    LinkAlertSeverity.medium => c.info,
-    LinkAlertSeverity.low => c.muted,
-  };
-  String _sevLabel(LinkAlertSeverity s) => switch (s) {
-    LinkAlertSeverity.critical => 'حرج',
-    LinkAlertSeverity.high => 'عالي',
-    LinkAlertSeverity.medium => 'متوسط',
-    LinkAlertSeverity.low => 'منخفض',
-  };
-  @override
-  Widget build(BuildContext context) {
-    final c = context.imd;
-    if (_alerts == null) return const ImdLd('جارٍ تحميل التنبيهات…');
-    if (_alerts!.isEmpty) {
-      return const ImdEmptyState.custom(title: 'لا تنبيهات حاليًا', icon: 'check-circle',
-        message: 'كل الحالات والعهد والعقود ضمن الحدود الطبيعية.');
-    }
-    return ListView.separated(
-      shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: _alerts!.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (ctx, i) {
-        final a = _alerts![i];
-        final col = _sevColor(c, a.severity);
-        return Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: col.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: col.withValues(alpha: 0.35)),
-          ),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            ImdIcon('alert', color: col, size: 22),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Expanded(child: Text(a.title, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5, color: c.text))),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(color: col.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
-                  child: Text(_sevLabel(a.severity), style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: col)),
-                ),
-              ]),
-              const SizedBox(height: 4),
-              Text(a.body, style: TextStyle(fontSize: 13, color: c.muted, height: 1.5)),
-            ])),
-          ]),
-        );
-      },
-    );
-  }
-}
-
-class _TermsSheet extends StatefulWidget {
-  const _TermsSheet({required this.repo, required this.terms});
-  final LinkageRepo repo;
-  final Map<String, List<LinkTerm>> terms;
-  @override
-  State<_TermsSheet> createState() => _TermsSheetState();
-}
-
-class _TermsSheetState extends State<_TermsSheet> {
+class _LinkTermsPanelState extends State<LinkTermsPanel> {
   final _subunit = TextEditingController();
   final _section = TextEditingController();
   final _job = TextEditingController();
+  final _status = TextEditingController();
+  Map<String, List<LinkTerm>> _terms = const {};
+
   @override
-  void dispose() { _subunit.dispose(); _section.dispose(); _job.dispose(); super.dispose(); }
+  void initState() { super.initState(); _reload(); }
+
+  Future<void> _reload() async {
+    final t = {for (final k in const ['subunit', 'section', 'job', 'status']) k: await widget.repo.terms(k)};
+    if (mounted) setState(() => _terms = t);
+  }
+
+  @override
+  void dispose() { _subunit.dispose(); _section.dispose(); _job.dispose(); _status.dispose(); super.dispose(); }
 
   Widget _kind(ImdColors c, String kind, String label, TextEditingController ctrl, List<LinkTerm> items) {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -518,18 +448,20 @@ class _TermsSheetState extends State<_TermsSheet> {
       else
         Wrap(spacing: 6, runSpacing: 6, children: [
           for (final t in items)
-            ImdChip(t.name, tone: ImdTone.code, icon: 'x', onTap: () async {
-              await widget.repo.deleteTerm(kind, t.name); setState(() {});
+            ImdChip(t.name, tone: ImdTone.code, icon: widget.canEdit ? 'x' : null, onTap: !widget.canEdit ? null : () async {
+              await widget.repo.deleteTerm(kind, t.name); await _reload();
             }),
         ]),
+      if (widget.canEdit) ...[
       const SizedBox(height: 8),
       Row(children: [
         Expanded(child: ImdFld(controller: ctrl, hint: 'إضافة اسمٍ جديد…')),
         const SizedBox(width: 8),
         ImdButton(label: 'إضافة', icon: 'plus', small: true, onPressed: () async {
-          await widget.repo.addTermIfNew(kind, ctrl.text); ctrl.clear(); setState(() {});
+          await widget.repo.addTermIfNew(kind, ctrl.text); ctrl.clear(); await _reload();
         }),
       ]),
+      ],
     ]);
   }
 
@@ -537,13 +469,15 @@ class _TermsSheetState extends State<_TermsSheet> {
   Widget build(BuildContext context) {
     final c = context.imd;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const ImdNote('هذه المسميات تملأ اقتراحات نموذج الفرد وقوائم التصفية.'),
+      const ImdNote('هذه المسميات تملأ اقتراحات نموذج الفرد وقوائم التصفية، والحالات المضافة تظهر عند تغيير حالة الفرد.'),
       const SizedBox(height: 6),
-      _kind(c, 'subunit', 'الوحدات الفرعية', _subunit, widget.terms['subunit'] ?? const []),
+      _kind(c, 'subunit', 'الوحدات الفرعية', _subunit, _terms['subunit'] ?? const []),
       const SizedBox(height: 16),
-      _kind(c, 'section', 'الأقسام', _section, widget.terms['section'] ?? const []),
+      _kind(c, 'section', 'الأقسام', _section, _terms['section'] ?? const []),
       const SizedBox(height: 16),
-      _kind(c, 'job', 'الأعمال', _job, widget.terms['job'] ?? const []),
+      _kind(c, 'job', 'الأعمال', _job, _terms['job'] ?? const []),
+      const SizedBox(height: 16),
+      _kind(c, 'status', 'الحالات المضافة (مريض مستشفى، مهمة…)', _status, _terms['status'] ?? const []),
     ]);
   }
 }

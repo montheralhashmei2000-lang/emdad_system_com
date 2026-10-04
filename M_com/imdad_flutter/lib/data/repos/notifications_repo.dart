@@ -12,6 +12,7 @@ import 'assets_repo.dart';
 import 'camp_ledger_repo.dart';
 import 'meal_plan_repo.dart';
 import 'fuel_repo.dart';
+import 'linkage_repo.dart';
 import 'ration_repo.dart';
 
 /// يفحص حالة النظام ويبني تنبيهاته.
@@ -52,6 +53,9 @@ class NotificationsRepo {
     if (can(NotifyKind.mealPlanEnding)) found.addAll(await _mealPlans());
     if (can(NotifyKind.settlementDue)) found.addAll(await _settlement());
     if (can(NotifyKind.fuelLow)) found.addAll(await _fuel());
+    if (can(NotifyKind.linkPerson) || can(NotifyKind.linkFinance)) {
+      found.addAll(await _linkages(person: can(NotifyKind.linkPerson), finance: can(NotifyKind.linkFinance)));
+    }
 
     final read = await _readIds();
     return NotifyRules.cap([
@@ -239,6 +243,31 @@ class NotificationsRepo {
             body: a.hint,
           ),
     ];
+  }
+
+  /// تنبيهات الارتباطات (كانت تبويبًا مستقلًّا): القوة البشرية والعهد والعقود.
+  /// المعرّف ثابتٌ لنفس الحالة: نوع التنبيه + الفرد/السجل المعنيّ.
+  Future<List<AppNotification>> _linkages({required bool person, required bool finance}) async {
+    final alerts = await LinkageRepo(db).getAlerts();
+    final out = <AppNotification>[];
+    for (final a in alerts) {
+      final isPerson = a.type == LinkAlertType.deserter ||
+          a.type == LinkAlertType.statusExpired ||
+          a.type == LinkAlertType.statusEnding;
+      if (isPerson ? !person : !finance) continue;
+      out.add(AppNotification(
+        id: 'link.${a.type.name}.${a.personId.isNotEmpty ? a.personId : a.relatedId}',
+        kind: isPerson ? NotifyKind.linkPerson : NotifyKind.linkFinance,
+        severity: switch (a.severity) {
+          LinkAlertSeverity.critical => NotifySeverity.danger,
+          LinkAlertSeverity.high => NotifySeverity.warning,
+          _ => NotifySeverity.info,
+        },
+        title: a.title,
+        body: a.body,
+      ));
+    }
+    return out;
   }
 
   Future<Set<String>> _readIds() async {

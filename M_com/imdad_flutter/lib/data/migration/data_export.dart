@@ -820,6 +820,8 @@ class DataExporter {
           .toList(),
       'linkArmaments':
           (await _rows(db.linkArmaments, ids('link_armaments'), (t) => t.id)).map((e) => e.toJson()).toList(),
+      'linkFinanceLedger':
+          (await _rows(db.linkFinanceLedger, ids('link_finance_ledger'), (t) => t.id)).map((e) => e.toJson()).toList(),
       'linkCustodySheets':
           (await _rows(db.linkCustodySheets, ids('link_custody_sheets'), (t) => t.id)).map((e) => e.toJson()).toList(),
       'linkCustodySheetRows': (await _rows(db.linkCustodySheetRows, ids('link_custody_sheet_rows'), (t) => t.id))

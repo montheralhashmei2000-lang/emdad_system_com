@@ -14,6 +14,7 @@ const double kDefaultYerPerSar = 410;
 class CustodyRowValues {
   const CustodyRowValues({
     this.grantSar = 0,
+    this.grantYer = 0,
     this.returnSar = 0,
     this.returnYer = 0,
     this.spentSar = 0,
@@ -22,6 +23,9 @@ class CustodyRowValues {
   });
 
   final double grantSar;
+
+  /// مبلغ العهدة اليمني (للمسيرات بعهدة يمنية).
+  final double grantYer;
   final double returnSar;
   final double returnYer;
   final double spentSar;
@@ -36,6 +40,26 @@ class CustodyRowValues {
 
   /// المرتجع الفعلي بالسعودي.
   double get returnedInSar => _toSar(returnSar, returnYer, rate);
+
+  static const String _yer = 'yer';
+
+  /// مبلغ العهدة بعملة المسير [cur] (`sar` أو `yer`) — بلا تحويل: لكل عملةٍ عمودها.
+  double grantIn(String cur) => cur == _yer ? grantYer : grantSar;
+
+  /// المنصرف بعملة [cur]: ما أُدخل بها كما هو، وإلا حُوِّل بسعر السطر.
+  /// سعرٌ غير صالح لا يُخمَّن فيه: يبقى ما أُدخل بعملةٍ أخرى خارج الحساب.
+  double spentIn(String cur) => _in(cur, spentSar, spentYer);
+
+  /// المرتجع بعملة [cur].
+  double returnedIn(String cur) => _in(cur, returnSar, returnYer);
+
+  double _in(String cur, double sar, double yer) {
+    if (cur == _yer) {
+      if (yer > 0) return yer;
+      return rate > 0 ? sar * rate : 0;
+    }
+    return _toSar(sar, yer, rate);
+  }
 }
 
 /// إجماليات المسير.
@@ -73,4 +97,15 @@ Set<String> duplicateInvoiceNos(Iterable<String> invoiceNos) {
     if (!seen.add(v)) dup.add(v);
   }
   return dup;
+}
+
+/// إجماليات المسير بعملته [cur]: العهدة والمنصرف والمرتجع، والمتبقي = العهدة − المنصرف − المرتجع.
+CustodyTotals custodyTotalsIn(Iterable<CustodyRowValues> rows, String cur) {
+  var g = 0.0, s = 0.0, r = 0.0;
+  for (final x in rows) {
+    g += x.grantIn(cur);
+    s += x.spentIn(cur);
+    r += x.returnedIn(cur);
+  }
+  return CustodyTotals(granted: g, spent: s, returned: r);
 }

@@ -7,6 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../data/db/app_database.dart';
 import '../../data/repos/archive_auto.dart';
 import '../../data/repos/cable_repo.dart';
+import '../../domain/free_table.dart';
 import '../ui/imd_format.dart';
 import 'military_print.dart';
 import 'voucher_print.dart';
@@ -22,12 +23,117 @@ class CablePrint {
   static const _line = PdfColor.fromInt(0xFF222222);
   static const _label = PdfColor.fromInt(0xFFEDEDED);
 
-  static String _date(String iso) {
-    final dt = DateTime.tryParse(iso);
-    return dt == null ? iso : arDate(dt);
+  static String _slashDate(String iso) {
+    final d = DateTime.tryParse(iso);
+    if (d == null) return iso;
+    return '${d.year}/${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}';
   }
 
-  /// يبني ملف PDF للبرقية بترويسة الجهة والشعار من إعدادات الهوية.
+  /// `15:07` ⇒ `3:07 م`؛ ما لا يُفهم يُعاد كما هو.
+  static String _time12(String hm) {
+    final m = RegExp(r'^\s*(\d{1,2}):(\d{2})\s*$').firstMatch(hm);
+    if (m == null) return hm;
+    final h = int.parse(m.group(1)!);
+    final h12 = h % 12 == 0 ? 12 : h % 12;
+    return '$h12:${m.group(2)} ${h < 12 ? 'ص' : 'م'}';
+  }
+
+  static const _red = PdfColors.red700;
+
+  /// يقصّ نصًّا إلى [max] حرفًا بعلامة حذف — لخاناتٍ ثابتة لا تتجزأ على الصفحات.
+  static String _cap(String t, int max) => t.length <= max ? t : '${t.substring(0, max)}…';
+
+  /// يقسم فقرةً طويلة إلى قطعٍ ≤ [max] حرفًا عند المسافات، فيستطيع المحرّك فصل
+  /// الصفحات بين القطع. الودجة الواحدة الأطول من الصفحة تُسقط الطباعة كلها.
+  static List<String> _chunks(String t, int max) {
+    if (t.length <= max) return [t];
+    final out = <String>[];
+    var cur = StringBuffer();
+    for (final w in t.split(RegExp(r'\s+'))) {
+      if (cur.length + w.length + 1 > max && cur.isNotEmpty) {
+        out.add(cur.toString());
+        cur = StringBuffer();
+      }
+      if (cur.isNotEmpty) cur.write(' ');
+      cur.write(w.length > max ? w.substring(0, max) : w);
+    }
+    if (cur.isNotEmpty) out.add(cur.toString());
+    return out;
+  }
+  static const _pad = pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3);
+  static const double _headH = 96;
+  static const double _margin = 24;
+
+  /// خانة بإطار؛ [flex] يوزّع العرض كالنموذج المعتمد.
+  static pw.Widget _box(String text,
+      {int flex = 1,
+      bool bold = false,
+      bool shaded = false,
+      double size = 11,
+      double? height,
+      PdfColor? color,
+      pw.TextAlign align = pw.TextAlign.center,
+      pw.Alignment alignment = pw.Alignment.center,
+      pw.Widget? child}) {
+    return pw.Expanded(
+      flex: flex,
+      child: pw.Container(
+        height: height,
+        alignment: alignment,
+        padding: _pad,
+        decoration: pw.BoxDecoration(color: shaded ? _label : null, border: pw.Border.all(color: _line, width: 0.8)),
+        child: child ??
+            pw.Text(text,
+                textAlign: align,
+                style: pw.TextStyle(fontSize: size, color: color, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+      ),
+    );
+  }
+
+  /// ترويسة الجهة: أسطر الجهة يمينًا، الشعار وسطًا، بيانات البرقية يسارًا.
+  static pw.Widget _letterhead(MilitaryPrint engine, Uint8List? logo, Cable c, String kindLabel, String cls, String prio) {
+    pw.Widget small(String t) => pw.Text(t, style: const pw.TextStyle(fontSize: 9));
+    return pw.SizedBox(
+      height: _headH,
+      child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        pw.Expanded(
+          flex: 4,
+          child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            for (final l in engine.orgLines)
+              if (l.trim().isNotEmpty)
+                pw.Padding(
+                  padding: const pw.EdgeInsets.only(bottom: 2),
+                  child: pw.Text(l, style: pw.TextStyle(fontSize: 11.5, fontWeight: pw.FontWeight.bold)),
+                ),
+          ]),
+        ),
+        pw.Expanded(
+          flex: 3,
+          child: pw.Column(children: [
+            if (logo != null) pw.SizedBox(width: 66, height: 66, child: pw.Image(pw.MemoryImage(logo))) else pw.SizedBox(height: 66),
+            pw.SizedBox(height: 2),
+            pw.Text('برقية خطية/سري للغاية/عاجل جدا',
+                style: const pw.TextStyle(fontSize: 6.5, color: _red, decoration: pw.TextDecoration.underline)),
+          ]),
+        ),
+        pw.Expanded(
+          flex: 4,
+          child: pw.Padding(
+            padding: const pw.EdgeInsets.only(top: 16),
+            child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+              small('$kindLabel برقم ${c.cableNo}'),
+              pw.SizedBox(height: 3),
+              small('درجة السرية: $cls'),
+              pw.SizedBox(height: 3),
+              small('درجة الاسبقية: $prio'),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  /// يبني ملف PDF للبرقية بترويسة الجهة والشعار من إعدادات الهوية، على النموذج المعتمد.
   static Future<Uint8List> build(AppDatabase db, Cable c) async {
     final engine = await VoucherPrint.engineOf(db);
     // شعار الهوية المحفوظ في الإعدادات، وإلا الشعار المضمَّن مع التطبيق.
@@ -37,159 +143,172 @@ class CablePrint {
         logo = (await rootBundle.load('assets/logo.png')).buffer.asUint8List();
       } catch (_) {}
     }
-    final pdf = pw.Document(theme: await engine.pdfTheme());
-    final recipients = CableRecipient.decode(c.recipientsJson);
+    final theme = await engine.pdfTheme();
+    final pdf = pw.Document(theme: theme);
+    final free = FreeTable.decode(c.recipientsJson);
+    final freeRows = free.filledRows;
     final out = c.direction == CableDirection.outgoing;
     final kindLabel = out ? 'برقية صادرة' : 'برقية واردة';
     final cls = CableClass.label(c.classification);
     final prio = CablePriority.label(c.priority);
 
-    pw.Widget cell(String text,
-            {bool bold = false, bool shaded = false, double size = 11, pw.TextAlign align = pw.TextAlign.right}) =>
-        pw.Container(
-          color: shaded ? _label : null,
-          padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-          child: pw.Text(text.isEmpty ? ' ' : text,
-              textAlign: align,
-              style: pw.TextStyle(fontSize: size, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
-        );
+    const h = 24.0;
+    // إلى/من: ثلاثة أعمدة (قيمة عريضة | تسمية | قيمة).
+    pw.Widget infoRow(String left, String label, String value) => pw.Row(children: [
+          _box(left, flex: 5, bold: true, height: h, alignment: pw.Alignment.centerRight, align: pw.TextAlign.right),
+          _box(label, flex: 2, height: h),
+          _box(value, flex: 2, height: h, size: 12),
+        ]);
 
-    pw.TableRow row(List<pw.Widget> cells) => pw.TableRow(children: cells);
-
-    // الجدول الأول: إلى/رقم — من/تاريخ — نسخة إلى (ثلاثة أسطر) مع ساعة/سرية/أسبقية.
-    final info = pw.Table(
-      border: pw.TableBorder.all(color: _line, width: 0.8),
-      columnWidths: const {
-        0: pw.FlexColumnWidth(3.2),
-        1: pw.FlexColumnWidth(1.4),
-        2: pw.FlexColumnWidth(1.6),
-      },
-      children: [
-        row([cell('إلى: ${c.toParty}', bold: true), cell('رقم البرقية', shaded: true, bold: true), cell(c.cableNo, bold: true)]),
-        row([cell('من: ${c.fromParty}', bold: true), cell('تاريخها', shaded: true, bold: true), cell(_date(c.cableDate))]),
-        row([
-          pw.Container(
-            padding: const pw.EdgeInsets.all(6),
-            constraints: const pw.BoxConstraints(minHeight: 66),
-            child: pw.Text('نسخة إلى:\n${c.ccParty}',
-                style: pw.TextStyle(fontSize: 10.5, fontWeight: pw.FontWeight.bold)),
-          ),
-          pw.Container(
-            color: _label,
-            child: pw.Column(children: [
-              cell('ساعة الإنشاء', bold: true),
-              cell('درجة السرية', bold: true),
-              cell('درجة الأسبقية', bold: true),
-            ]),
-          ),
-          pw.Column(children: [cell(c.cableTime), cell(cls, bold: true), cell(prio, bold: true)]),
-        ]),
-      ],
-    );
-
-    final subject = pw.Container(
-      width: double.infinity,
-      decoration: pw.BoxDecoration(border: pw.Border.all(color: _line, width: 0.8)),
-      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      child: pw.Text('م/ ${c.subject}', style: pw.TextStyle(fontSize: 12.5, fontWeight: pw.FontWeight.bold)),
-    );
-
-    final rec = recipients.isEmpty ? const [CableRecipient()] : recipients;
-    final recTable = pw.Table(
-      border: pw.TableBorder.all(color: _line, width: 0.8),
-      columnWidths: const {
-        0: pw.FixedColumnWidth(28),
-        1: pw.FlexColumnWidth(2.2),
-        2: pw.FlexColumnWidth(2.2),
-        3: pw.FlexColumnWidth(1.6),
-      },
-      children: [
-        row([cell('م', shaded: true, bold: true, align: pw.TextAlign.center), cell('الاسم', shaded: true, bold: true), cell('الوحدة', shaded: true, bold: true), cell('ملاحظة', shaded: true, bold: true)]),
-        for (final (i, r) in rec.indexed)
-          row([cell(nf(i + 1), align: pw.TextAlign.center), cell(r.name), cell(r.unit), cell(r.note)]),
-      ],
-    );
-
-    final editor = [c.editorRank, c.editorName].where((e) => e.trim().isNotEmpty).join(' / ');
-    final centerBox = pw.Container(
-      decoration: pw.BoxDecoration(border: pw.Border.all(color: _line, width: 0.8)),
-      child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
-        pw.Container(
-          color: _label,
-          padding: const pw.EdgeInsets.symmetric(vertical: 4),
-          child: pw.Center(
-              child: pw.Text('لاستعمال المركز / المكتب', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold))),
-        ),
-        pw.Table(
-          border: pw.TableBorder.all(color: _line, width: 0.6),
-          children: [
-            row([cell('الإرسال', bold: true, shaded: true, align: pw.TextAlign.center), cell('الاستقبال', bold: true, shaded: true, align: pw.TextAlign.center)]),
-            row([
-              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
-                cell('محرر البرقية / الرتبة: $editor', size: 10),
-                cell('الوظيفة: ${c.editorJob}', size: 10),
-                cell('تسلسل / نرس: ${c.serialNo}', size: 10),
-                cell('الوقت والتاريخ: ${c.sendDateTime}', size: 10),
-                cell('وسيلة الإرسال: ${c.sendMethod}', size: 10),
-                cell('مختص: ${c.specialist}', size: 10),
-                cell('التوقيع:', size: 10),
-              ]),
-              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
-                cell('وقت الاستلام: ${c.receiveTime}', size: 10),
-                cell('اسم المأمور: ${c.receiverName}', size: 10),
-                cell('التوقيع:', size: 10),
-              ]),
-            ]),
-          ],
+    final ccLines = c.ccParty.split('\n').where((l) => l.trim().isNotEmpty).toList();
+    final info = pw.Column(children: [
+      infoRow('الى : ${c.toParty}', 'رقم البرقية', c.cableNo),
+      infoRow('من: ${c.fromParty}', 'تاريخها', _slashDate(c.cableDate)),
+      pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        _box('',
+            flex: 5,
+            height: h * 3,
+            alignment: pw.Alignment.topRight,
+            child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+              pw.Text('نسخة إلى:', style: const pw.TextStyle(fontSize: 10.5)),
+              for (final l in ccLines) pw.Text('-   ${l.trim()}', style: const pw.TextStyle(fontSize: 9.5)),
+            ])),
+        pw.Expanded(
+          flex: 4,
+          child: pw.Column(children: [
+            pw.Row(children: [_box('سعت الإنشاء', flex: 2, height: h), _box(_time12(c.cableTime), flex: 2, height: h, size: 12)]),
+            pw.Row(children: [_box('درجة السرية', flex: 2, height: h), _box(cls, flex: 2, height: h, color: _red, bold: true)]),
+            pw.Row(children: [_box('درجة الاسبقية', flex: 2, height: h), _box(prio, flex: 2, height: h, color: _red, bold: true)]),
+          ]),
         ),
       ]),
-    );
+    ]);
+
+    // جسم البرقية: كل سطرٍ ببادئة «-» ما لم يبدأ بها، والنص حرٌّ يكتبه المستخدم بيده.
+    final bodyLines = <String>[
+      for (final l in c.body.split('\n').where((l) => l.trim().isNotEmpty))
+        ...() {
+          final t = l.trim();
+          final parts = _chunks(t, 700);
+          return [for (final (i, p) in parts.indexed) i == 0 && !t.startsWith('-') ? '-   $p' : p];
+        }(),
+    ];
+
+    // الموقِّع كتلةٌ واحدة لا تتجزأ: سطورها وعددها محدودان.
+    final signer = [for (final l in c.signerText.split('\n').where((l) => l.trim().isNotEmpty).take(8)) _cap(l.trim(), 120)];
+
+    // الجدول الحر اختياري: لا يُطبع إن لم يُكتب فيه شيء. الأعمدة وأسماؤها وأعراضها من المستخدم.
+    final recTable = freeRows.isEmpty
+        ? null
+        : pw.Column(children: [
+            if (free.title.trim().isNotEmpty)
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(bottom: 6),
+                child: pw.Text(free.title.trim(),
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
+              ),
+            pw.Row(children: [
+              _box('م', flex: 10, bold: true, size: 12),
+              for (final col in free.cols) _box(col.title, flex: (col.weight * 10).round(), bold: true, size: 12),
+            ]),
+            for (final (i, r) in freeRows.indexed)
+              pw.Row(children: [
+                _box(nf(i + 1), flex: 10, bold: true, height: h),
+                for (var k = 0; k < free.cols.length; k++) _box(r[k], flex: (free.cols[k].weight * 10).round(), height: h),
+              ]),
+          ]);
+
+    // «لاستعمال المركز / المكتب»: ثلاث مجموعات (الإرسال | الاستقبال | المحرر).
+    const rh = 20.0;
+    final editor = [c.editorRank, c.editorName].where((e) => e.trim().isNotEmpty).join(' / ');
+    // «مختص» وظيفة المحرر وهي متغيرة؛ حقل المختص القديم احتياطٌ للبرقيات المحفوظة قبلًا.
+    final job = c.editorJob.trim().isNotEmpty ? c.editorJob.trim() : c.specialist.trim();
+    pw.Widget group(String title, List<(String, String)> rows) => pw.Expanded(
+          child: pw.Column(children: [
+            pw.Row(children: [_box(title, flex: 1, bold: true, shaded: true, height: rh)]),
+            for (final r in rows)
+              pw.Row(children: [
+                _box(r.$1, flex: 5, height: rh, size: 9.5, alignment: pw.Alignment.centerRight, align: pw.TextAlign.right),
+                _box(r.$2, flex: 6, height: rh, size: 9.5),
+              ]),
+          ]),
+        );
+    final centerBox = pw.Column(children: [
+      pw.Row(children: [_box('لاستعمال المركز / المكتب', flex: 1, bold: true, shaded: true, height: rh, size: 11)]),
+      pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        group('الإرسال', [
+          ('تسلسل / نرس', c.serialNo),
+          ('الوقت والتاريخ', c.sendDateTime),
+          ('وسيلة الإرسال', c.sendMethod),
+          ('التوقيع', ''),
+        ]),
+        group('الاستقبال', [
+          ('وقت الاستلام', c.receiveTime),
+          ('اسم المأمور', c.receiverName),
+          ('', ''),
+          ('التوقيع', ''),
+        ]),
+        group('محرر البرقية / الرتبة', [
+          ('الاسم', editor),
+          ('الوظيفة', job),
+          ('', ''),
+          ('التوقيع', ''),
+        ]),
+      ]),
+    ]);
 
     pdf.addPage(pw.MultiPage(
-      pageFormat: PdfPageFormat.a4,
-      textDirection: pw.TextDirection.rtl,
-      margin: const pw.EdgeInsets.fromLTRB(32, 26, 32, 26),
-      build: (ctx) => [
-        pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.center, children: [
-          pw.Expanded(
-            child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-              pw.Text('درجة السرية: $cls', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-              pw.Text('درجة الأسبقية: $prio', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-            ]),
+      pageTheme: pw.PageTheme(
+        pageFormat: PdfPageFormat.a4,
+        textDirection: pw.TextDirection.rtl,
+        theme: theme,
+        margin: const pw.EdgeInsets.all(_margin),
+        // إطار الصفحة: يبدأ تحت الترويسة في الأولى، ومن أعلى الصفحة فيما بعدها.
+        buildBackground: (ctx) => pw.FullPage(
+          ignoreMargins: true,
+          child: pw.Padding(
+            padding: pw.EdgeInsets.fromLTRB(_margin, ctx.pageNumber == 1 ? _margin + _headH + 6 : _margin, _margin, _margin),
+            child: pw.Container(decoration: pw.BoxDecoration(border: pw.Border.all(color: _line, width: 1.4))),
           ),
-          pw.Expanded(
-            flex: 2,
-            child: pw.Column(children: [
-              if (logo != null) pw.SizedBox(width: 70, height: 70, child: pw.Image(pw.MemoryImage(logo))),
-              pw.SizedBox(height: 4),
-              pw.Text('$kindLabel برقم ${c.cableNo}', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-            ]),
-          ),
-          pw.Expanded(child: pw.SizedBox()),
-        ]),
-        pw.SizedBox(height: 10),
-        info,
-        pw.SizedBox(height: 6),
-        subject,
-        pw.SizedBox(height: 6),
-        recTable,
-        pw.SizedBox(height: 14),
-        // جسم البرقية: نصٌّ حرّ يكتبه المستخدم بيده.
-        pw.Container(
-          padding: const pw.EdgeInsets.symmetric(horizontal: 4),
-          child: pw.Text(c.body, style: const pw.TextStyle(fontSize: 12.5, lineSpacing: 5)),
         ),
-        pw.SizedBox(height: 22),
-        if (editor.isNotEmpty || c.editorJob.isNotEmpty)
-          pw.Align(
-            alignment: pw.Alignment.centerLeft,
-            child: pw.Column(children: [
-              pw.Text(editor, style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-              pw.Text(c.editorJob, style: const pw.TextStyle(fontSize: 11)),
-            ]),
-          ),
-        pw.SizedBox(height: 18),
-        centerBox,
+      ),
+      // «لاستعمال المركز / المكتب» ثابتٌ أسفل الإطار في كل صفحة.
+      footer: (ctx) => centerBox,
+      build: (ctx) => [
+        _letterhead(engine, logo, c, kindLabel, cls, prio),
+        pw.SizedBox(height: 6),
+        info,
+        pw.SizedBox(height: 14),
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 14),
+          child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
+            pw.Center(
+              child: pw.Text('م/ ${_cap(c.subject, 400)}',
+                  textAlign: pw.TextAlign.center,
+                  style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
+            ),
+            if (recTable != null) ...[pw.SizedBox(height: 10), recTable],
+            pw.SizedBox(height: 16),
+            for (final l in bodyLines)
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(bottom: 6),
+                child: pw.Text(l, style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, lineSpacing: 4)),
+              ),
+            if (signer.isNotEmpty) ...[
+              pw.SizedBox(height: 40),
+              pw.Align(
+                alignment: pw.Alignment.centerLeft,
+                child: pw.Padding(
+                  padding: const pw.EdgeInsets.only(left: 30),
+                  child: pw.Column(children: [
+                    for (final l in signer) pw.Text(l, style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+                  ]),
+                ),
+              ),
+            ],
+            pw.SizedBox(height: 24),
+          ]),
+        ),
       ],
     ));
     return pdf.save();

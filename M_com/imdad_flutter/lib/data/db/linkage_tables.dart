@@ -143,6 +143,41 @@ class LinkFinCustodies extends Table {
   /// آخر أجل للإخلاء.
   TextColumn get dueDate => text().withDefault(const Constant(''))();
 
+  /// ─── النموذج المالي الجديد (v24). الحقول القديمة أعلاه تبقى اختيارية. ───
+  ///
+  /// نوع العهدة: `received` مستلمة (عليّ للمالية) | `delivered` مسلَّمة (على غيري لي).
+  TextColumn get kind => text().withDefault(const Constant('received'))();
+
+  /// مبلغ العهدة بعملتها الأصلية، ولا تحويل تلقائيًّا.
+  RealColumn get amount => real().withDefault(const Constant(0))();
+
+  /// `sar` سعودي | `yer` يمني.
+  TextColumn get currency => text().withDefault(const Constant('sar'))();
+
+  /// سعر الصرف (يمني لكل سعودي) — مع العملة اليمنية فقط.
+  RealColumn get exchangeRate => real().withDefault(const Constant(0))();
+
+  /// المُسلِّم والمستلم (نص حر مع اقتراحات).
+  TextColumn get giverName => text().withDefault(const Constant(''))();
+  TextColumn get receiverName => text().withDefault(const Constant(''))();
+
+  /// `open` قيد الإخلاء | `cleared` تم الإخلاء | `canceled` ملغاة.
+  /// ([cleared] أدناه يبقى مرآةً له للتوافق مع الشاشات والتصدير القديمين.)
+  TextColumn get status => text().withDefault(const Constant('open'))();
+
+  /// نتيجة الإخلاء: فارغ (لم تُخلَّ) | `matched` مطابق | `surplus` فائض | `deficit` عجز.
+  TextColumn get outcome => text().withDefault(const Constant(''))();
+  RealColumn get outcomeAmount => real().withDefault(const Constant(0))();
+
+  /// رقم مستند الاستلام الأصلي (من المالية).
+  TextColumn get sourceDocNo => text().withDefault(const Constant(''))();
+
+  /// مركز التكلفة (إن كانت لمشروع).
+  TextColumn get costCenter => text().withDefault(const Constant(''))();
+
+  /// مرفقات العهدة JSON: `[{"name","path","size","sha256"}]`.
+  TextColumn get attachmentsJson => text().withDefault(const Constant('[]'))();
+
   /// تُضبط عند تسجيل إخلاءٍ للعهدة وتُصفَّر عند حذفه.
   BoolColumn get cleared => boolean().withDefault(const Constant(false))();
   TextColumn get clearedDate => text().withDefault(const Constant(''))();
@@ -186,6 +221,37 @@ class LinkClearances extends Table {
 
   TextColumn get notes => text().withDefault(const Constant(''))();
 
+  /// ─── إخلاء العهدة المالي (v24) ───
+  /// رقم العهدة المخلاة (لقطة) وعملتها.
+  TextColumn get custodyNo => text().withDefault(const Constant(''))();
+  TextColumn get currency => text().withDefault(const Constant('sar'))();
+
+  /// المبلغ المخصص للعهدة، والمصروف (مجموع المسيرات)، بعملة العهدة.
+  RealColumn get grantedAmount => real().withDefault(const Constant(0))();
+  RealColumn get spentAmount => real().withDefault(const Constant(0))();
+
+  /// `matched` مطابق | `surplus` فائض | `deficit` عجز — وقيمتا الفائض والعجز.
+  TextColumn get diffType => text().withDefault(const Constant(''))();
+  RealColumn get surplusAmount => real().withDefault(const Constant(0))();
+  RealColumn get deficitAmount => real().withDefault(const Constant(0))();
+
+  /// الطرف المقابل في صياغة الفرق (المالية أو المستلم).
+  TextColumn get counterpartyName => text().withDefault(const Constant(''))();
+
+  /// حالة المعاملة: `draft` مسودة | `sent` مُرسل | `approved` مُعتمد.
+  TextColumn get workflow => text().withDefault(const Constant('approved'))();
+
+  /// رقم صك الإخلاء ومستنده من الشعبة المالية، واسم المُخلِّي، وتاريخ المراجعة.
+  TextColumn get docNo => text().withDefault(const Constant(''))();
+  TextColumn get clearerName => text().withDefault(const Constant(''))();
+  TextColumn get reviewDate => text().withDefault(const Constant(''))();
+  TextColumn get adminNotes => text().withDefault(const Constant(''))();
+
+  /// صورة/PDF الإخلاء المالي.
+  TextColumn get attachName => text().withDefault(const Constant(''))();
+  TextColumn get attachPath => text().withDefault(const Constant(''))();
+  TextColumn get attachSha256 => text().withDefault(const Constant(''))();
+
   TextColumn get createdBy => text().withDefault(const Constant(''))();
 
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
@@ -215,6 +281,13 @@ class LinkPurchaseContracts extends Table {
 
   /// «قائمة الكمية المستهلكة بتاريخ» — يُدخل يدويًا حسب تاريخ الفاتورة.
   TextColumn get listDate => text().withDefault(const Constant(''))();
+
+  /// العهدة المرتبطة (اختيارية، لا تُطبع). عقد واحد = عهدة واحدة على الأكثر.
+  TextColumn get custodyId => text().withDefault(const Constant(''))();
+
+  /// رقم الفاتورة (على مستوى العقد): تأخذه أسطر الأصناف افتراضيًّا، ويُربط به
+  /// مسير العهدة فتُسحب بيانات العقد إلى السطر.
+  TextColumn get invoiceNo => text().withDefault(const Constant(''))();
 
   /// أسطر الأصناف JSON: `[{"name","unit","qty","price","total","invoiceNo","date","note"}]`.
   TextColumn get itemsJson => text().withDefault(const Constant('[]'))();
@@ -250,6 +323,11 @@ class LinkCustodySheets extends Table {
   /// عنوان المسير للتعريف به في القائمة.
   TextColumn get title => text().withDefault(const Constant(''))();
 
+  /// العهدة التي يخصّها المسير (فارغ للمسيرات القديمة)، وعملتها، واسم صاحبها.
+  TextColumn get custodyId => text().withDefault(const Constant(''))();
+  TextColumn get currency => text().withDefault(const Constant('sar'))();
+  TextColumn get holderName => text().withDefault(const Constant(''))();
+
   /// سعر الصرف الافتراضي للأسطر الجديدة.
   RealColumn get defaultRate => real().withDefault(const Constant(410))();
 
@@ -279,6 +357,9 @@ class LinkCustodySheetRows extends Table {
 
   /// مبلغ العهدة (سعودي).
   RealColumn get grantSar => real().withDefault(const Constant(0))();
+
+  /// مبلغ العهدة اليمني (للعهد اليمنية؛ العمود الظاهر يقرأ سعوديًّا أو يمنيًّا بحسب العملة).
+  RealColumn get grantYer => real().withDefault(const Constant(0))();
 
   /// المرتجع.
   RealColumn get returnSar => real().withDefault(const Constant(0))();
@@ -347,6 +428,35 @@ class LinkArmaments extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
   DateTimeColumn get updatedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// دفتر «رصيد المالية» — قيودٌ تُضاف ولا تُعدَّل. الرصيد مجموعها، وإلغاء
+/// إخلاءٍ يعكسه بقيدٍ مضاد فيبقى الأثر قابلًا للتدقيق.
+class LinkFinanceLedger extends Table {
+  TextColumn get id => text()();
+
+  /// صاحب العهدة (اسم من قائمة الأفراد أو نص حر).
+  TextColumn get partyName => text()();
+
+  TextColumn get custodyId => text().withDefault(const Constant(''))();
+  TextColumn get clearanceId => text().withDefault(const Constant(''))();
+
+  /// نوع القيد: `received` عهدة مستلمة (−) | `delivered` عهدة مسلَّمة (+) |
+  /// `surplus` فائض (+) | `deficit` عجز (−) | `reversal` عكس قيد.
+  TextColumn get entryKind => text()();
+
+  /// القيمة الموقَّعة بعملتها: الموجب دائن، والسالب مدين.
+  RealColumn get delta => real().withDefault(const Constant(0))();
+  TextColumn get currency => text().withDefault(const Constant('sar'))();
+
+  TextColumn get entryDate => text().withDefault(const Constant(''))();
+  TextColumn get note => text().withDefault(const Constant(''))();
+
+  TextColumn get createdBy => text().withDefault(const Constant(''))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
   @override
   Set<Column> get primaryKey => {id};

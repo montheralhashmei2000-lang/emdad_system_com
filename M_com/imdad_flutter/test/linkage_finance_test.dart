@@ -54,13 +54,16 @@ void main() {
     expect((await repo.contracts()).single.status, LinkContractStatus.open);
   });
 
-  test('إخلاء حر بلا مرجع، وحذف العهدة يحذف إخلاءاتها', () async {
+  test('إخلاء حر بلا مرجع، والعهدة ذات الإخلاء لا تُحذف', () async {
     await repo.addClearance(
         kind: LinkClearanceKind.other, clearanceDate: '2026-10-03', refTitle: 'تسوية متفرقة', partyName: 'جهة', amount: 10);
     expect((await repo.clearances(kind: LinkClearanceKind.other)), hasLength(1));
 
     await custody('c2');
     await repo.addClearance(kind: LinkClearanceKind.custody, refId: 'c2', clearanceDate: '2026-10-04');
+    // العهدة ذات الإخلاء لا تُحذف؛ يُحذف الإخلاء أولًا فتعود قابلةً للحذف.
+    await expectLater(() async => repo.deleteCustody((await repo.custodies()).single), throwsA(isA<LinkBlocked>()));
+    await repo.deleteClearance((await repo.clearances(kind: LinkClearanceKind.custody)).single);
     await repo.deleteCustody((await repo.custodies()).single);
     expect(await repo.custodies(), isEmpty);
     expect(await repo.clearances(kind: LinkClearanceKind.custody), isEmpty);

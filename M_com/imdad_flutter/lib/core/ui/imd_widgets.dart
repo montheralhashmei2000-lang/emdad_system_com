@@ -538,7 +538,12 @@ class ImdSegmented<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
-    return Container(
+    // المقاطع الكثيرة تُمرَّر أفقيًّا في الشاشة الضيّقة بدل أن تفيض.
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(color: c.subtle, borderRadius: BorderRadius.circular(10)),
       child: Row(
@@ -573,6 +578,8 @@ class ImdSegmented<T> extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    ),
       ),
     );
   }
@@ -1222,7 +1229,6 @@ class _ImdTableState extends State<ImdTable> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          margin: const EdgeInsets.symmetric(horizontal: -4, vertical: -2),
           decoration: BoxDecoration(
             color: hovered ? c.headerHover : null,
             borderRadius: BorderRadius.circular(4),

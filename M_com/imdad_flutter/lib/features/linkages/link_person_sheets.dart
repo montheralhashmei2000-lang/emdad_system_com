@@ -85,7 +85,7 @@ Widget linkInfoCard(String label, String value, ImdColors c) => Container(
 Future<bool> showLinkPersonForm(
   BuildContext context, {
   required LinkageRepo repo,
-  required List<Warehouse> camps,
+  required List<String> camps,
   required Map<String, List<LinkTerm>> terms,
   LinkPerson? initial,
   required String actor,
@@ -116,7 +116,7 @@ class _PersonForm extends StatefulWidget {
   });
 
   final LinkageRepo repo;
-  final List<Warehouse> camps;
+  final List<String> camps;
   final Map<String, List<LinkTerm>> terms;
   final LinkPerson? initial;
   final String actor;
@@ -252,7 +252,10 @@ class _PersonFormState extends State<_PersonForm> {
         ImdLabeled(
           'المعسكر',
           ImdSelect<String>(
-            items: [('', 'بلا تحديد'), for (final w in widget.camps) (w.name, w.name)],
+            items: [
+              ('', 'بلا تحديد'),
+              for (final w in {...widget.camps, if (_camp.isNotEmpty) _camp}) (w, w),
+            ],
             value: _camp,
             onChanged: (v) => setState(() => _camp = v ?? ''),
           ),
@@ -307,10 +310,34 @@ class _StatusFormState extends State<_StatusForm> {
   String _to = '';
   final _days = TextEditingController();
   final _notes = TextEditingController();
+  final _newStatus = TextEditingController();
+  List<String> _custom = const [];
   bool _busy = false;
 
   @override
+  void initState() {
+    super.initState();
+    _loadCustom();
+  }
+
+  Future<void> _loadCustom() async {
+    final t = await widget.repo.terms('status');
+    if (mounted) setState(() => _custom = [for (final e in t) e.name]);
+  }
+
+  /// حالةٌ جديدة من نوعٍ يختاره المستخدم (مريض مستشفى، مهمة…) تُحفظ للمرات القادمة.
+  Future<void> _addStatus() async {
+    final v = _newStatus.text.trim();
+    if (v.isEmpty) return;
+    await widget.repo.addTermIfNew('status', v);
+    _newStatus.clear();
+    _status = v;
+    await _loadCustom();
+  }
+
+  @override
   void dispose() {
+    _newStatus.dispose();
     _days.dispose();
     _notes.dispose();
     super.dispose();
@@ -343,13 +370,22 @@ class _StatusFormState extends State<_StatusForm> {
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Wrap(spacing: 8, runSpacing: 8, children: [
-        for (final s in LinkStatus.dated)
+        for (final s in [...LinkStatus.dated, ..._custom.where((c) => !LinkStatus.dated.contains(c))])
           ImdChip(
             LinkStatus.label(s),
             tone: _status == s ? LinkStatus.tone(s) : ImdTone.off,
             icon: _status == s ? 'check' : null,
             onTap: () => setState(() => _status = s),
           ),
+      ]),
+      const SizedBox(height: 10),
+      Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Expanded(child: ImdLabeled('حالة جديدة (مريض مستشفى، مهمة…)', ImdFld(controller: _newStatus))),
+        const SizedBox(width: 8),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: ImdButton.outline(label: 'إضافة', icon: 'plus', small: true, onPressed: _addStatus),
+        ),
       ]),
       const SizedBox(height: 12),
       ImdGrid(columns: 3, minItemWidth: 170, gap: 10, children: [
@@ -495,7 +531,7 @@ Future<void> showLinkPersonProfile(
         ]),
         const SizedBox(height: 8),
         if (linked.armaments.isEmpty)
-          const ImdNote('لا سلاحًا مرتبطًا بهذا الفرد بعد — يُسجَّل من مركز الارتباطات (التسليح).')
+          const ImdNote('لا سلاحًا مرتبطًا بهذا الفرد بعد — يُسجَّل من شاشة التسليح.')
         else
           for (final a in linked.armaments)
             _recordLine(c, 'zap', ImdTone.pend, 'سلاح',

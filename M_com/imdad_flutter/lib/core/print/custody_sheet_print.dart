@@ -7,6 +7,7 @@ import '../../data/db/app_database.dart';
 import '../../data/repos/archive_auto.dart';
 import '../../domain/arabic_words.dart';
 import '../../domain/custody_sheet.dart';
+import '../../domain/finance.dart';
 import 'military_print.dart';
 import 'print_format.dart';
 import 'voucher_print.dart';
@@ -69,7 +70,7 @@ class CustodySheetPrint {
         ),
       );
 
-  static pw.Widget _head(double h, double size) {
+  static pw.Widget _head(double h, double size, String grantCur) {
     pw.Widget c(String t, int i, {double? height, int span = 1}) =>
         _c(t, flex: _sumW(i, i + span), h: h, size: size, height: height);
     return pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
@@ -78,7 +79,7 @@ class CustodySheetPrint {
         flex: (_w[1] * 100).round(),
         child: pw.Column(children: [
           pw.Row(children: [c('مبلغ العهدة', 1, height: h)]),
-          pw.Row(children: [c('سعودي', 1, height: h)]),
+          pw.Row(children: [c(grantCur, 1, height: h)]),
         ]),
       ),
       pw.Expanded(
@@ -105,7 +106,7 @@ class CustodySheetPrint {
     ]);
   }
 
-  static pw.Widget _row(LinkCustodySheetRow r, double h, double size, bool dup) {
+  static pw.Widget _row(LinkCustodySheetRow r, double h, double size, bool dup, bool yerSheet) {
     final v = CustodyRowValues(
       grantSar: r.grantSar,
       returnSar: r.returnSar,
@@ -118,7 +119,7 @@ class CustodySheetPrint {
         _c(t, flex: _w[i], h: h, size: size, fill: fill, color: color);
     return pw.Row(children: [
       c(printDate(r.date), 0),
-      c(_sar(r.grantSar), 1),
+      c(yerSheet ? _yer(r.grantYer) : _sar(r.grantSar), 1),
       c(_sar(v.returnedInSar), 2),
       c(_yer(r.returnYer), 3),
       c(_sar(v.spentInSar), 4),
@@ -152,23 +153,32 @@ class CustodySheetPrint {
     final engine = await VoucherPrint.engineOf(db);
     final theme = await engine.pdfTheme();
 
-    final totals = custodyTotals([
+    final cur = sheet.currency;
+    final yerSheet = cur == FinCurrency.yer;
+    final values = [
       for (final r in rows)
         CustodyRowValues(
             grantSar: r.grantSar,
+            grantYer: r.grantYer,
             returnSar: r.returnSar,
             returnYer: r.returnYer,
             spentSar: r.spentSar,
             spentYer: r.spentYer,
             rate: r.rate),
-    ]);
+    ];
+    // الحساب بعملة العهدة؛ والمنصرف يظهر أيضًا بالعملة الأخرى بسعر صرف الأسطر.
+    final totals = custodyTotalsIn(values, cur);
+    final spentOther = custodyTotalsIn(values, yerSheet ? FinCurrency.sar : FinCurrency.yer).spent;
+    String money(double v) => yerSheet ? '${printNum(v)} ر.ي.' : '${printMoney(v)} ر.س.';
+    String moneyOther(double v) => yerSheet ? '${printMoney(v)} ر.س.' : '${printNum(v)} ر.ي.';
+    final curName = FinCurrency.label(cur);
     final dups = duplicateInvoiceNos([for (final r in rows) r.invoiceNo]);
 
     // الأسطر الكثيرة تُضغط لتتسع صفحة واحدة كأمر «احتواء الصفحة» في Excel،
     // وما فاق ذلك يُقسَّم على صفحات برأسٍ متكرر.
     const pageH = 595.0 - 2 * 16;
-    final extra = 3 + (totals.returned > 0 ? 1 : 0);
-    final slots = rows.length + extra + 2;
+    final extra = 3 + (totals.returned > 0 ? 1 : 0) + (spentOther > 0 ? 1 : 0);
+    final slots = rows.length + extra + 3;
     var h = pageH / slots;
     final paginate = h < 9.5;
     if (paginate) h = 13;
@@ -178,18 +188,37 @@ class CustodySheetPrint {
     final sentenceBody = totals.remaining >= 0
         ? 'متبقي لكم من العهدة التشغيلية رقم (${sheet.sheetNo.isEmpty ? '   ' : sheet.sheetNo}) مبلغ وقدره '
         : 'تجاوز المنصرف العهدة التشغيلية رقم (${sheet.sheetNo.isEmpty ? '   ' : sheet.sheetNo}) بمبلغ وقدره ';
-    final sentence = sentenceBody + amountInWords(totals.remaining, major: 'ريال سعودي', minor: 'هللة');
+    final sentence = sentenceBody + amountInWords(totals.remaining, major: yerSheet ? 'ريال يمني' : 'ريال سعودي', minor: yerSheet ? 'فلس' : 'هللة');
+
+    final holder = sheet.holderName.isNotEmpty ? sheet.holderName : sheet.title;
+    pw.Widget metaBox(String label, String value) => pw.Expanded(
+          child: pw.Container(
+            height: h + 2,
+            alignment: pw.Alignment.centerRight,
+            padding: const pw.EdgeInsets.symmetric(horizontal: 6),
+            decoration: pw.BoxDecoration(border: pw.Border.all(color: _line, width: 0.6)),
+            child: pw.Text('$label: $value', style: pw.TextStyle(fontSize: size + 1.5, fontWeight: pw.FontWeight.bold)),
+          ),
+        );
 
     final body = <pw.Widget>[
+      // ترويسة المسير: رقم العهدة واسم صاحبها.
+      pw.Row(children: [
+        metaBox('رقم العهدة', sheet.sheetNo.isEmpty ? '' : sheet.sheetNo),
+        metaBox('اسم صاحب العهدة', holder),
+      ]),
+      pw.SizedBox(height: 4),
       for (final r in rows)
-        _row(r, h, size, dups.contains(normalizeInvoiceNo(r.invoiceNo))),
-      _totalRow('اجمالي العهدة بالريال السعودي', _sar(totals.granted), h, size, fill: _custodyFill),
-      _totalRow('اجمالي المبلغ المنصرف بالريال السعودي', _sar(totals.spent), h, size, fill: _spentFill),
+        _row(r, h, size, dups.contains(normalizeInvoiceNo(r.invoiceNo)), yerSheet),
+      _totalRow('اجمالي العهدة بالريال $curName', money(totals.granted), h, size, fill: _custodyFill),
+      _totalRow('اجمالي المبلغ المنصرف بالريال $curName', money(totals.spent), h, size, fill: _spentFill),
+      if (spentOther > 0)
+        _totalRow('المنصرف بالريال ${yerSheet ? 'السعودي' : 'اليمني'} (بسعر صرف الأسطر)', moneyOther(spentOther), h, size, fill: _spentFill),
       if (totals.returned > 0)
-        _totalRow('اجمالي المرتجع بالريال السعودي', _sar(totals.returned), h, size),
+        _totalRow('اجمالي المرتجع بالريال $curName', money(totals.returned), h, size),
       _totalRow(
-        totals.remaining >= 0 ? 'المتبقي بالريال السعودي' : 'العجز بالريال السعودي',
-        '${printMoney(totals.remaining.abs())} ر.س.',
+        totals.remaining >= 0 ? 'المتبقي بالريال $curName' : 'العجز بالريال $curName',
+        money(totals.remaining.abs()),
         h,
         size,
         color: _red,
@@ -203,7 +232,14 @@ class CustodySheetPrint {
       textDirection: pw.TextDirection.rtl,
       theme: theme,
       margin: const pw.EdgeInsets.all(16),
-      header: (ctx) => _head(h, size),
+      header: (ctx) => _head(h, size, curName),
+      // أرقام الصفحات إن زادت عن صفحة.
+      footer: (ctx) => ctx.pagesCount > 1
+          ? pw.Padding(
+              padding: const pw.EdgeInsets.only(top: 4),
+              child: pw.Center(child: pw.Text('صفحة ${ctx.pageNumber} من ${ctx.pagesCount}', style: const pw.TextStyle(fontSize: 8))),
+            )
+          : pw.SizedBox(),
       build: (ctx) => body,
     ));
     return pdf.save();

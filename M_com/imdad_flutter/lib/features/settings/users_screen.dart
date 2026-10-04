@@ -48,7 +48,8 @@ const _permCatalog = <String, (String, List<String>)>{
   'cables': ('البرقيات', ['view', 'create', 'edit', 'delete', 'print']),
   'archive': ('الأرشيف الإلكتروني', ['view', 'create', 'edit', 'delete', 'print']),
   'personnel': ('القوة البشرية للإمداد والتموين', ['view', 'create', 'edit', 'delete', 'print', 'export']),
-  'linkages': ('الارتباطات (القوة والمالية والتسليح)', ['view', 'create', 'edit', 'delete', 'print', 'export']),
+  // «approve»: اعتماد الإخلاء المالي وحذف المُعتمد منه.
+  'linkages': ('الارتباطات (القوة والمالية والتسليح)', ['view', 'create', 'edit', 'delete', 'approve', 'print', 'export']),
   'auditTrail': ('سجل التدقيق', ['view', 'export', 'print']),
   'activityIntel': ('ذكاء النشاط', ['view', 'export']),
   'executiveCmd': ('القيادة التنفيذية', ['view', 'export', 'print']),

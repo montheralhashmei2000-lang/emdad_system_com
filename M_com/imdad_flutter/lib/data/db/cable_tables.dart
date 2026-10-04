@@ -57,6 +57,9 @@ class Cables extends Table {
   TextColumn get editorRank => text().withDefault(const Constant(''))();
   TextColumn get editorJob => text().withDefault(const Constant(''))();
 
+  /// توقيع الموقِّع أسفل الجسم (اسم ورتبة وتوقيع قائد الوحدة) — سطرٌ لكل بيان.
+  TextColumn get signerText => text().withDefault(const Constant(''))();
+
   /// تسلسل / نرس.
   TextColumn get serialNo => text().withDefault(const Constant(''))();
 

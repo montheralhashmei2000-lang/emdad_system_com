@@ -19,6 +19,7 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../domain/access_control.dart';
 import '../../data/repos/cable_repo.dart';
+import '../../domain/free_table.dart';
 import 'cable_form.dart';
 
 /// شاشة البرقيات الرسمية — واردة وصادرة مع مرفق PDF اختياري.
@@ -351,11 +352,13 @@ class _CablesScreenState extends State<CablesScreen> {
             row('إلى', fresh.toParty),
             if (fresh.ccParty.isNotEmpty) row('نسخة إلى', fresh.ccParty),
             if (fresh.cableTime.isNotEmpty) row('ساعة الإنشاء', fresh.cableTime),
-            if (CableRecipient.decode(fresh.recipientsJson).isNotEmpty)
-              row('المرسَل إليهم',
-                  CableRecipient.decode(fresh.recipientsJson)
-                      .map((r) => [r.name, r.unit, r.note].where((e) => e.isNotEmpty).join(' — '))
-                      .join('\n')),
+            if (!FreeTable.decode(fresh.recipientsJson).isEmpty)
+              row(
+                  FreeTable.decode(fresh.recipientsJson).title.isEmpty ? 'الجدول' : FreeTable.decode(fresh.recipientsJson).title,
+                  FreeTable.decode(fresh.recipientsJson)
+                      .filledRows
+                      .map((r) => r.where((e) => e.isNotEmpty).join(' — '))
+                      .join(', ')),
             if (fresh.replyToNo.isNotEmpty) row('رد على', fresh.replyToNo),
             const SizedBox(height: 8),
             Text('النص',

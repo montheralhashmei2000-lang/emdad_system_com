@@ -7,11 +7,13 @@ import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
+import '../../core/ui/imd_free_table.dart';
 import '../../data/repos/cable_repo.dart';
+import '../../domain/free_table.dart';
 
 /// النص الافتراضي لجسم البرقية — يُكتب مسبقًا في البرقية الجديدة ثم يُحرَّر
 /// بالكامل يدويًّا.
-const String kCableDefaultBody = 'إشارة إلى الموضوع أعلاه، تم الرفع إليكم حسب النظام.\nوالسلام عليكم.';
+const String kCableDefaultBody = 'اشارة الى الموضوع أعلاه\nتم الرفع اليكم حسب النظام. والسلام عليكم.';
 
 /// نتيجة حفظ النموذج: معرّف البرقية، وهل طُلبت الطباعة بعد الحفظ.
 typedef CableFormResult = ({String id, bool print});
@@ -34,23 +36,6 @@ class CableForm extends StatefulWidget {
   State<CableForm> createState() => _CableFormState();
 }
 
-class _RecipientCtl {
-  _RecipientCtl([CableRecipient r = const CableRecipient()])
-      : name = TextEditingController(text: r.name),
-        unit = TextEditingController(text: r.unit),
-        note = TextEditingController(text: r.note);
-
-  final TextEditingController name, unit, note;
-
-  CableRecipient get value => CableRecipient(name: name.text.trim(), unit: unit.text.trim(), note: note.text.trim());
-
-  void dispose() {
-    name.dispose();
-    unit.dispose();
-    note.dispose();
-  }
-}
-
 class _CableFormState extends State<CableForm> {
   Cable? get _i => widget.initial;
 
@@ -69,6 +54,7 @@ class _CableFormState extends State<CableForm> {
   late final _body = TextEditingController(text: _i == null ? kCableDefaultBody : _i!.body);
   late final _replyTo = TextEditingController(text: _i?.replyToNo ?? '');
   late final _notes = TextEditingController(text: _i?.notes ?? '');
+  late final _signer = TextEditingController(text: _i?.signerText ?? '');
   late final _editorName = TextEditingController(text: _i?.editorName ?? '');
   late final _editorRank = TextEditingController(text: _i?.editorRank ?? '');
   late final _editorJob = TextEditingController(text: _i?.editorJob ?? '');
@@ -79,10 +65,13 @@ class _CableFormState extends State<CableForm> {
   late final _receiver = TextEditingController(text: _i?.receiverName ?? '');
   late final _receiveTime = TextEditingController(text: _i?.receiveTime ?? '');
 
-  late final List<_RecipientCtl> _recipients = [
-    for (final r in CableRecipient.decode(_i?.recipientsJson ?? '[]')) _RecipientCtl(r),
-    if (CableRecipient.decode(_i?.recipientsJson ?? '[]').isEmpty) _RecipientCtl(),
-  ];
+  /// الجدول الحر (كان «المرسَل إليهم»): عنوانه المطبوع فوقه، وأعمدته وصفوفه بيد المستخدم.
+  late FreeTable _free = _i == null ? FreeTable.starter() : FreeTable.decode(_i!.recipientsJson);
+  late final _tableTitle = TextEditingController(text: _free.title);
+  Key _tableKey = UniqueKey();
+
+  /// البرقية الجديدة تبدأ ببيانات آخر برقية محفوظة لتُعدَّل حسب الحاجة.
+  bool _prefilled = false;
 
   Map<String, List<String>> _sug = const {};
   bool _autoNo = true;
@@ -98,10 +87,38 @@ class _CableFormState extends State<CableForm> {
     super.initState();
     _autoNo = _i == null;
     _loadHints();
+    if (_i == null) _prefillFromLast();
+  }
+
+  /// يملأ حقول البرقية الجديدة من آخر برقية: الجهات والموضوع والجسم والدرجات
+  /// والجدول والموقِّع والمحرر. الرقم والتاريخ والساعة تبقى جديدة، وما يخصّ
+  /// الإرسال والاستلام الفعليّين يُترك فارغًا.
+  Future<void> _prefillFromLast() async {
+    final all = await widget.repo.list();
+    if (all.isEmpty || !mounted) return;
+    final p = all.first;
+    setState(() {
+      _to.text = p.toParty;
+      _from.text = p.fromParty;
+      _cc.text = p.ccParty;
+      _subject.text = p.subject;
+      _body.text = p.body;
+      _signer.text = p.signerText;
+      _editorName.text = p.editorName;
+      _editorRank.text = p.editorRank;
+      _editorJob.text = p.editorJob;
+      _method.text = p.sendMethod;
+      _classification = p.classification;
+      _priority = p.priority;
+      _free = FreeTable.decode(p.recipientsJson);
+      _tableTitle.text = _free.title;
+      _tableKey = UniqueKey();
+      _prefilled = true;
+    });
   }
 
   Future<void> _loadHints() async {
-    final keys = ['to', 'from', 'cc', 'editor', 'rank', 'job', 'method', 'recipient', 'unit'];
+    final keys = ['to', 'from', 'cc', 'editor', 'rank', 'job', 'method'];
     final out = <String, List<String>>{};
     for (final k in keys) {
       out[k] = await widget.repo.suggestions(k);
@@ -114,13 +131,10 @@ class _CableFormState extends State<CableForm> {
   @override
   void dispose() {
     for (final c in [
-      _no, _time, _to, _from, _cc, _subject, _body, _replyTo, _notes, _editorName, _editorRank,
+      _no, _time, _signer, _tableTitle, _to, _from, _cc, _subject, _body, _replyTo, _notes, _editorName, _editorRank,
       _editorJob, _serial, _method, _sendAt, _specialist, _receiver, _receiveTime,
     ]) {
       c.dispose();
-    }
-    for (final r in _recipients) {
-      r.dispose();
     }
     super.dispose();
   }
@@ -143,11 +157,12 @@ class _CableFormState extends State<CableForm> {
       fromParty: Value(_from.text.trim()),
       toParty: Value(_to.text.trim()),
       ccParty: Value(_cc.text.trim()),
-      recipientsJson: Value(CableRecipient.encode([for (final r in _recipients) r.value])),
+      recipientsJson: Value(FreeTable(title: _tableTitle.text.trim(), cols: _free.cols, rows: _free.rows).encode()),
       classification: Value(_classification),
       priority: Value(_priority),
       status: Value(_status),
       replyToNo: Value(_replyTo.text.trim()),
+      signerText: Value(_signer.text.trim()),
       editorName: Value(_editorName.text.trim()),
       editorRank: Value(_editorRank.text.trim()),
       editorJob: Value(_editorJob.text.trim()),
@@ -180,46 +195,15 @@ class _CableFormState extends State<CableForm> {
         child: Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: c.accent)),
       );
 
-  Widget _recipientRow(int i) {
-    final r = _recipients[i];
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: LayoutBuilder(builder: (ctx, box) {
-        final fields = [
-          ImdLabeled('الاسم', ImdFld(controller: r.name, suggestions: _sug['recipient'] ?? const [])),
-          ImdLabeled('الوحدة', ImdFld(controller: r.unit, suggestions: _sug['unit'] ?? const [])),
-          ImdLabeled('ملاحظة', ImdFld(controller: r.note)),
-        ];
-        final del = _recipients.length > 1
-            ? ImdIconButton(
-                icon: 'trash',
-                tooltip: 'حذف الصف',
-                kind: ImdBtnKind.danger,
-                onPressed: () => setState(() => _recipients.removeAt(i).dispose()))
-            : const SizedBox.shrink();
-        if (box.maxWidth < 560) {
-          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text('م ${nf(i + 1)}', style: TextStyle(fontWeight: FontWeight.w700, color: ctx.imd.muted)),
-            ...fields,
-            Align(alignment: AlignmentDirectional.centerEnd, child: del),
-          ]);
-        }
-        return Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Padding(
-            padding: const EdgeInsetsDirectional.only(end: 8, bottom: 10),
-            child: Text(nf(i + 1), style: TextStyle(fontWeight: FontWeight.w700, color: ctx.imd.muted)),
-          ),
-          for (final f in fields) Expanded(child: Padding(padding: const EdgeInsetsDirectional.only(end: 8), child: f)),
-          Padding(padding: const EdgeInsets.only(bottom: 4), child: del),
-        ]);
-      }),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (_prefilled)
+        const Padding(
+          padding: EdgeInsets.only(bottom: 10),
+          child: ImdNote('ملأنا الحقول من آخر برقية محفوظة — عدّلها حسب حاجتك.'),
+        ),
       // ───── الرأس: الاتجاه والرقم والتاريخ والتصنيف ─────
       ImdGrid(columns: 4, minItemWidth: 170, gap: 12, children: [
         ImdLabeled(
@@ -286,29 +270,32 @@ class _CableFormState extends State<CableForm> {
       ]),
       ImdLabeled('م / الموضوع *', ImdFld(controller: _subject)),
 
-      // ───── جدول المرسَل إليهم ─────
-      _section(c, 'المرسَل إليهم'),
-      for (var i = 0; i < _recipients.length; i++) _recipientRow(i),
-      Align(
-        alignment: AlignmentDirectional.centerStart,
-        child: ImdButton.outline(
-            label: 'إضافة صف', icon: 'plus', small: true, onPressed: () => setState(() => _recipients.add(_RecipientCtl()))),
+      // ───── جدول حر اختياري ─────
+      _section(c, 'جدول اختياري'),
+      ImdLabeled('عنوان الجدول (يُطبع فوقه — اتركه فارغًا لحذفه)', ImdFld(controller: _tableTitle)),
+      const SizedBox(height: 8),
+      ImdFreeTableEditor(
+        key: _tableKey,
+        initial: _free,
+        onChanged: (t) => _free = t,
       ),
+      const ImdNote('أضف عمودًا بجانب أي عمود، وسمِّه بنفسك، واسحب الخط بين عمودين لتغيير العرض. لا يُطبع الجدول إن بقيت خلاياه فارغة.'),
 
       // ───── جسم البرقية: نصّ حرّ ─────
       _section(c, 'جسم البرقية'),
-      ImdFld(controller: _body, maxLines: 9, hint: 'اكتب نص البرقية…'),
+      ImdFld(controller: _body, maxLines: 9, hint: 'اكتب نص البرقية… (كل سطرٍ يُطبع ببادئة «-»)'),
+      const SizedBox(height: 8),
+      ImdLabeled('الموقِّع: اسم ورتبة وتوقيع قائد الوحدة (سطرٌ لكل بيان)', ImdFld(controller: _signer, maxLines: 3)),
 
       // ───── لاستعمال المركز / المكتب ─────
       _section(c, 'لاستعمال المركز / المكتب'),
       ImdGrid(columns: 3, minItemWidth: 190, gap: 12, children: [
         ImdLabeled('محرر البرقية', ImdFld(controller: _editorName, suggestions: _sug['editor'] ?? const [])),
         ImdLabeled('الرتبة', ImdFld(controller: _editorRank, suggestions: _sug['rank'] ?? const [])),
-        ImdLabeled('الوظيفة', ImdFld(controller: _editorJob, suggestions: _sug['job'] ?? const [])),
+        ImdLabeled('الوظيفة (مختص…)', ImdFld(controller: _editorJob, suggestions: _sug['job'] ?? const [])),
         ImdLabeled('تسلسل / نرس', ImdFld(controller: _serial)),
         ImdLabeled('وسيلة الإرسال', ImdFld(controller: _method, suggestions: _sug['method'] ?? const [])),
         ImdLabeled('الوقت والتاريخ', ImdFld(controller: _sendAt, hint: '8:55 م — ٠٣/١٠/٢٠٢٦')),
-        ImdLabeled('مختص', ImdFld(controller: _specialist)),
         ImdLabeled('اسم المأمور (الاستقبال)', ImdFld(controller: _receiver)),
         ImdLabeled('وقت الاستلام', ImdFld(controller: _receiveTime)),
       ]),

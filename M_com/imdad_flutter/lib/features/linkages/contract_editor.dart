@@ -15,6 +15,7 @@ import '../../data/ocr/ocr_engine.dart';
 import '../../data/repos/linkage_repo.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../domain/arabic_words.dart';
+import '../../domain/finance.dart';
 import '../../domain/invoice_merge.dart';
 import '../inventory/doc_kit.dart';
 import 'invoice_scan_ui.dart';
@@ -62,10 +63,11 @@ class _ItemRow {
 }
 
 /// فتح محرر عقد الشراء. يعيد true عند الحفظ.
-Future<bool> openContractEditor(BuildContext context, {LinkPurchaseContract? initial, required String actor, required bool canPrint}) async {
+Future<bool> openContractEditor(BuildContext context,
+    {LinkPurchaseContract? initial, required String actor, required bool canPrint, bool readOnly = false}) async {
   final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(
     builder: (_) => Scaffold(
-      body: SafeArea(child: ContractEditor(initial: initial, actor: actor, canPrint: canPrint)),
+      body: SafeArea(child: ContractEditor(initial: initial, actor: actor, canPrint: canPrint, readOnly: readOnly)),
     ),
   ));
   return saved == true;
@@ -75,11 +77,14 @@ Future<bool> openContractEditor(BuildContext context, {LinkPurchaseContract? ini
 /// الصرف، تاريخ القائمة) ثم أسطر الأصناف النصية الحرة ثم الإجمالي والتفقيط.
 /// سطر المقابل بالسعودي لا يظهر إلا مع العملة اليمنية.
 class ContractEditor extends StatefulWidget {
-  const ContractEditor({super.key, required this.initial, required this.actor, required this.canPrint});
+  const ContractEditor({super.key, required this.initial, required this.actor, required this.canPrint, this.readOnly = false});
 
   final LinkPurchaseContract? initial;
   final String actor;
   final bool canPrint;
+
+  /// عرضٌ بلا حفظ لمن لا يملك صلاحية التعديل.
+  final bool readOnly;
 
   @override
   State<ContractEditor> createState() => _ContractEditorState();
@@ -92,15 +97,22 @@ class _ContractEditorState extends State<ContractEditor> {
   late final _title = TextEditingController(text: _i?.title ?? '');
   late final _supplier = TextEditingController(text: _i?.supplier ?? '');
   late final _rate = TextEditingController(text: _fmt(_i?.exchangeRate ?? 0));
+  late final _invoice = TextEditingController(text: _i?.invoiceNo ?? '');
   late final _notes = TextEditingController(text: _i?.notes ?? '');
   late String _currency = _i?.currency ?? LinkCurrency.sar;
   late String _listDate = _i?.listDate ?? '';
   late String _endDate = _i?.endDate ?? '';
+  late String _custodyId = _i?.custodyId ?? '';
+  List<LinkFinCustody> _custodies = const [];
+  bool _advanced = false;
   late String _status = _i?.status ?? LinkContractStatus.open;
   late final List<_ItemRow> _rows = [
     for (final i in ContractItem.decode(_i?.itemsJson ?? '[]')) _ItemRow(i),
-    if (ContractItem.decode(_i?.itemsJson ?? '[]').isEmpty) _ItemRow(),
+    if (ContractItem.decode(_i?.itemsJson ?? '[]').isEmpty) _ItemRow()
+      ..invoiceNo.text = _i?.invoiceNo ?? ''
+      ..date = _i?.listDate ?? '',
   ];
+  late String _prevInvoice = (_i?.invoiceNo ?? '').trim();
   List<String> _nameHints = const [];
   List<String> _unitHints = const [];
   List<String> _shopHints = const [];
@@ -113,14 +125,29 @@ class _ContractEditorState extends State<ContractEditor> {
 
   bool get _isYer => _currency == LinkCurrency.yer;
 
+  /// تنبيه حين يلزم تحويل مبلغ العقد إلى عملة العهدة ولا سعر صرفٍ متاح.
+  String get _custodyNote {
+    final c = _custodies.where((x) => x.id == _custodyId).firstOrNull;
+    if (c == null || c.currency == _currency) return '';
+    final rate = _isYer ? _num(_rate.text) : c.exchangeRate;
+    return rate > 0 ? '' : 'عملة العقد تختلف عن عملة العهدة ${c.custodyNo} ولا يوجد سعر صرف — لن يُحتسب هذا العقد في المستهلك حتى يُدخل سعر الصرف.';
+  }
+
   @override
   void initState() {
     super.initState();
+    _advanced = _endDate.isNotEmpty;
     _loadHints();
   }
 
   Future<void> _loadHints() async {
-    final all = await LinkageRepo(context.read<AppDatabase>()).contracts();
+    final repo = LinkageRepo(context.read<AppDatabase>());
+    final all = await repo.contracts();
+    // العهد التي يُربط بها عقد: القائمة (قيد الإخلاء) وحدها، وعهدة هذا العقد الحالية ولو أُخليت.
+    final custodies = [
+      for (final c in await repo.custodies())
+        if (c.status == CustodyStatus.open || c.id == _custodyId) c,
+    ];
     final names = <String>{}, units = <String>{}, shops = <String>{}, cats = <String>{};
     for (final c in all) {
       if (c.supplier.trim().isNotEmpty) shops.add(c.supplier.trim());
@@ -132,6 +159,7 @@ class _ContractEditorState extends State<ContractEditor> {
     }
     if (!mounted) return;
     setState(() {
+      _custodies = custodies;
       _nameHints = names.toList()..sort();
       _unitHints = units.toList()..sort();
       _shopHints = shops.toList()..sort();
@@ -141,7 +169,7 @@ class _ContractEditorState extends State<ContractEditor> {
 
   @override
   void dispose() {
-    for (final c in [_no, _title, _supplier, _rate, _notes]) {
+    for (final c in [_no, _title, _supplier, _rate, _invoice, _notes]) {
       c.dispose();
     }
     for (final r in _rows) {
@@ -149,6 +177,22 @@ class _ContractEditorState extends State<ContractEditor> {
     }
     super.dispose();
   }
+
+  /// رقم الفاتورة وتاريخ القائمة في الرأس يُسحبان إلى أسطر الأصناف تلقائيًّا:
+  /// السطر الفارغ أو الذي يطابق القيمة السابقة يتبع الجديدة، وما عدّله المستخدم
+  /// بيده يبقى كما هو.
+  void _followHeader({String? oldInvoice, String? oldDate}) {
+    for (final r in _rows) {
+      if (oldInvoice != null && (r.invoiceNo.text.trim().isEmpty || r.invoiceNo.text.trim() == oldInvoice.trim())) {
+        r.invoiceNo.text = _invoice.text.trim();
+      }
+      if (oldDate != null && (r.date.isEmpty || r.date == oldDate)) r.date = _listDate;
+    }
+  }
+
+  _ItemRow _newRow() => _ItemRow()
+    ..invoiceNo.text = _invoice.text.trim()
+    ..date = _listDate;
 
   List<ContractItem> get _items => [for (final r in _rows) r.value];
   double get _total => ContractItem.sum(_items);
@@ -173,12 +217,14 @@ class _ContractEditorState extends State<ContractEditor> {
         contractNo: Value(_no.text.trim()),
         title: Value(_title.text.trim()),
         supplier: Value(_supplier.text.trim()),
+        invoiceNo: Value(_invoice.text.trim()),
         currency: Value(_currency),
         exchangeRate: Value(_isYer ? _num(_rate.text) : 0),
         listDate: Value(_listDate),
         itemsJson: Value(ContractItem.encode(_items)),
         amount: Value(_total),
         endDate: Value(_endDate),
+        custodyId: Value(_custodyId),
         status: Value(_status),
         notes: Value(_notes.text.trim()),
         updatedAt: Value(DateTime.now()),
@@ -350,7 +396,7 @@ class _ContractEditorState extends State<ContractEditor> {
               kind: ImdBtnKind.danger,
               onPressed: () => setState(() {
                 _rows.removeAt(i).dispose();
-                if (_rows.isEmpty) _rows.add(_ItemRow());
+                if (_rows.isEmpty) _rows.add(_newRow());
               }),
             )),
           ],
@@ -369,14 +415,15 @@ class _ContractEditorState extends State<ContractEditor> {
       sticky: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.end, children: [
-          ImdButton.outline(label: 'إلغاء', onPressed: _busy ? null : () => Navigator.of(context).pop(false)),
-          if (widget.canPrint) ImdButton.outline(label: 'حفظ وطباعة', icon: 'printer', busy: _busy, onPressed: _saveAndPrint),
-          ImdButton(label: 'حفظ العقد', icon: 'save', busy: _busy, onPressed: _save),
+          ImdButton.outline(label: widget.readOnly ? 'رجوع' : 'إلغاء', onPressed: _busy ? null : () => Navigator.of(context).pop(false)),
+          if (widget.canPrint && !widget.readOnly) ImdButton.outline(label: 'حفظ وطباعة', icon: 'printer', busy: _busy, onPressed: _saveAndPrint),
+          if (!widget.readOnly) ImdButton(label: 'حفظ العقد', icon: 'save', busy: _busy, onPressed: _save),
         ]),
       ),
       children: [
+        if (widget.readOnly) const ImdNote('وضع العرض فقط — لا تملك صلاحية التعديل، فلا يظهر زر الحفظ.'),
         ImdPageTitle(
-          title: _i == null ? 'عقد شراء جديد' : 'تعديل عقد الشراء',
+          title: _i == null ? 'عقد شراء جديد' : (widget.readOnly ? 'عرض عقد الشراء' : 'تعديل عقد الشراء'),
           icon: 'clipboard',
           subtitle: 'الأصناف نصٌّ حر بمسميات فاتورة التاجر — لا صلة لها بأصناف النظام',
         ),
@@ -396,7 +443,15 @@ class _ContractEditorState extends State<ContractEditor> {
               // سعر الصرف لا يظهر إلا للعملة اليمنية.
               if (_isYer)
                 ImdLabeled('سعر الصرف * (ريال يمني لكل سعودي)', ImdFld(controller: _rate, number: true, onChanged: (_) => setState(() {}))),
-              ImdLabeled('قائمة الكمية المستهلكة بتاريخ', ImdDateField(value: _listDate, onChanged: (v) => setState(() => _listDate = v))),
+              ImdLabeled(
+                  'قائمة الكمية المستهلكة بتاريخ',
+                  ImdDateField(
+                      value: _listDate,
+                      onChanged: (v) => setState(() {
+                            final old = _listDate;
+                            _listDate = v;
+                            _followHeader(oldDate: old);
+                          }))),
               ImdLabeled(
                   'الحالة',
                   ImdSelect<String>(
@@ -404,9 +459,47 @@ class _ContractEditorState extends State<ContractEditor> {
                     value: _status,
                     onChanged: (v) => setState(() => _status = v ?? LinkContractStatus.open),
                   )),
-              ImdLabeled('تاريخ الانتهاء (اختياري — للتنبيه)', ImdDateField(value: _endDate, onChanged: (v) => setState(() => _endDate = v))),
+              ImdLabeled(
+                  'العهدة المرتبطة (اختياري — لا تُطبع)',
+                  ImdSelect<String>(
+                    items: [
+                      ('', 'بلا عهدة'),
+                      for (final c in _custodies)
+                        (c.id, '${c.custodyNo} · ${c.title} — ${printNum(c.amount)} ${FinCurrency.short(c.currency)}'),
+                    ],
+                    value: _custodies.any((c) => c.id == _custodyId) ? _custodyId : '',
+                    onChanged: (v) => setState(() => _custodyId = v ?? ''),
+                  )),
+              ImdLabeled(
+                  'رقم الفاتورة',
+                  ImdFld(
+                      controller: _invoice,
+                      onChanged: (v) => setState(() {
+                            // الرقم السابق = ما كان في الأسطر قبل هذا الحرف.
+                            for (final r in _rows) {
+                              if (r.invoiceNo.text.trim().isEmpty || r.invoiceNo.text.trim() == _prevInvoice) r.invoiceNo.text = v.trim();
+                            }
+                            _prevInvoice = v.trim();
+                          }))),
             ]),
             ImdLabeled('ملاحظات', ImdFld(controller: _notes)),
+            const SizedBox(height: 8),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: ImdButton.outline(
+                label: _advanced ? 'إخفاء المتقدم' : 'متقدم',
+                icon: 'sliders',
+                small: true,
+                onPressed: () => setState(() => _advanced = !_advanced),
+              ),
+            ),
+            if (_advanced) ...[
+              const SizedBox(height: 8),
+              ImdGrid(columns: 4, minItemWidth: 200, gap: 12, children: [
+                ImdLabeled('تاريخ الانتهاء (اختياري — للتنبيه)', ImdDateField(value: _endDate, onChanged: (v) => setState(() => _endDate = v))),
+              ]),
+            ],
+            if (_custodyNote.isNotEmpty) ...[const SizedBox(height: 8), ImdNote(_custodyNote)],
           ]),
         ),
         const SizedBox(height: 12),
@@ -427,7 +520,7 @@ class _ContractEditorState extends State<ContractEditor> {
             const SizedBox(height: 8),
             Align(
               alignment: AlignmentDirectional.centerStart,
-              child: ImdButton.outline(label: 'إضافة سطر', icon: 'plus', small: true, onPressed: () => setState(() => _rows.add(_ItemRow()))),
+              child: ImdButton.outline(label: 'إضافة سطر', icon: 'plus', small: true, onPressed: () => setState(() => _rows.add(_newRow()))),
             ),
           ]),
         ),
@@ -435,7 +528,7 @@ class _ContractEditorState extends State<ContractEditor> {
         // الإجماليات كما في النموذج المطبوع.
         ImdPanel(
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            _totalLine(c, 'الإجمالي بالريال $cur على حسب الفاتورة', printNum(total), words),
+            _totalLine(c, 'الإجمالي بالريال $cur', printNum(total), words),
             if (_isYer && rate > 0) ...[
               const SizedBox(height: 6),
               _totalLine(c, 'ما يقابل بالريال السعودي', printMoney(total / rate), 'الإجمالي ÷ سعر الصرف: ${printNum(rate)} ريال يمني'),

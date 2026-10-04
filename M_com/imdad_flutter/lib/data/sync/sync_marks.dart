@@ -126,6 +126,7 @@ class SyncMarks {
     'link_armaments': 'id',
     'link_custody_sheets': 'id',
     'link_custody_sheet_rows': 'id',
+    'link_finance_ledger': 'id',
   };
 
   /// المللي ثانية الحالية بصيغة SQLite (لا يوجد `unixepoch('subsec')` في كل نسخة).

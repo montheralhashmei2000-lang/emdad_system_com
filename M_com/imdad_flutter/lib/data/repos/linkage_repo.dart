@@ -6,6 +6,10 @@ import 'package:flutter/material.dart' show DateUtils;
 import '../../core/ids.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_widgets.dart' show ImdTone;
+import '../../domain/custody_sheet.dart';
+import '../../domain/finance.dart';
+import 'doc_numbering.dart';
+import 'finance_files.dart';
 import '../db/app_database.dart';
 import 'audit_repo.dart';
 
@@ -31,9 +35,12 @@ class LinkStatus {
   /// حالات «ذات مدى» تُؤرَّخ من/إلى — «موجود» لا يحتاج مدى.
   static const List<String> dated = [absent, mission, leave, permission, deserter];
 
+  /// الحالات المضافة من المستخدم (مثل «مريض مستشفى») تُحفظ في دليل المسميات
+  /// (`link_terms` نوع `status`) ويكون **اسمها هو مفتاحها**، فتُعرض كما كُتبت
+  /// وتبقى سجلات الأفراد سليمةً لو حُذفت من الدليل. وهي كلها ذات مدى.
   static String label(String s) => meta[s]?.$1 ?? s;
-  static ImdTone tone(String s) => meta[s]?.$2 ?? ImdTone.off;
-  static bool isDated(String s) => dated.contains(s);
+  static ImdTone tone(String s) => meta[s]?.$2 ?? ImdTone.info;
+  static bool isDated(String s) => s.isNotEmpty && s != present;
 }
 
 /// عملة فاتورة الشراء.
@@ -434,46 +441,143 @@ class LinkageRepo {
   }
 
   Future<void> insertCustody(LinkFinCustodiesCompanion e, {String actor = ''}) async {
-    await db.into(db.linkFinCustodies).insert(e);
-    final holder = e.holder.present ? e.holder.value : '';
-    if (holder.isNotEmpty) await addTermIfNew('holder', holder);
+    var data = e;
+    final no = data.custodyNo.present ? data.custodyNo.value.trim() : '';
+    // الرقم الفارغ يُولَّد، والمكتوب لا يتكرر.
+    final finalNo = no.isEmpty ? await nextCustodyNo() : no;
+    if (await custodyNoTaken(finalNo)) throw LinkBlocked('رقم العهدة «$finalNo» مستخدم لعهدة أخرى');
+    data = data.copyWith(custodyNo: Value(finalNo), cleared: Value((data.status.present ? data.status.value : CustodyStatus.open) == CustodyStatus.cleared));
+    await db.into(db.linkFinCustodies).insert(data);
+    for (final n in [
+      if (data.holder.present) data.holder.value,
+      if (data.giverName.present) data.giverName.value,
+      if (data.receiverName.present) data.receiverName.value,
+    ]) {
+      if (n.trim().isNotEmpty) await addTermIfNew('holder', n);
+    }
     await AuditRepo(db).log(
       action: 'linkage.custody.create',
       entityType: 'linkage',
-      summary: 'تسجيل عهدة «${e.title.present ? e.title.value : ''}» — الجهة: $holder',
+      summary: 'تسجيل عهدة $finalNo «${data.title.present ? data.title.value : ''}» — '
+          '${CustodyKind.label(data.kind.present ? data.kind.value : CustodyKind.received)} '
+          '${data.amount.present ? data.amount.value : 0} ${FinCurrency.label(data.currency.present ? data.currency.value : FinCurrency.sar)}',
       risk: AuditRepo.riskNormal,
       actorEmail: actor,
     );
   }
 
   Future<void> updateCustody(LinkFinCustody c, LinkFinCustodiesCompanion e, {String actor = ''}) async {
-    await (db.update(db.linkFinCustodies)..where((t) => t.id.equals(c.id))).write(e);
-    final holder = e.holder.present ? e.holder.value : '';
-    if (holder.isNotEmpty) await addTermIfNew('holder', holder);
+    final no = e.custodyNo.present ? e.custodyNo.value.trim() : c.custodyNo;
+    if (no.isEmpty) throw LinkBlocked('رقم العهدة مطلوب');
+    if (no != c.custodyNo && await custodyNoTaken(no, excludeId: c.id)) {
+      throw LinkBlocked('رقم العهدة «$no» مستخدم لعهدة أخرى');
+    }
+    // العهدة المُخلَّاة لا يُعدَّل مبلغها ولا عملتها ولا نوعها: الإخلاء بُني عليها.
+    if (c.status == CustodyStatus.cleared) {
+      final moneyChanged = (e.amount.present && e.amount.value != c.amount) ||
+          (e.currency.present && e.currency.value != c.currency) ||
+          (e.kind.present && e.kind.value != c.kind);
+      if (moneyChanged) throw LinkBlocked('العهدة مُخلَّاة — لا يُعدَّل مبلغها أو عملتها أو نوعها. احذف الإخلاء أولًا.');
+    }
+    // الإلغاء لا يجوز لعهدةٍ لها إخلاء.
+    if (e.status.present && e.status.value == CustodyStatus.canceled && c.status == CustodyStatus.cleared) {
+      throw LinkBlocked('لا تُلغى عهدة مُخلَّاة');
+    }
+    final status = e.status.present ? e.status.value : c.status;
+    await (db.update(db.linkFinCustodies)..where((t) => t.id.equals(c.id))).write(
+      e.copyWith(custodyNo: Value(no), cleared: Value(status == CustodyStatus.cleared)),
+    );
+    for (final n in [
+      if (e.holder.present) e.holder.value,
+      if (e.giverName.present) e.giverName.value,
+      if (e.receiverName.present) e.receiverName.value,
+    ]) {
+      if (n.trim().isNotEmpty) await addTermIfNew('holder', n);
+    }
     await AuditRepo(db).log(
       action: 'linkage.custody.edit',
       entityType: 'linkage',
-      summary: 'تعديل عهدة «${c.title}»',
+      summary: 'تعديل عهدة ${c.custodyNo} «${c.title}»',
       risk: AuditRepo.riskNormal,
       actorEmail: actor,
     );
   }
 
-  /// حذف العهدة يحذف إخلاءاتها أيضًا — لا إخلاء بلا مرجع.
+  /// الارتباطات التي تمنع حذف العهدة: عقودٌ ومسيراتٌ وإخلاءات. أسماؤها للرسالة.
+  Future<List<String>> custodyLinks(String custodyId) async {
+    final contracts = await (db.select(db.linkPurchaseContracts)..where((t) => t.custodyId.equals(custodyId))).get();
+    final sheets = await (db.select(db.linkCustodySheets)..where((t) => t.custodyId.equals(custodyId))).get();
+    final clears = await (db.select(db.linkClearances)
+          ..where((t) => t.kind.equals(LinkClearanceKind.custody) & t.refId.equals(custodyId)))
+        .get();
+    return [
+      if (contracts.isNotEmpty) '${contracts.length} عقد',
+      if (sheets.isNotEmpty) '${sheets.length} مسير',
+      if (clears.isNotEmpty) '${clears.length} إخلاء',
+    ];
+  }
+
+  /// يمنع الحذف إذا كانت العهدة مرتبطة بعقدٍ أو مسيرٍ أو إخلاء — المنع هنا في
+  /// المستودع لا في الواجهة وحدها، فلا يتجاوزه استيرادٌ أو مزامنة.
   Future<void> deleteCustody(LinkFinCustody c, {String actor = ''}) async {
-    await db.transaction(() async {
-      await (db.delete(db.linkClearances)
-            ..where((t) => t.kind.equals(LinkClearanceKind.custody) & t.refId.equals(c.id)))
-          .go();
-      await (db.delete(db.linkFinCustodies)..where((t) => t.id.equals(c.id))).go();
-    });
+    final links = await custodyLinks(c.id);
+    if (links.isNotEmpty) {
+      throw LinkBlocked('لا تُحذف العهدة ${c.custodyNo} لارتباطها بـ${links.join(' و')}. احذف الارتباطات أولًا.');
+    }
+    await (db.delete(db.linkFinCustodies)..where((t) => t.id.equals(c.id))).go();
     await AuditRepo(db).log(
       action: 'linkage.custody.delete',
       entityType: 'linkage',
-      summary: 'حذف عهدة «${c.title}» — الجهة: ${c.holder}',
+      summary: 'حذف عهدة ${c.custodyNo} «${c.title}» — ${c.giverName.isEmpty ? c.holder : c.giverName} ← ${c.receiverName}',
       risk: AuditRepo.riskHigh,
       actorEmail: actor,
     );
+  }
+
+  /// رقم العهدة التالي بصيغة `عهدة-00001`: أعلى رقمٍ موجود بهذه الصيغة + 1.
+  Future<String> nextCustodyNo() async {
+    final rows = await db.select(db.linkFinCustodies).get();
+    var max = 0;
+    for (final r in rows) {
+      final m = RegExp(r'^عهدة-(\d+)$').firstMatch(r.custodyNo.trim());
+      final n = m == null ? 0 : int.parse(m.group(1)!);
+      if (n > max) max = n;
+    }
+    return 'عهدة-${(max + 1).toString().padLeft(5, '0')}';
+  }
+
+  Future<bool> custodyNoTaken(String no, {String excludeId = ''}) async {
+    final v = no.trim().toLowerCase();
+    if (v.isEmpty) return false;
+    final rows = await db.select(db.linkFinCustodies).get();
+    return rows.any((r) => r.id != excludeId && r.custodyNo.trim().toLowerCase() == v);
+  }
+
+  /// المبلغ المُستهلك من كل عهدة = مجموع عقودها المرتبطة، محوَّلًا إلى عملة العهدة
+  /// بسعر صرف العقد (أو العهدة). عقدٌ يلزم تحويله بلا سعرٍ صالح لا يُحتسب ويُعدّ
+  /// في [CustodyUsage.unconvertible] ليُنبَّه إليه.
+  Future<Map<String, CustodyUsage>> custodyUsage() async {
+    final custodies = await db.select(db.linkFinCustodies).get();
+    final contracts = await db.select(db.linkPurchaseContracts).get();
+    final out = <String, CustodyUsage>{};
+    for (final c in custodies) {
+      var consumed = 0.0;
+      var count = 0;
+      var bad = 0;
+      for (final k in contracts) {
+        if (k.custodyId != c.id) continue;
+        count++;
+        final rate = k.exchangeRate > 0 ? k.exchangeRate : c.exchangeRate;
+        final v = convertAmount(k.amount, from: k.currency, to: c.currency, rate: rate);
+        if (v == null) {
+          bad++;
+        } else {
+          consumed += v;
+        }
+      }
+      out[c.id] = CustodyUsage(consumed: consumed, contracts: count, unconvertible: bad);
+    }
+    return out;
   }
 
   // ───────────────── الإخلاءات ─────────────────
@@ -506,22 +610,19 @@ class LinkageRepo {
   }) async {
     var party = partyName;
     var title = refTitle;
+    // إخلاء العهدة له مسارٌ خاصّ: أرقامه من المسيرات ويكتب الدفتر.
+    if (kind == LinkClearanceKind.custody && refId.isNotEmpty) {
+      await saveCustodyClearance(
+        custodyId: refId,
+        clearanceNo: clearanceNo,
+        clearanceDate: clearanceDate,
+        notes: notes,
+        actor: actor,
+      );
+      return;
+    }
     await db.transaction(() async {
-      if (kind == LinkClearanceKind.custody && refId.isNotEmpty) {
-        final c = await (db.select(db.linkFinCustodies)..where((t) => t.id.equals(refId))).getSingleOrNull();
-        if (c != null) {
-          title = title.isEmpty ? c.title : title;
-          party = party.isEmpty ? c.holder : party;
-          await (db.update(db.linkFinCustodies)..where((t) => t.id.equals(refId))).write(
-            LinkFinCustodiesCompanion(
-              cleared: const Value(true),
-              clearedDate: Value(clearanceDate),
-              clearanceNotes: Value(notes),
-              updatedAt: Value(DateTime.now()),
-            ),
-          );
-        }
-      } else if (kind == LinkClearanceKind.contract && refId.isNotEmpty) {
+      if (kind == LinkClearanceKind.contract && refId.isNotEmpty) {
         final c = await (db.select(db.linkPurchaseContracts)..where((t) => t.id.equals(refId))).getSingleOrNull();
         if (c != null) {
           title = title.isEmpty ? c.title : title;
@@ -563,19 +664,44 @@ class LinkageRepo {
       await (db.delete(db.linkClearances)..where((t) => t.id.equals(c.id))).go();
       if (c.refId.isEmpty) return;
       if (c.kind == LinkClearanceKind.custody) {
+        // المسودة لم تُغلق العهدة، فلا شيء يُعاد فتحه ولا قيد يُعكس.
+        if (c.workflow != wfApproved) return;
         await (db.update(db.linkFinCustodies)..where((t) => t.id.equals(c.refId))).write(
           const LinkFinCustodiesCompanion(
             cleared: Value(false),
+            status: Value(CustodyStatus.open),
+            outcome: Value(''),
+            outcomeAmount: Value(0),
             clearedDate: Value(''),
             clearanceNotes: Value(''),
           ),
         );
+        // قيد الدفتر لا يُمحى: يُعكس بقيدٍ مضاد فيبقى الأثر قابلًا للتدقيق.
+        final entries = await (db.select(db.linkFinanceLedger)..where((t) => t.clearanceId.equals(c.id))).get();
+        final reversed = entries.where((e) => e.entryKind == 'reversal').length;
+        if (reversed == 0) {
+          for (final e in entries) {
+            await db.into(db.linkFinanceLedger).insert(LinkFinanceLedgerCompanion(
+                  id: Value(Ids.next('lg')),
+                  partyName: Value(e.partyName),
+                  custodyId: Value(e.custodyId),
+                  clearanceId: Value(e.clearanceId),
+                  entryKind: const Value('reversal'),
+                  delta: Value(-e.delta),
+                  currency: Value(e.currency),
+                  entryDate: Value(isoDay(DateTime.now())),
+                  note: Value('عكس: ${e.note}'),
+                  createdAt: Value(DateTime.now()),
+                ));
+          }
+        }
       } else if (c.kind == LinkClearanceKind.contract) {
         await (db.update(db.linkPurchaseContracts)..where((t) => t.id.equals(c.refId))).write(
           const LinkPurchaseContractsCompanion(status: Value(LinkContractStatus.open)),
         );
       }
     });
+    await FinanceFiles.delete(c.attachPath);
     await AuditRepo(db).log(
       action: 'linkage.clearance.delete',
       entityType: 'linkage',
@@ -583,6 +709,266 @@ class LinkageRepo {
       risk: AuditRepo.riskHigh,
       actorEmail: actor,
     );
+  }
+
+  // ───────────────── إخلاء العهدة المالي ─────────────────
+
+  static const String wfDraft = 'draft';
+  static const String wfSent = 'sent';
+  static const String wfApproved = 'approved';
+  static const Map<String, String> workflowLabels = {wfDraft: 'مسودة', wfSent: 'مُرسل', wfApproved: 'مُعتمد'};
+
+  static String partyOf(LinkFinCustody c) => c.receiverName.trim().isNotEmpty ? c.receiverName.trim() : c.holder.trim();
+
+  /// تسوية العهدة: المخصص، والمصروف والمرتجع من مسيراتها (بعملة العهدة)، والفرق.
+  ///
+  /// الفرق = المخصص − المصروف − المرتجع — نفس معادلة «المتبقي» في المسير، فلا يختلف
+  /// رقم الإخلاء عن رقم المسير. المخصص هو مبلغ العهدة نفسه.
+  Future<CustodySettlement?> custodySettlement(String custodyId) async {
+    final c = await custodyById(custodyId);
+    if (c == null) return null;
+    final sheets = await (db.select(db.linkCustodySheets)..where((t) => t.custodyId.equals(custodyId))).get();
+    var spent = 0.0, returned = 0.0;
+    for (final s in sheets) {
+      final rows = await (db.select(db.linkCustodySheetRows)..where((t) => t.sheetId.equals(s.id))).get();
+      final t = custodyTotalsIn([
+        for (final r in rows)
+          CustodyRowValues(
+              grantSar: r.grantSar, grantYer: r.grantYer, returnSar: r.returnSar, returnYer: r.returnYer, spentSar: r.spentSar, spentYer: r.spentYer, rate: r.rate)
+      ], c.currency);
+      spent += t.spent;
+      returned += t.returned;
+    }
+    // العهد القديمة بلا مبلغ جديد تقرأ قيمتها القديمة.
+    final granted = c.amount != 0 ? c.amount : c.valueAmount;
+    return CustodySettlement(
+      custody: c,
+      granted: granted,
+      spent: spent,
+      returned: returned,
+      sheets: sheets.length,
+      diff: CustodyDiff.of(granted: granted, spent: spent + returned),
+      counterparty: c.kind == CustodyKind.received ? 'المالية' : partyOf(c),
+    );
+  }
+
+  /// رقم الإخلاء: `إخلاء-{رمز الجهاز}-{YYYYMM}-{تسلسل}`، التسلسل من أعلى رقم بالصيغة نفسها.
+  Future<String> nextClearanceNo() async {
+    var code = 'XXXX';
+    try {
+      code = await DocNumbering(db).deviceCode();
+    } catch (_) {}
+    final now = DateTime.now();
+    final head = 'إخلاء-$code-${now.year}${now.month.toString().padLeft(2, '0')}-';
+    final rows = await db.select(db.linkClearances).get();
+    var max = 0;
+    for (final r in rows) {
+      final n = r.clearanceNo.trim();
+      if (!n.startsWith(head)) continue;
+      final v = int.tryParse(n.substring(head.length)) ?? 0;
+      if (v > max) max = v;
+    }
+    return '$head${(max + 1).toString().padLeft(5, '0')}';
+  }
+
+  /// إخلاءات العهدة الواحدة المتعددة — لا تنشأ محليًّا (المنع في [saveCustodyClearance])
+  /// لكنها قد تأتي من مزامنة جهازين أخليا العهدة نفسها دون اتصال. تُعرض للمراجعة.
+  Future<Map<String, List<LinkClearance>>> duplicateClearances() async {
+    final rows = await (db.select(db.linkClearances)..where((t) => t.kind.equals(LinkClearanceKind.custody) & t.refId.equals('').not())).get();
+    final by = <String, List<LinkClearance>>{};
+    for (final r in rows) {
+      (by[r.refId] ??= []).add(r);
+    }
+    by.removeWhere((_, v) => v.length < 2);
+    return by;
+  }
+
+  /// يحفظ إخلاء عهدة (جديدًا أو تعديلًا). **الأرقام تُحسب هنا من المسيرات** لا
+  /// من الواجهة، فلا يُدخل أحدٌ مبلغًا مخالفًا. الاعتماد وحده يُغلق العهدة ويكتب
+  /// الفائض أو العجز في دفتر رصيد المالية، في معاملةٍ واحدة.
+  Future<LinkClearance> saveCustodyClearance({
+    String? id,
+    required String custodyId,
+    String clearanceNo = '',
+    required String clearanceDate,
+    String workflow = wfApproved,
+    String docNo = '',
+    String clearerName = '',
+    String reviewDate = '',
+    String adminNotes = '',
+    String notes = '',
+    String attachName = '',
+    String attachPath = '',
+    String attachSha256 = '',
+    String actor = '',
+  }) async {
+    final st = await custodySettlement(custodyId);
+    if (st == null) throw const LinkBlocked('العهدة غير موجودة');
+    final custody = st.custody;
+    final existing = await (db.select(db.linkClearances)
+          ..where((t) => t.kind.equals(LinkClearanceKind.custody) & t.refId.equals(custodyId)))
+        .get();
+    LinkClearance? prev;
+    if (id == null) {
+      if (existing.isNotEmpty) {
+        throw LinkBlocked('العهدة ${custody.custodyNo} لها إخلاء بالفعل (${existing.first.clearanceNo}) — لا تُخلَّى مرتين');
+      }
+      if (custody.status != CustodyStatus.open) {
+        throw LinkBlocked('العهدة ${custody.custodyNo} ${CustodyStatus.label(custody.status)} — لا تُخلَّى');
+      }
+    } else {
+      prev = existing.where((e) => e.id == id).firstOrNull;
+      if (prev == null) throw const LinkBlocked('الإخلاء غير موجود لهذه العهدة');
+    }
+    final approvedBefore = prev?.workflow == wfApproved;
+    if (approvedBefore && workflow != wfApproved) {
+      throw const LinkBlocked('الإخلاء المُعتمد لا يعود مسودة — احذفه ليُعاد فتح العهدة');
+    }
+    if (!workflowLabels.containsKey(workflow)) throw const LinkBlocked('حالة الإخلاء غير معروفة');
+    // الاعتماد يُغلق العهدة، فلا يجوز لعهدةٍ لم تعد قيد الإخلاء (أُلغيت بعد المسودة).
+    if (workflow == wfApproved && !approvedBefore && custody.status != CustodyStatus.open) {
+      throw LinkBlocked('العهدة ${custody.custodyNo} ${CustodyStatus.label(custody.status)} — لا يُعتمد إخلاؤها');
+    }
+
+    final no = clearanceNo.trim().isNotEmpty ? clearanceNo.trim() : (prev?.clearanceNo.isNotEmpty == true ? prev!.clearanceNo : await nextClearanceNo());
+    final clashes = (await db.select(db.linkClearances).get()).any((e) => e.id != id && e.clearanceNo.trim().toLowerCase() == no.toLowerCase());
+    if (clashes) throw LinkBlocked('رقم الإخلاء «$no» مستخدم');
+
+    final diff = st.diff;
+    // المُعتمد سابقًا يحتفظ بأرقامه المجمَّدة وقت الاعتماد.
+    final money = approvedBefore
+        ? const LinkClearancesCompanion()
+        : LinkClearancesCompanion(
+            amount: Value(st.spent),
+            grantedAmount: Value(st.granted),
+            spentAmount: Value(st.spent),
+            diffType: Value(diff.type),
+            surplusAmount: Value(diff.type == CustodyOutcome.surplus ? diff.amount : 0),
+            deficitAmount: Value(diff.type == CustodyOutcome.deficit ? diff.amount : 0),
+            currency: Value(custody.currency),
+            counterpartyName: Value(st.counterparty),
+            custodyNo: Value(custody.custodyNo),
+          );
+    final common = LinkClearancesCompanion(
+      clearanceNo: Value(no),
+      kind: const Value(LinkClearanceKind.custody),
+      refId: Value(custodyId),
+      refTitle: Value(custody.title),
+      partyName: Value(partyOf(custody)),
+      clearanceDate: Value(clearanceDate),
+      notes: Value(notes),
+      workflow: Value(workflow),
+      docNo: Value(docNo.trim()),
+      clearerName: Value(clearerName.trim()),
+      reviewDate: Value(reviewDate),
+      adminNotes: Value(adminNotes.trim()),
+      attachName: Value(attachName),
+      attachPath: Value(attachPath),
+      attachSha256: Value(attachSha256),
+    );
+    final rowId = id ?? Ids.next('lq');
+    await db.transaction(() async {
+      if (prev == null) {
+        await db.into(db.linkClearances).insert(
+              common.copyWith(id: Value(rowId), createdBy: Value(actor), createdAt: Value(DateTime.now())),
+            );
+        await (db.update(db.linkClearances)..where((t) => t.id.equals(rowId))).write(money);
+      } else {
+        await (db.update(db.linkClearances)..where((t) => t.id.equals(rowId))).write(common);
+        if (!approvedBefore) await (db.update(db.linkClearances)..where((t) => t.id.equals(rowId))).write(money);
+      }
+      if (workflow == wfApproved && !approvedBefore) {
+        await _closeCustody(custody, diff, clearanceDate, notes, rowId, no, actor);
+      }
+    });
+    await AuditRepo(db).log(
+      action: prev == null ? 'linkage.clearance.create' : 'linkage.clearance.edit',
+      entityType: 'linkage',
+      summary: '${prev == null ? 'إخلاء' : 'تعديل إخلاء'} العهدة ${custody.custodyNo} ($no) — ${workflowLabels[workflow]} — '
+          '${diff.phrase(custodyKind: custody.kind, counterparty: st.counterparty)}'
+          '${diff.amount == 0 ? '' : ' ${diff.amount} ${FinCurrency.label(custody.currency)}'}',
+      risk: workflow == wfApproved ? AuditRepo.riskHigh : AuditRepo.riskNormal,
+      actorEmail: actor,
+    );
+    return (await db.select(db.linkClearances).get()).firstWhere((e) => e.id == rowId);
+  }
+
+  /// اعتماد الإخلاء: العهدة «تم الإخلاء» بنتيجتها، والفائض/العجز قيدٌ في الدفتر.
+  Future<void> _closeCustody(LinkFinCustody custody, CustodyDiff diff, String date, String notes, String clearanceId, String no, String actor) async {
+    await (db.update(db.linkFinCustodies)..where((t) => t.id.equals(custody.id))).write(LinkFinCustodiesCompanion(
+      status: const Value(CustodyStatus.cleared),
+      cleared: const Value(true),
+      clearedDate: Value(date),
+      clearanceNotes: Value(notes),
+      outcome: Value(diff.type),
+      outcomeAmount: Value(diff.amount),
+      updatedAt: Value(DateTime.now()),
+    ));
+    if (diff.type == CustodyOutcome.matched) return;
+    final surplus = diff.type == CustodyOutcome.surplus;
+    await db.into(db.linkFinanceLedger).insert(LinkFinanceLedgerCompanion(
+          id: Value(Ids.next('lg')),
+          partyName: Value(partyOf(custody).isEmpty ? 'غير محدد' : partyOf(custody)),
+          custodyId: Value(custody.id),
+          clearanceId: Value(clearanceId),
+          entryKind: Value(surplus ? 'surplus' : 'deficit'),
+          delta: Value(surplus ? diff.amount : -diff.amount),
+          currency: Value(custody.currency),
+          entryDate: Value(date),
+          note: Value('إخلاء ${custody.custodyNo} ($no): ${diff.phrase(custodyKind: custody.kind, counterparty: custody.kind == CustodyKind.received ? 'المالية' : partyOf(custody))}'),
+          createdBy: Value(actor),
+          createdAt: Value(DateTime.now()),
+        ));
+  }
+
+  /// كشف حساب مالية لصاحب عهدة: عهده القائمة (المستلمة مدين −، المسلَّمة دائن +)
+  /// وقيود الفائض (+) والعجز (−) المعتمدة. الرصيد لكل عملةٍ على حدة.
+  Future<PartyStatement> partyStatement(String party) async {
+    final custodies = await db.select(db.linkFinCustodies).get();
+    final ledger = await (db.select(db.linkFinanceLedger)..where((t) => t.partyName.equals(party))).get();
+    final lines = <StatementLine>[];
+    for (final c in custodies) {
+      if (partyOf(c) != party || c.status != CustodyStatus.open) continue;
+      final amt = c.amount != 0 ? c.amount : c.valueAmount;
+      lines.add(StatementLine(
+        date: c.custodyDate,
+        label: 'عهدة ${CustodyKind.label(c.kind)} ${c.custodyNo} — ${c.title}',
+        delta: c.kind == CustodyKind.received ? -amt : amt,
+        currency: c.currency,
+        kind: c.kind,
+      ));
+    }
+    for (final e in ledger) {
+      lines.add(StatementLine(date: e.entryDate, label: e.note, delta: e.delta, currency: e.currency, kind: e.entryKind));
+    }
+    lines.sort((a, b) => a.date.compareTo(b.date));
+    final balance = <String, double>{};
+    for (final l in lines) {
+      balance[l.currency] = (balance[l.currency] ?? 0) + l.delta;
+    }
+    return PartyStatement(party: party, lines: lines, balance: balance);
+  }
+
+  /// أرصدة كل أصحاب العهد: الاسم ⇒ (العملة ⇒ الرصيد).
+  Future<Map<String, Map<String, double>>> partyBalances() async {
+    final custodies = await db.select(db.linkFinCustodies).get();
+    final ledger = await db.select(db.linkFinanceLedger).get();
+    final out = <String, Map<String, double>>{};
+    void add(String party, String cur, double v) {
+      if (party.isEmpty) return;
+      final m = out[party] ??= {};
+      m[cur] = (m[cur] ?? 0) + v;
+    }
+
+    for (final c in custodies) {
+      if (c.status != CustodyStatus.open) continue;
+      final amt = c.amount != 0 ? c.amount : c.valueAmount;
+      add(partyOf(c), c.currency, c.kind == CustodyKind.received ? -amt : amt);
+    }
+    for (final e in ledger) {
+      add(e.partyName, e.currency, e.delta);
+    }
+    return out;
   }
 
   // ───────────────── عقود المشتريات ─────────────────
@@ -600,7 +986,25 @@ class LinkageRepo {
     return out;
   }
 
+  Future<LinkFinCustody?> custodyById(String id) async {
+    if (id.isEmpty) return null;
+    return (db.select(db.linkFinCustodies)..where((t) => t.id.equals(id))).getSingleOrNull();
+  }
+
+  /// ربط عقدٍ بعهدة: العهدة يجب أن تكون موجودة وقيد الإخلاء. عقدٌ واحد = عهدة
+  /// واحدة، فالحقل مفردٌ في العقد نفسه ولا يمكن أن يخدم عهدتين.
+  Future<void> _assertCanLinkContract(String custodyId) async {
+    if (custodyId.isEmpty) return;
+    final c = await custodyById(custodyId);
+    if (c == null) throw const LinkBlocked('العهدة المرتبطة غير موجودة');
+    if (c.status != CustodyStatus.open) {
+      throw LinkBlocked('العهدة ${c.custodyNo} ${CustodyStatus.label(c.status)} — لا يُربط بها عقد جديد');
+    }
+  }
+
   Future<void> insertContract(LinkPurchaseContractsCompanion e, {String actor = ''}) async {
+    final custodyId = e.custodyId.present ? e.custodyId.value : '';
+    await _assertCanLinkContract(custodyId);
     await db.into(db.linkPurchaseContracts).insert(e);
     await AuditRepo(db).log(
       action: 'linkage.contract.create',
@@ -609,11 +1013,38 @@ class LinkageRepo {
       risk: AuditRepo.riskNormal,
       actorEmail: actor,
     );
+    await _logCustodyUse(custodyId, e.contractNo.present ? e.contractNo.value : '', e.title.present ? e.title.value : '', actor, used: true);
+  }
+
+  /// يسجّل في العهدة (سجل التدقيق) أنها استُخدمت في عقد أو فُكَّ ارتباطه بها.
+  Future<void> _logCustodyUse(String custodyId, String contractNo, String title, String actor, {required bool used}) async {
+    final c = await custodyById(custodyId);
+    if (c == null) return;
+    final ref = contractNo.trim().isEmpty ? '«$title»' : 'رقم $contractNo «$title»';
+    await AuditRepo(db).log(
+      action: used ? 'linkage.custody.contract_linked' : 'linkage.custody.contract_unlinked',
+      entityType: 'linkage',
+      summary: used ? 'استُخدمت العهدة ${c.custodyNo} في عقد $ref' : 'فُكَّ ارتباط العقد $ref من العهدة ${c.custodyNo}',
+      risk: AuditRepo.riskNormal,
+      actorEmail: actor,
+    );
   }
 
   Future<void> updateContract(
       LinkPurchaseContract c, LinkPurchaseContractsCompanion e,
       {String actor = ''}) async {
+    final newCustody = e.custodyId.present ? e.custodyId.value : c.custodyId;
+    final linked = await custodyById(c.custodyId);
+    // عقدٌ مرتبط بعهدةٍ مُخلَّاة: الإخلاء بُني على مبالغه، فلا تتغير.
+    if (linked != null && linked.status == CustodyStatus.cleared) {
+      final changed = newCustody != c.custodyId ||
+          (e.amount.present && e.amount.value != c.amount) ||
+          (e.currency.present && e.currency.value != c.currency) ||
+          (e.exchangeRate.present && e.exchangeRate.value != c.exchangeRate) ||
+          (e.itemsJson.present && e.itemsJson.value != c.itemsJson);
+      if (changed) throw LinkBlocked('العقد مرتبط بالعهدة ${linked.custodyNo} وهي مُخلَّاة — احذف الإخلاء أولًا');
+    }
+    if (newCustody != c.custodyId) await _assertCanLinkContract(newCustody);
     await (db.update(db.linkPurchaseContracts)..where((t) => t.id.equals(c.id))).write(e);
     await AuditRepo(db).log(
       action: 'linkage.contract.edit',
@@ -622,9 +1053,29 @@ class LinkageRepo {
       risk: AuditRepo.riskNormal,
       actorEmail: actor,
     );
+    final fresh = await (db.select(db.linkPurchaseContracts)..where((t) => t.id.equals(c.id))).getSingle();
+    final synced = await _syncSheetsFromContract(c, fresh);
+    if (synced > 0) {
+      await AuditRepo(db).log(
+        action: 'linkage.sheet.synced_from_contract',
+        entityType: 'linkage',
+        summary: 'تحديث $synced سطر في مسيرات العهدة من تعديل العقد «${c.title}»',
+        risk: AuditRepo.riskNormal,
+        actorEmail: actor,
+      );
+    }
+    final no = e.contractNo.present ? e.contractNo.value : c.contractNo;
+    if (newCustody != c.custodyId) {
+      await _logCustodyUse(c.custodyId, c.contractNo, c.title, actor, used: false);
+      await _logCustodyUse(newCustody, no, c.title, actor, used: true);
+    }
   }
 
   Future<void> deleteContract(LinkPurchaseContract c, {String actor = ''}) async {
+    final linked = await custodyById(c.custodyId);
+    if (linked != null && linked.status == CustodyStatus.cleared) {
+      throw LinkBlocked('العقد مرتبط بالعهدة ${linked.custodyNo} وهي مُخلَّاة — احذف الإخلاء أولًا');
+    }
     await (db.delete(db.linkPurchaseContracts)..where((t) => t.id.equals(c.id))).go();
     await AuditRepo(db).log(
       action: 'linkage.contract.delete',
@@ -633,6 +1084,53 @@ class LinkageRepo {
       risk: AuditRepo.riskHigh,
       actorEmail: actor,
     );
+  }
+
+
+  /// ما يسحبه سطر المسير من عقد: التاريخ والفئة والمحل والمنصرف بعملة العقد وسعر الصرف.
+  /// (المنصرف السعودي لعقدٍ يمني محسوبٌ فلا يدخل المقارنة.)
+  static ({String date, String category, String shop, double amount, double rate, bool yer}) rowFromContract(LinkPurchaseContract k) =>
+      (date: k.listDate, category: k.title.trim(), shop: k.supplier, amount: k.amount, rate: k.exchangeRate, yer: k.currency == LinkCurrency.yer);
+
+  /// عند تعديل عقدٍ يتحدث ما سُحب منه في المسيرات: كل سطرٍ برقم فاتورة العقد في
+  /// مسيرٍ لعهدة العقد نفسها، **لم يعدّله المستخدم** بعد السحب (قيمه ما تزال ما
+  /// كان يسحبه العقد القديم). ما عُدِّل يدويًّا يبقى كما هو.
+  Future<int> _syncSheetsFromContract(LinkPurchaseContract old, LinkPurchaseContract now) async {
+    if (now.custodyId.isEmpty || old.custodyId != now.custodyId) return 0;
+    final before = rowFromContract(old);
+    final after = rowFromContract(now);
+    final sheets = await (db.select(db.linkCustodySheets)..where((t) => t.custodyId.equals(now.custodyId))).get();
+    var changed = 0;
+    for (final s in sheets) {
+      final rows = await (db.select(db.linkCustodySheetRows)..where((t) => t.sheetId.equals(s.id))).get();
+      for (final r in rows) {
+        if (!(old.matchesInvoice(r.invoiceNo) || now.matchesInvoice(r.invoiceNo))) continue;
+        final untouched = r.date == before.date &&
+            r.category.trim() == before.category &&
+            r.shop == before.shop &&
+            (before.yer ? r.spentYer == before.amount : r.spentSar == before.amount && r.spentYer == 0) &&
+            (!before.yer || r.rate == before.rate);
+        if (!untouched) continue;
+        final rate = after.yer ? (after.rate > 0 ? after.rate : r.rate) : r.rate;
+        await (db.update(db.linkCustodySheetRows)..where((t) => t.id.equals(r.id))).write(LinkCustodySheetRowsCompanion(
+          date: Value(after.date),
+          category: Value(after.category),
+          shop: Value(after.shop),
+          spentYer: Value(after.yer ? after.amount : 0),
+          spentSar: Value(after.yer ? (rate > 0 ? after.amount / rate : 0) : after.amount),
+          rate: Value(rate),
+        ));
+        changed++;
+      }
+    }
+    return changed;
+  }
+
+  /// العقود المرتبطة بعهدة، الأحدث تاريخًا أولًا.
+  Future<List<LinkPurchaseContract>> contractsOfCustody(String custodyId) async {
+    final rows = await (db.select(db.linkPurchaseContracts)..where((t) => t.custodyId.equals(custodyId))).get();
+    rows.sort((a, b) => b.listDate.compareTo(a.listDate));
+    return rows;
   }
 
   // ───────────────── مسير العهدة ─────────────────
@@ -662,8 +1160,24 @@ class LinkageRepo {
     required double defaultRate,
     required String notes,
     required List<LinkCustodySheetRowsCompanion> rows,
+    String custodyId = '',
+    String currency = 'sar',
+    String holderName = '',
     String actor = '',
   }) async {
+    // المسير مرتبطٌ بعهدة: العهدة موجودة، وقيد الإخلاء عند الإنشاء، وغير مُخلَّاة عند التعديل.
+    final previous = id == null ? null : await (db.select(db.linkCustodySheets)..where((t) => t.id.equals(id))).getSingleOrNull();
+    final oldCustody = await custodyById(previous?.custodyId ?? '');
+    if (oldCustody != null && oldCustody.status == CustodyStatus.cleared) {
+      throw LinkBlocked('المسير يخص العهدة ${oldCustody.custodyNo} وهي مُخلَّاة — احذف الإخلاء أولًا');
+    }
+    if (custodyId.isNotEmpty) {
+      final c = await custodyById(custodyId);
+      if (c == null) throw const LinkBlocked('العهدة المحددة غير موجودة');
+      if (c.status != CustodyStatus.open && custodyId != previous?.custodyId) {
+        throw LinkBlocked('العهدة ${c.custodyNo} ${CustodyStatus.label(c.status)} — لا يُفتح لها مسير');
+      }
+    }
     final sheetId = id ?? Ids.next('ls');
     await db.transaction(() async {
       if (id == null) {
@@ -671,6 +1185,9 @@ class LinkageRepo {
               id: Value(sheetId),
               sheetNo: Value(sheetNo),
               title: Value(title),
+              custodyId: Value(custodyId),
+              currency: Value(currency),
+              holderName: Value(holderName),
               defaultRate: Value(defaultRate),
               notes: Value(notes),
               createdBy: Value(actor),
@@ -680,6 +1197,9 @@ class LinkageRepo {
         await (db.update(db.linkCustodySheets)..where((t) => t.id.equals(id))).write(LinkCustodySheetsCompanion(
           sheetNo: Value(sheetNo),
           title: Value(title),
+          custodyId: Value(custodyId),
+          currency: Value(currency),
+          holderName: Value(holderName),
           defaultRate: Value(defaultRate),
           notes: Value(notes),
           updatedAt: Value(DateTime.now()),
@@ -696,7 +1216,8 @@ class LinkageRepo {
     await AuditRepo(db).log(
       action: id == null ? 'linkage.sheet.create' : 'linkage.sheet.edit',
       entityType: 'linkage',
-      summary: '${id == null ? 'إنشاء' : 'تعديل'} مسير عهدة رقم $sheetNo — ${rows.length} سطر',
+      summary: '${id == null ? 'إنشاء' : 'تعديل'} مسير عهدة رقم $sheetNo — ${rows.length} سطر'
+          '${custodyId.isEmpty ? '' : ' — للعهدة ${(await custodyById(custodyId))?.custodyNo ?? ''}'}',
       risk: AuditRepo.riskNormal,
       actorEmail: actor,
     );
@@ -704,6 +1225,10 @@ class LinkageRepo {
   }
 
   Future<void> deleteCustodySheet(LinkCustodySheet s, {String actor = ''}) async {
+    final linked = await custodyById(s.custodyId);
+    if (linked != null && linked.status == CustodyStatus.cleared) {
+      throw LinkBlocked('المسير يخص العهدة ${linked.custodyNo} وهي مُخلَّاة — احذف الإخلاء أولًا');
+    }
     await db.transaction(() async {
       await (db.delete(db.linkCustodySheetRows)..where((t) => t.sheetId.equals(s.id))).go();
       await (db.delete(db.linkCustodySheets)..where((t) => t.id.equals(s.id))).go();
@@ -843,7 +1368,8 @@ class LinkageRepo {
     // 2) عهد متأخرة (dueDate فات ولم تُخلَّ)
     final custodies = await db.select(db.linkFinCustodies).get();
     for (final c in custodies) {
-      if (c.cleared || c.dueDate.isEmpty) continue;
+      // المُخلَّاة والملغاة لا تُنبَّه.
+      if (c.cleared || c.status != CustodyStatus.open || c.dueDate.isEmpty) continue;
       final due = DateTime.tryParse(c.dueDate);
       if (due == null) continue;
       if (DateUtils.dateOnly(due).isBefore(DateUtils.dateOnly(today))) {
@@ -926,4 +1452,83 @@ class LinkAlert {
   final String personId;
   final String personName;
   final String relatedId;
+}
+
+/// رقم فاتورة العقد: المكتوب في رأس العقد، وإلا أول رقمٍ في أسطر الأصناف
+/// (عقودٌ حُفظت قبل وجود الحقل).
+extension LinkContractInvoice on LinkPurchaseContract {
+  String get displayInvoiceNo {
+    if (invoiceNo.trim().isNotEmpty) return invoiceNo.trim();
+    for (final i in ContractItem.decode(itemsJson)) {
+      if (i.invoiceNo.trim().isNotEmpty) return i.invoiceNo.trim();
+    }
+    return '';
+  }
+
+  /// هل رقم الفاتورة [no] هو رقم هذا العقد (بلا فرق حالة أحرف أو فراغات)؟
+  bool matchesInvoice(String no) {
+    final v = no.trim().toLowerCase();
+    if (v.isEmpty) return false;
+    return displayInvoiceNo.toLowerCase() == v ||
+        ContractItem.decode(itemsJson).any((i) => i.invoiceNo.trim().toLowerCase() == v);
+  }
+}
+
+/// منعٌ مقصود لعمليةٍ ماليةٍ مخالفةٍ للقواعد (تكرار رقم، حذف مرتبط…). رسالته
+/// عربية مقروءة تُعرض للمستخدم كما هي.
+class LinkBlocked implements Exception {
+  const LinkBlocked(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
+/// استهلاك عهدة: مجموع عقودها بعملتها، وعددها، وما تعذّر تحويله.
+class CustodyUsage {
+  const CustodyUsage({this.consumed = 0, this.contracts = 0, this.unconvertible = 0});
+  final double consumed;
+  final int contracts;
+  final int unconvertible;
+}
+
+/// تسوية عهدة: ما خُصِّص وما صُرف وما أُرجع، والفرق وطرفه المقابل.
+class CustodySettlement {
+  const CustodySettlement({
+    required this.custody,
+    required this.granted,
+    required this.spent,
+    required this.returned,
+    required this.sheets,
+    required this.diff,
+    required this.counterparty,
+  });
+
+  final LinkFinCustody custody;
+  final double granted;
+  final double spent;
+  final double returned;
+
+  /// عدد مسيرات العهدة — صفر يعني أن المصروف صفر لأنه لم يُسجَّل لا لأنه لم يقع.
+  final int sheets;
+  final CustodyDiff diff;
+  final String counterparty;
+}
+
+/// سطر في كشف حساب مالية.
+class StatementLine {
+  const StatementLine({required this.date, required this.label, required this.delta, required this.currency, required this.kind});
+  final String date;
+  final String label;
+  final double delta;
+  final String currency;
+  final String kind;
+}
+
+class PartyStatement {
+  const PartyStatement({required this.party, required this.lines, required this.balance});
+  final String party;
+  final List<StatementLine> lines;
+
+  /// الرصيد لكل عملة: الموجب لصاحب العهدة (دائن)، والسالب عليه (مدين).
+  final Map<String, double> balance;
 }

@@ -171,8 +171,10 @@ const _menu = <_MenuSection>[
     _MenuItem('archive', 'folder', 'الأرشيف الإلكتروني'),
   ]),
   _MenuSection('linkagesGroup', 'link', 'الارتباطات', [
+    // ثلاث شاشات؛ تبويباتها الفرعية داخل الشاشة نفسها لا في هذا الشريط.
     _MenuItem('personnel', 'users', 'القوة البشرية'),
-    _MenuItem('linkages', 'link', 'مركز الارتباطات'),
+    _MenuItem('linkFinances', 'dollar', 'المالية'),
+    _MenuItem('linkArmament', 'target', 'التسليح'),
   ]),
   _MenuSection('reports', 'trending', 'التقارير', [
     _MenuItem('balances', 'calculator', 'الأرصدة الحالية'),
@@ -390,6 +392,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     'reportSupplier': 'reports',
     'reportReturns': 'reports',
     'reportDaily': 'reports',
+    // شاشتا المالية والتسليح صلاحيتهما صلاحية «الارتباطات» نفسها.
+    'linkFinances': 'linkages',
+    'linkArmament': 'linkages',
   };
 
   bool _hasPerm(AuthService auth, String page,
@@ -580,8 +585,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return const ElectronicArchiveScreen();
       case 'personnel':
         return const PersonnelStrengthScreen();
+      // «linkages» معرّفٌ قديم (مركز الارتباطات) يفتح المالية.
       case 'linkages':
-        return const LinkagesScreen();
+      case 'linkFinances':
+        return const LinkFinancesScreen();
+      case 'linkArmament':
+        return const LinkArmamentScreen();
       case 'settings':
         return const SettingsScreen();
       // أقسامٌ داخل الإعدادات: الروابط القديمة تفتح الإعدادات على القسم نفسه.

@@ -77,6 +77,8 @@ class AppSpace {
       'balances',
       'stocktake',
       'reports',
+      'personnel',
+      'linkages',
     ],
   };
 

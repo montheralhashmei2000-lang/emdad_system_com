@@ -76,6 +76,13 @@ class Perm {
 
   String get email => _auth.currentUser?.email ?? '';
 
+  /// اسم المستخدم الحالي للعرض (الاسم، وإلا اسم الدخول).
+  String get displayName {
+    final u = _auth.currentUser;
+    if (u == null) return '';
+    return u.name.trim().isNotEmpty ? u.name.trim() : u.username;
+  }
+
   bool has(String page, [String action = PermAction.view]) {
     final u = _auth.currentUser;
     if (u == null) return false;

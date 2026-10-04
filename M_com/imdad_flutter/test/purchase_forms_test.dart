@@ -10,6 +10,8 @@ import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/repos/linkage_repo.dart';
 import 'package:imdad/domain/arabic_words.dart';
 import 'package:imdad/domain/custody_sheet.dart';
+import 'package:imdad/data/repos/cable_repo.dart';
+import 'package:imdad/features/cables/cable_form.dart';
 import 'package:imdad/features/linkages/contract_editor.dart';
 import 'package:imdad/features/linkages/custody_sheet_editor.dart';
 import 'package:imdad/main.dart' show ImdTheme;
@@ -162,7 +164,7 @@ void main() {
     late AppDatabase db;
     late AuthService auth;
 
-    Future<void> pump(WidgetTester tester, Widget editor, Size size) async {
+    Future<void> pump(WidgetTester tester, Widget editor, Size size, {Future<void> Function(AppDatabase)? seed}) async {
       SharedPreferences.setMockInitialValues({});
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
@@ -173,6 +175,7 @@ void main() {
       await tester.runAsync(() async {
         await auth.createAdmin(username: 'admin', password: 'Test@12345');
         await auth.login('admin', 'Test@12345');
+        if (seed != null) await seed(db);
       });
       await tester.pumpWidget(MultiProvider(
         providers: [
@@ -217,6 +220,8 @@ void main() {
       final yer = LinkPurchaseContract(
         id: 'x',
         contractNo: '',
+        invoiceNo: '',
+        custodyId: '',
         title: 'بهارات',
         supplier: 'تاجر',
         currency: 'yer',
@@ -245,7 +250,7 @@ void main() {
       await tester.pump();
       expect((tester.widget(fields.at(7)) as TextField).controller!.text, '100', reason: '41000 ÷ 410');
       expect((tester.widget(fields.at(7)) as TextField).readOnly, isTrue);
-      expect(find.text('1,000.00 ر.س.'), findsOneWidget);
+      expect(find.text('1,000.00 ر.س.'), findsWidgets, reason: 'بطاقة المتبقي وسطر الإجمالي');
 
       await tester.tap(find.text('إضافة سطر'));
       await tester.pump();
@@ -256,5 +261,55 @@ void main() {
       expect(find.textContaining('أرقام فواتير مكررة'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+    testWidgets('رقم الفاتورة في رأس العقد يُسحب إلى أسطر الأصناف', (tester) async {
+      await pump(tester, const ContractEditor(initial: null, actor: 'a', canPrint: false), const Size(1500, 900));
+      final labeled = find.widgetWithText(Column, 'رقم الفاتورة');
+      expect(labeled, findsWidgets);
+      // حقل رقم الفاتورة في الرأس بعد: رقم العقد، التصنيف، التاجر، سعر الصرف لا يظهر (سعودي)… نبحث بالتسمية.
+      final headerField = find.descendant(of: find.widgetWithText(Column, 'رقم الفاتورة').first, matching: find.byType(TextField));
+      await tester.enterText(headerField.first, '446');
+      await tester.pump();
+      expect(find.text('446'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('مسير العهدة: رقم فاتورة عقدٍ يمنيّ يسحب بياناته إلى السطر', (tester) async {
+      await pump(
+        tester,
+        const CustodySheetEditor(initial: null, initialRows: [], actor: 'a', canPrint: false),
+        const Size(1500, 900),
+        seed: (db) => LinkageRepo(db).insertContract(const LinkPurchaseContractsCompanion(
+          id: Value('c1'),
+          title: Value('بهارات'),
+          supplier: Value('الوكيل للتجارة'),
+          currency: Value('yer'),
+          exchangeRate: Value(410),
+          listDate: Value('2026-10-04'),
+          invoiceNo: Value('INV-9'),
+          amount: Value(41000),
+        )),
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+      final fields = find.byType(TextField);
+      await tester.enterText(fields.at(14), 'inv-9');
+      await tester.pump();
+      String t(int i) => (tester.widget(find.byType(TextField).at(i)) as TextField).controller!.text;
+      expect(t(8), '41000', reason: 'المنصرف يمني');
+      expect(t(7), '100', reason: 'السعودي = اليمني ÷ الصرف');
+      expect(t(9), '410');
+      expect(t(12), 'بهارات', reason: 'الفئة');
+      expect(t(15), 'الوكيل للتجارة', reason: 'اسم المحل');
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final size in sizes) {
+      testWidgets('نموذج البرقية يُبنى بلا فيض ${size.width.toInt()}×${size.height.toInt()}', (tester) async {
+        final d = AppDatabase.forTesting(NativeDatabase.memory());
+        addTearDown(d.close);
+        await pump(tester, SingleChildScrollView(child: CableForm(repo: CableRepo(d), initial: null, actor: 'a', canPrint: true)), size);
+        expect(tester.takeException(), isNull);
+        expect(find.text('إضافة صف'), findsWidgets);
+      });
+    }
   });
 }

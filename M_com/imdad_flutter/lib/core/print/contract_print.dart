@@ -27,8 +27,8 @@ class ContractPrint {
   static const _headFill = PdfColor.fromInt(0xFFD9D9D9);
   static const _totalFill = PdfColor.fromInt(0xFFE5B8B7);
 
-  /// أقل عدد صفوف يظهر في الجدول ليبقى النموذج مكتمل الهيئة كالأصل.
-  static const _minRows = 4;
+  /// أقل عدد صفوف في الجدول؛ النموذج المعتمد لا يُضيف صفوفًا فارغة.
+  static const _minRows = 1;
   static const _rowH = 20.0;
 
   /// أعمدة الجدول (flex) من اليمين: م، الصنف، الوحدة، الكمية، سعر الوحدة،
@@ -64,6 +64,9 @@ class ContractPrint {
       ),
     );
   }
+
+  /// يقصّ نصًّا إلى [max] حرفًا — الودجات غير القابلة للتجزئة لا تحتمل نصًّا بطول صفحة.
+  static String _cap(String t, int max) => t.length <= max ? t : '${t.substring(0, max)}…';
 
   static int _sum(List<int> f, int from, int to) => f.sublist(from, to).fold(0, (a, b) => a + b);
 
@@ -117,47 +120,50 @@ class ContractPrint {
     ]);
   }
 
-  static pw.Widget _sigBox(String title, {bool withPrint = true}) {
-    pw.Widget field(String l) => pw.Expanded(
-          child: pw.Text('$l ..........', style: const pw.TextStyle(fontSize: 8.5)),
+  /// عمود توقيع بلا إطار كالنموذج المعتمد: العنوان ثم الاسم/التوقيع/البصمة متراصّة.
+  static pw.Widget _sigColumn(String title, {bool withPrint = true}) {
+    pw.Widget field(String l) => pw.Padding(
+          padding: const pw.EdgeInsets.only(top: 9),
+          child: pw.Text(l, style: const pw.TextStyle(fontSize: 10)),
         );
     return pw.Expanded(
-      child: pw.Container(
-        height: 50,
-        padding: const pw.EdgeInsets.fromLTRB(4, 3, 4, 3),
-        decoration: pw.BoxDecoration(border: pw.Border.all(color: _line, width: 0.7)),
-        child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-          pw.Text(title, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
-          pw.Spacer(),
-          pw.Row(children: [field('الاسم/'), field('التوقيع/'), if (withPrint) field('البصمة/')]),
-        ]),
-      ),
+      child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        pw.Text(title, style: const pw.TextStyle(fontSize: 11)),
+        pw.SizedBox(height: 4),
+        field('الاسم/'),
+        field('التوقيع/'),
+        if (withPrint) field('البصمة'),
+      ]),
     );
   }
 
-  /// خانات التوقيع: المستلمة ×2، التنفيذية ×2، الرقابة والتفتيش ×2، البائع ×2.
-  static const double _sigHeight = 4 * 50 + 3 * 4;
+  /// ارتفاع كتلة الإقرارين والتوقيعات (يُحجز أسفل الصفحة في وضع الصفحات المتعددة).
+  static const double _sigHeight = 162;
 
-  static pw.Widget _signatures() {
-    pw.Widget row(String a, {bool withPrint = true}) => pw.Row(children: [
-          _sigBox(a, withPrint: withPrint),
-          pw.SizedBox(width: 4),
-          _sigBox(a, withPrint: withPrint),
-        ]);
-    return pw.Column(children: [
-      row('الجهة المستلمة'),
-      pw.SizedBox(height: 4),
-      row('الجهة التنفيذية'),
-      pw.SizedBox(height: 4),
-      row('الرقابة والتفتيش'),
-      pw.SizedBox(height: 4),
-      row('البائع', withPrint: false),
+  /// الإقراران ثم خانات التوقيع من اليمين: البائع، المستلمة، التنفيذية، الرقابة والتفتيش.
+  static pw.Widget _closing() {
+    return pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      pw.Text('-   $_confirmText',
+          style: pw.TextStyle(fontSize: 10.5, fontWeight: pw.FontWeight.bold, color: PdfColors.red800)),
+      pw.SizedBox(height: 3),
+      pw.Text('-   $_attachText', style: pw.TextStyle(fontSize: 10.5, fontWeight: pw.FontWeight.bold)),
+      pw.SizedBox(height: 12),
+      pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        _sigColumn('البائع', withPrint: false),
+        _sigColumn('الجهة المستلمة'),
+        _sigColumn('الجهة التنفيذية'),
+        _sigColumn('الرقابة والتفتيش'),
+      ]),
     ]);
   }
 
   /// ترويسة الجهة: أسطر الجهة يمينًا، الشعار وسطًا، بيانات العقد يسارًا.
   static pw.Widget _letterhead(MilitaryPrint engine, Uint8List? logo, LinkPurchaseContract c, List<ContractItem> items) {
-    final invoices = {for (final i in items) if (i.invoiceNo.trim().isNotEmpty) i.invoiceNo.trim()};
+    final invoices = {
+      for (final i in items)
+        if (i.invoiceNo.trim().isNotEmpty) i.invoiceNo.trim(),
+      if (c.invoiceNo.trim().isNotEmpty) c.invoiceNo.trim(),
+    };
     pw.Widget kv(String k, String v) => pw.Padding(
           padding: const pw.EdgeInsets.only(bottom: 2),
           child: pw.Text('$k $v', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
@@ -180,9 +186,10 @@ class ContractPrint {
         flex: 4,
         child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
           kv('التاريخ:', c.listDate.isEmpty ? '' : '${printDate(c.listDate)}م'),
-          kv('رقم العقد:', c.contractNo),
+          kv('رقم العقد:', _cap(c.contractNo, 60)),
           kv('مرفقات:', '( ${invoices.isEmpty ? '   ' : invoices.length} )'),
-          if (c.notes.trim().isNotEmpty) kv('ملاحظات:', c.notes.trim()),
+          // الملاحظات الطويلة تُقتطع في الترويسة (ولا تُقسَّم على صفحات: ودجتها داخل صفٍّ ثابت).
+          if (c.notes.trim().isNotEmpty) kv('ملاحظات:', c.notes.trim().length > 140 ? '${c.notes.trim().substring(0, 140)}…' : c.notes.trim()),
         ]),
       ),
     ]);
@@ -214,23 +221,23 @@ class ContractPrint {
       pw.SizedBox(height: 8),
       pw.Center(
         child: pw.Text(
-          'عقد شراء ${c.title}${c.supplier.trim().isEmpty ? '' : ' من ${c.supplier.trim()}'}',
+          _cap('عقد شراء ${c.title}${c.supplier.trim().isEmpty ? '' : ' من ${c.supplier.trim()}'}', 240),
           textAlign: pw.TextAlign.center,
-          style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold),
+          style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline),
         ),
       ),
       pw.SizedBox(height: 4),
       pw.Center(
         child: pw.Text(
           'قائمة الكمية المستهلكة: بتاريخ ${c.listDate.isEmpty ? '   /   /      ' : printDate(c.listDate)}م',
-          style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold),
+          style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline),
         ),
       ),
       pw.SizedBox(height: 8),
       _tableHeader(cur),
       ...rows,
       _totalRow(
-        label: 'الإجمالي بالريال $cur على حسب الفاتورة',
+        label: 'الإجمالي بالريال $cur',
         value: printNum(total),
         words: amountInWords(total, major: LinkCurrency.major(c.currency), minor: LinkCurrency.minor(c.currency)),
       ),
@@ -238,13 +245,9 @@ class ContractPrint {
       if (showsSarEquivalent(c))
         _totalRow(
           label: 'ما يقابل بالريال السعودي',
-          value: printMoney(total / c.exchangeRate),
-          words: 'الإجمالي ÷ سعر الصرف: ${printNum(c.exchangeRate)} ريال يمني',
+          value: printNum(double.parse((total / c.exchangeRate).toStringAsFixed(2))),
+          words: '${printNum(double.parse((total / c.exchangeRate).toStringAsFixed(2)))} ريال سعودي   سعر الصرف ${printNum(c.exchangeRate)} ريال',
         ),
-      pw.SizedBox(height: 8),
-      pw.Text('- $_confirmText', style: pw.TextStyle(fontSize: 10.5, fontWeight: pw.FontWeight.bold)),
-      pw.SizedBox(height: 3),
-      pw.Text('- $_attachText', style: pw.TextStyle(fontSize: 10.5, fontWeight: pw.FontWeight.bold)),
       pw.SizedBox(height: 10),
     ];
 
@@ -273,7 +276,7 @@ class ContractPrint {
             ),
           ),
         ),
-        footer: paged ? (ctx) => pw.Padding(padding: const pw.EdgeInsets.only(top: 6), child: _signatures()) : null,
+        footer: paged ? (ctx) => pw.Padding(padding: const pw.EdgeInsets.only(top: 6), child: _closing()) : null,
         // رأس الجدول يتكرر في الصفحات التالية فيُقرأ كل عمود دون الرجوع للأولى.
         header: paged
             ? (ctx) => ctx.pageNumber > 1
@@ -285,7 +288,7 @@ class ContractPrint {
             : null,
         build: (ctx) => [
           pw.Padding(padding: const pw.EdgeInsets.symmetric(horizontal: 6), child: pw.Column(children: [...body])),
-          if (!paged) pw.Padding(padding: const pw.EdgeInsets.symmetric(horizontal: 6), child: _signatures()),
+          if (!paged) pw.Padding(padding: const pw.EdgeInsets.symmetric(horizontal: 6), child: _closing()),
         ],
       ));
       final pages = pdf.document.pdfPageList.pages.length;

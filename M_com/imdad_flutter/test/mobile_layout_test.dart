@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
@@ -39,7 +38,7 @@ void main() {
     'settings', 'branding', 'formsDesigner', 'deviceActivation', 'verifySign', 'lanSync', 'usersAccess',
     'personnel',
     'cables',
-    'linkages',
+    'linkages', 'linkFinances', 'linkArmament',
     'archive',
   ];
 
@@ -125,7 +124,7 @@ void main() {
         final first = text.split('\n').firstWhere((l) => l.contains('Exception') || l.contains('overflowed') || l.contains('Error'), orElse: () => text.split('\n').first);
         final where = RegExp(r'lib/[\w/]+\.dart:\d+').allMatches(text).map((m) => m.group(0)).toSet().take(2).join(' ');
         bad.add('$page: ${first.trim()} @ $where');
-        File('/tmp/claude-0/-home-user-emdad-system-com/2b639e3e-f260-5e7f-8b9e-58b676793e53/scratchpad/overflow_${page}_${bad.length}.txt').writeAsStringSync(text);
+        // تفاصيل الخطأ كاملةً تظهر في رسالة الفشل؛ لا ملفاتٍ تُكتب خارج المشروع.
       }
       captured.clear();
     }

@@ -47,6 +47,12 @@ enum NotifyKind {
 
   /// نفادُ وقودٍ في خزّان أو انخفاضُه عن حدّ التنبيه.
   fuelLow,
+
+  /// الارتباطات: فرارٌ أو انتهاءُ حالةٍ (إجازة/مهمة/غياب…) لفردٍ من القوة البشرية.
+  linkPerson,
+
+  /// الارتباطات: عهدةٌ متأخرة عن أجلها أو عقدٌ منتهٍ/قريب الانتهاء.
+  linkFinance,
 }
 
 extension NotifyKindX on NotifyKind {
@@ -58,6 +64,8 @@ extension NotifyKindX on NotifyKind {
         NotifyKind.settlementDue => 'lock',
         NotifyKind.stockNegative => 'alert',
         NotifyKind.fuelLow => 'zap',
+        NotifyKind.linkPerson => 'users',
+        NotifyKind.linkFinance => 'dollar',
       };
 
   /// مسار الشاشة التي يفتحها التنبيه في القشرة.
@@ -70,10 +78,16 @@ extension NotifyKindX on NotifyKind {
         NotifyKind.stockNegative => 'campLedger',
         // يفتح لوحة المحروقات: منها يُرى الخزّان وإشغاله ويُورَّد.
         NotifyKind.fuelLow => 'fuelDashboard',
+        NotifyKind.linkPerson => 'personnel',
+        NotifyKind.linkFinance => 'linkFinances',
       };
 
   /// الصفحة التي تحكم ظهور التنبيه: من لا يرى الشاشة لا يُنبَّه بما فيها.
-  String get page => route;
+  String get page => switch (this) {
+        // شاشة المالية صلاحيتها «linkages» لا اسم شاشتها.
+        NotifyKind.linkFinance => 'linkages',
+        _ => route,
+      };
 }
 
 class AppNotification {
