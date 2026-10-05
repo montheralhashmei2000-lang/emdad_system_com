@@ -72,6 +72,7 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
   String _cTo = '';
 
   bool get _canCreate => widget.perm.has('linkages', PermAction.create);
+  bool get _canImport => widget.perm.has('linkages', PermAction.import);
   bool get _canEdit => widget.perm.has('linkages', PermAction.edit);
   bool get _canDelete => widget.perm.has('linkages', PermAction.delete);
   bool get _canExport => widget.perm.has('linkages', PermAction.export);
@@ -440,7 +441,7 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
 
   /// يقرأ ملف Excel لمسير ويفتحه في المحرر للمراجعة قبل أول حفظ.
   Future<void> _importSheet() async {
-    if (!_canCreate) return showImdToast(context, '✖ لا تملك صلاحية التسجيل', error: true);
+    if (!_canImport) return showImdToast(context, '✖ لا تملك صلاحية الاستيراد', error: true);
     try {
       final res = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: const ['xlsx'], withData: true);
       final bytes = res?.files.firstOrNull?.bytes;
@@ -628,7 +629,6 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
             ImdCol(''),
           ],
           rows: [for (final e in _custodyRows) _custodyRow(c, e)],
-          cards: true,
           empty: 'لا عهدٍ مطابقة',
           onRowTap: null,
         ),
@@ -740,7 +740,6 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
             ImdCol(''),
           ],
           rows: [for (final e in _clearanceRows) _clearanceRow(c, e)],
-          cards: true,
           empty: 'لا إخلاءاتٍ مطابقة',
           onRowTap: null,
         ),
@@ -803,7 +802,7 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
         onChanged: (_) => setState(() {}),
         actions: [
           if (_canExport) ImdButton.outline(label: 'تصدير Excel', icon: 'download', small: true, onPressed: _exportSheets),
-          if (_canCreate) ImdButton.outline(label: 'استيراد من Excel', icon: 'upload', small: true, onPressed: _importSheet),
+          if (_canImport) ImdButton.outline(label: 'استيراد من Excel', icon: 'upload', small: true, onPressed: _importSheet),
           if (_canCreate) ImdButton(label: 'مسير عهدة جديد', icon: 'plus', onPressed: _addOrEditSheet),
         ],
       ),
@@ -852,7 +851,6 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
                 ]),
               ],
           ],
-          cards: true,
           empty: 'لا مسيراتٍ مطابقة',
           onRowTap: null,
         ),
@@ -906,7 +904,6 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
             ImdCol(''),
           ],
           rows: [for (final e in _contractRows) _contractRow(c, e)],
-          cards: true,
           empty: 'لا عقودٍ مطابقة',
           onRowTap: null,
         ),

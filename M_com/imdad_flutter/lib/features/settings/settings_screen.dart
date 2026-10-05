@@ -22,6 +22,9 @@ import '../../data/db/app_database.dart';
 import '../catalog/authorities_screen.dart';
 import '../sync/sync_screen.dart';
 import 'backup_schedule_card.dart';
+import 'biometric_setting_tile.dart';
+import 'owner_selection_card.dart';
+import 'permission_impact_card.dart';
 import 'branding_screen.dart';
 import 'device_activation_screen.dart';
 import 'forms_designer_screen.dart';
@@ -93,7 +96,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final Perm _perm = Perm.of(context);
 
   final _search = TextEditingController();
-  late String _section = widget.initialSection;
+  late String _section = _allowedSection(widget.initialSection);
+
+  /// الأقسام الظاهرة: «تفعيل الأجهزة» للمالك وحده (`sys.devices`).
+  List<_Section> get _visibleSections => [
+        for (final s in _sections)
+          if ((s.id != 'devices' || _perm.sys(SysPerm.devices)) &&
+              (s.id != 'archiveAuto' || _perm.sys(SysPerm.settingsSensitive)))
+            s,
+      ];
+
+  String _allowedSection(String id) =>
+      (id == 'devices' && !_perm.sys(SysPerm.devices)) || (id == 'archiveAuto' && !_perm.sys(SysPerm.settingsSensitive))
+          ? 'general'
+          : id;
   bool _loading = true;
 
   int _items = 0;
@@ -180,6 +196,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   bool get _editable => _perm.admin || _perm.has('settings', PermAction.edit);
 
+  /// الإعدادات الحساسة (قواعد المحرك ومفتاح التوقيع) — للمالك وحده.
+  bool get _sensitive => _perm.sys(SysPerm.settingsSensitive);
+
+  /// النسخ الاحتياطي والاستعادة — للمالك وحده.
+  bool get _backupOwner => _perm.sys(SysPerm.backup);
+
   void _go(String page) => context.read<ImdNav>().go(page);
   void _toast(String m, {bool error = false}) => showImdToast(context, m, error: error);
 
@@ -246,6 +268,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _exportBackup() async {
+    // نسخةٌ كاملة بكل البيانات والحسابات: لمدير النظام وحده.
+    if (!_perm.guardSys(context, SysPerm.backup)) return;
     final password = await _askBackupPassword(creating: true);
     if (password == null || !mounted) return;
     final dir = await FilePicker.platform.getDirectoryPath();
@@ -269,7 +293,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// `IMDAD_BACKUP.restore()` — الاستيراد يدمج فوق الموجود.
   Future<void> _restoreBackup({String? droppedPath}) async {
-    if (!_perm.guard(context, 'settings', PermAction.edit)) return;
+    // الاستعادة تكتب الحسابات والصلاحيات من الملف: للمالك وحده.
+    if (!_perm.guardSys(context, SysPerm.backup)) return;
     final String? path;
     if (droppedPath != null) {
       path = droppedPath;
@@ -362,7 +387,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// `IMDAD_RULES.save('main', text)`
   Future<void> _saveRules() async {
-    if (!_perm.guard(context, 'settings', PermAction.edit)) return;
+    if (!_perm.guardSys(context, SysPerm.settingsSensitive)) return;
     final parsed = RulesEngine().parse(_rules.text);
     await SettingsRepo(_db).write('rules', {'text': _rules.text});
     if (!mounted) return;
@@ -384,14 +409,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// `IMDAD_ESIGN.ensureKey('commander')`
   Future<void> _ensureSignKey() async {
-    if (!_perm.guard(context, 'settings', PermAction.edit)) return;
+    if (!_perm.guardSys(context, SysPerm.settingsSensitive)) return;
     await ESign(_db).ensureKey();
     await _load();
     if (mounted) _toast('✔ جُهِّز مفتاح القائد على هذا الجهاز');
   }
 
   Future<void> _removeSignKey() async {
-    if (!_perm.guard(context, 'settings', PermAction.edit)) return;
+    if (!_perm.guardSys(context, SysPerm.settingsSensitive)) return;
     final ok = await imdConfirm(
       context,
       'حذف مفتاح التوقيع يُبطل التحقق من كل الأختام السابقة على هذا الجهاز. متابعة؟',
@@ -443,7 +468,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final visible = q.isEmpty
         ? panels.where((p) => p.$1 == _section).toList()
         : panels.where((p) => p.$2.contains(q)).toList();
-    final current = _sections.firstWhere((s) => s.id == _section, orElse: () => _sections.first);
+    final current = _visibleSections.firstWhere((s) => s.id == _section, orElse: () => _sections.first);
 
     return ImdDropZone(
       enabled: _perm.writable('settings'),
@@ -502,7 +527,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// قائمة التنقل بين أقسام الإعدادات — رأسيّةٌ على سطح المكتب وأفقيّةٌ على الجوال.
   Widget _nav({required bool horizontal}) {
     final c = context.imd;
-    final buttons = [for (final s in _sections) _navButton(s, horizontal: horizontal)];
+    final buttons = [for (final s in _visibleSections) _navButton(s, horizontal: horizontal)];
     return Container(
       padding: EdgeInsets.all(horizontal ? 6 : 8),
       decoration: BoxDecoration(
@@ -594,7 +619,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final auth = context.read<AuthService>();
     final user = auth.currentUser;
     final name = user == null ? '—' : (user.name.isNotEmpty ? user.name : user.email);
-    final role = user?.role == 'admin' ? 'مدير النظام' : 'مستخدم';
+    final role = UserRole.label(user?.role);
     // غير موجود في الاختبارات التي تبني الشاشة بلا القفل التلقائي.
     final IdleLock? idle = _readOrNull<IdleLock>(context);
 
@@ -602,11 +627,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       (
         'archiveAuto',
         'الأرشفة التلقائية أرشيف السندات التقارير المطبوعة الاستلام الصرف التحويل المرتجعات الجرد',
-        const ImdPanel(
-          title: 'الأرشفة التلقائية عند الطباعة',
-          icon: 'zap',
-          child: ArchiveAutoSettingsCard(),
-        ),
+        _perm.sys(SysPerm.settingsSensitive)
+            ? const ImdPanel(
+                title: 'الأرشفة التلقائية عند الطباعة',
+                icon: 'zap',
+                child: ArchiveAutoSettingsCard(),
+              )
+            : const SizedBox.shrink(),
       ),
       (
         'general',
@@ -637,6 +664,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ]),
         ),
+      ),
+      (
+        'general',
+        'تحديد مالك النظام',
+        // يظهر لمدير على جهازٍ غير فرع، وبلا مالك وبأكثر من مدير (يتحقق منه البطاقة).
+        _perm.admin && !_perm.owner
+            ? OwnerSelectionCard(onAssigned: () async {
+                await _load();
+                if (mounted) setState(() {});
+              })
+            : const SizedBox.shrink(),
       ),
       (
         'general',
@@ -680,6 +718,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const ImdNote('عند القفل تبقى الشاشات مفتوحة خلف الغطاء ولا يضيع عمل؛ تُفتح بكلمة مرورك.'),
             ],
+            const BiometricSettingTile(),
           ]),
         ),
       ),
@@ -801,14 +840,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'IF stock(معرّف الصنف) < 50 THEN notify(نص التنبيه) — '
                 'المصادر: stock و daysLeft، ويمكن ربط شرطين بـ AND، والإجراء notify أو block.'),
             const SizedBox(height: 10),
-            ImdFld(controller: _rules, maxLines: 6, enabled: _editable, hint: 'IF stock(itm-1) < 50 THEN notify(الرصيد منخفض)'),
+            ImdFld(controller: _rules, maxLines: 6, enabled: _sensitive, hint: 'IF stock(itm-1) < 50 THEN notify(الرصيد منخفض)'),
             const SizedBox(height: 10),
             Wrap(spacing: 8, runSpacing: 8, children: [
               ImdButton(
                 label: 'حفظ القوانين',
                 icon: 'save',
                 small: true,
-                onPressed: _editable ? _saveRules : null,
+                onPressed: _sensitive ? _saveRules : null,
               ),
               ImdButton.outline(label: 'تشغيل الآن', icon: 'zap', small: true, onPressed: _runRules),
             ]),
@@ -869,7 +908,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 label: 'ترحيل JSON من النظام السابق',
                 icon: 'swap',
                 small: true,
-                onPressed: _editable ? _restoreBackup : null,
+                onPressed: _backupOwner ? _restoreBackup : null,
               ),
             ]),
           ]),
@@ -902,7 +941,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 label: 'تهيئة مفتاح القائد',
                 icon: 'lock',
                 small: true,
-                onPressed: _hasSignKey || !_editable ? null : _ensureSignKey,
+                onPressed: _hasSignKey || !_sensitive ? null : _ensureSignKey,
               ),
               if (_hasSignKey)
                 ImdButton(
@@ -910,7 +949,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: 'trash',
                   small: true,
                   kind: ImdBtnKind.danger,
-                  onPressed: _editable ? _removeSignKey : null,
+                  onPressed: _sensitive ? _removeSignKey : null,
                 ),
               ImdButton.outline(
                 label: 'التحقق من توقيع مستند',
@@ -918,12 +957,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 small: true,
                 onPressed: () => setState(() => _section = 'verify'),
               ),
-              ImdButton.outline(
-                label: 'تفعيل الأجهزة',
-                icon: 'monitor',
-                small: true,
-                onPressed: () => setState(() => _section = 'devices'),
-              ),
+              if (_perm.sys(SysPerm.devices))
+                ImdButton.outline(
+                  label: 'تفعيل الأجهزة',
+                  icon: 'monitor',
+                  small: true,
+                  onPressed: () => setState(() => _section = 'devices'),
+                ),
             ]),
             if (_hasSignKey && _signKeyId.isNotEmpty) ...[
               const SizedBox(height: 10),
@@ -946,7 +986,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       (
         'devices',
         '',
-        _embed('deviceActivation', const DeviceActivationScreen()),
+        // حارسٌ ثانٍ غير إخفاء القسم: لو بلغ غير المالكِ هذا الفرع بأي طريق
+        // لا يُرسم له شيء (وللشاشة حراسةٌ داخل كل دالة أيضًا).
+        _perm.sys(SysPerm.devices)
+            ? _embed('deviceActivation', const DeviceActivationScreen())
+            : const SizedBox.shrink(),
       ),
       (
         'verify',
@@ -984,13 +1028,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ]),
             const SizedBox(height: 10),
             Wrap(spacing: 8, runSpacing: 8, children: [
-              ImdButton(
-                label: 'تصدير نسخة احتياطية كاملة',
-                icon: 'download',
-                small: true,
-                onPressed: _exportBackup,
-              ),
-              if (_perm.admin)
+              if (_backupOwner)
+                ImdButton(
+                  label: 'تصدير نسخة احتياطية كاملة',
+                  icon: 'download',
+                  small: true,
+                  onPressed: _exportBackup,
+                ),
+              if (_backupOwner)
                 ImdButton.outline(
                   label: 'استعادة من ملف نسخة',
                   icon: 'upload',
@@ -1007,11 +1052,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
         ),
       ),
-      if (_perm.admin && _readOrNull<BackupScheduler>(context) != null)
+      if (_backupOwner && _readOrNull<BackupScheduler>(context) != null)
         (
           'backup',
           'النسخ الاحتياطي التلقائي المشفّر جدولة كلمة مرور مجلد',
           const BackupScheduleCard(),
+        ),
+      if (_perm.owner)
+        (
+          'health',
+          'تقرير أثر الصلاحيات الخاصة المالك sys من سيفقد',
+          const PermissionImpactCard(),
         ),
       (
         'health',
@@ -1053,7 +1104,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 10),
               ImdTable(
                 columns: const [ImdCol('الفحص'), ImdCol('الحالة'), ImdCol('التفاصيل')],
-                cards: true,
                 rows: [
                   for (final r in _checks!)
                     [

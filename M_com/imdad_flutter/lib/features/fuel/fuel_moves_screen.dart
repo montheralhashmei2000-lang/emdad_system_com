@@ -455,6 +455,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
   }
 
   Future<void> _printIssue(FuelIssue issue) async {
+    if (!Perm.of(context).guard(context, 'fuelMoves', 'print')) return;
     final row = issue.allocationId.isEmpty
         ? null
         : _allocations
@@ -464,6 +465,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
   }
 
   Future<void> _printSaved() async {
+    if (!Perm.of(context).guard(context, 'fuelMoves', 'print')) return;
     switch (_tab) {
       case 'issue':
         final doc = _issues.where((i) => i.refNo == _savedRef).firstOrNull;
@@ -903,9 +905,14 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
                 label: 'طباعة كشف الصرف',
                 icon: 'printer',
                 small: true,
-                onPressed: () => _issues.isEmpty
-                    ? showImdToast(context, '✖ لا سندات للطباعة')
-                    : FuelPrint.issuesReport(_db, rows),
+                onPressed: () {
+                  if (!Perm.of(context).guard(context, 'fuelMoves', 'print')) return;
+                  if (_issues.isEmpty) {
+                    showImdToast(context, '✖ لا سندات للطباعة');
+                  } else {
+                    FuelPrint.issuesReport(_db, rows);
+                  }
+                },
               ),
             ],
           ),
@@ -924,7 +931,6 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
               ImdCol('الكمية', numeric: true),
               ImdCol('', center: true),
             ],
-            cards: true,
             pageSize: 100,
             rows: [
               for (final i in rows)
@@ -1043,7 +1049,6 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
               ImdCol('الكمية', numeric: true),
               ImdCol('', center: true),
             ],
-            cards: true,
             pageSize: 100,
             rows: [
               for (final s in rows)
@@ -1065,7 +1070,10 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
                   ImdIconButton(
                       icon: 'printer',
                       tooltip: 'طباعة السند',
-                      onPressed: () => FuelPrint.supplyVoucher(_db, s)),
+                      onPressed: () {
+                if (!Perm.of(context).guard(context, 'fuelMoves', 'print')) return;
+                FuelPrint.supplyVoucher(_db, s);
+              }),
                 ],
             ],
           ),
@@ -1151,7 +1159,6 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
             ImdCol('الحالة'),
             ImdCol('', center: true),
           ],
-          cards: true,
           pageSize: 100,
           rows: [
             for (final t in _transfers)
@@ -1176,7 +1183,10 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
                   ImdIconButton(
                       icon: 'printer',
                       tooltip: 'طباعة السند',
-                      onPressed: () => FuelPrint.transferVoucher(_db, t)),
+                      onPressed: () {
+                if (!Perm.of(context).guard(context, 'fuelMoves', 'print')) return;
+                FuelPrint.transferVoucher(_db, t);
+              }),
                   if (!FuelRepo.isReverse(t.notes) &&
                       !FuelRepo.reversedAlready(_transfers, t.refNo))
                     ImdIconButton(
@@ -1242,7 +1252,6 @@ class _FuelMovesScreenState extends State<FuelMovesScreen> {
             ImdCol('ملاحظة'),
             ImdCol('', center: true),
           ],
-          cards: true,
           pageSize: 100,
           rows: [
             for (final o in _openings)

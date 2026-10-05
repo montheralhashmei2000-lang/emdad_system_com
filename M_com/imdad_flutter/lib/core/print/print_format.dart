@@ -8,11 +8,11 @@ import 'package:intl/intl.dart';
 final _money = NumberFormat('#,##0.00', 'en');
 final _plain = NumberFormat('#,##0.##', 'en');
 
-/// `2026-05-15` ⇒ `15/05/2026`؛ ما لا يُفهم يُعاد كما هو.
+/// `2026-05-15` ⇒ `15-05-2026 م`؛ ما لا يُفهم يُعاد كما هو.
 String printDate(String iso) {
   final d = DateTime.tryParse(iso);
   if (d == null) return iso;
-  return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  return '${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.year} م';
 }
 
 /// مبلغٌ بخانتين عشريتين: `30,000.00`.

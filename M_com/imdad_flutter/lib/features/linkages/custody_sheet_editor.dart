@@ -3,6 +3,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/security/perm.dart';
+import '../../domain/access_control.dart';
 import '../../core/print/custody_sheet_print.dart';
 import '../../core/print/print_format.dart';
 import '../../core/ui/imd_form.dart';
@@ -352,6 +354,7 @@ class _CustodySheetEditorState extends State<CustodySheetEditor> {
 
   /// يضيف أسطر ملف Excel (بتنسيق المسير المعتمد) إلى المحرر للمراجعة قبل الحفظ.
   Future<void> _importExcel() async {
+    if (!Perm.of(context).guard(context, 'linkages', PermAction.import)) return;
     try {
       final res = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: const ['xlsx'], withData: true);
       final bytes = res?.files.firstOrNull?.bytes;
@@ -429,7 +432,6 @@ class _CustodySheetEditorState extends State<CustodySheetEditor> {
     const cell = ImdEntryTable.cell;
     final dups = duplicateInvoiceNos([for (final r in _rows) r.invoiceNo.text]);
     return ImdEntryTable(
-      cards: true,
       minWidth: 1790,
       columns: const [
         ImdCol('التاريخ', width: 138),

@@ -14,7 +14,12 @@ import '../../data/repos/settings_repo.dart';
 import '../../main.dart' show ImdTheme;
 import '../../core/ui/imd_empty_state.dart';
 import '../../core/ui/imd_icon.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/ui/imd_density.dart';
+import '../../core/ui/imd_fonts.dart';
 import '../../core/ui/imd_menu_bar.dart';
+import '../../core/ui/imd_page_tabs.dart';
+import '../../core/ui/imd_status_bar.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_window.dart';
 import '../../core/ui/imd_widgets.dart';
@@ -250,6 +255,18 @@ const _menu = <_MenuSection>[
   ]),
 ];
 
+/// حالة تبويبات قسمٍ واحد — انظر [_HomeShellState._spaces].
+class _SpaceState {
+  _SpaceState(String space) : openSec = space == AppSpace.fuel ? 'fuelMoves' : 'basic';
+
+  String page = 'dash';
+  final List<String> open = ['dash'];
+  final Map<String, int> gen = {};
+  final Map<String, ImdRecordSink> sinks = {};
+  final Set<String> stale = {};
+  String? openSec;
+}
+
 /// الهيكل الرئيسي بعد الدخول:
 /// شريط علوي، قائمة جانبية داكنة بأقسام قابلة للطي (قسم واحد مفتوح)، ومنطقة المحتوى.
 class HomeShell extends StatefulWidget {
@@ -262,8 +279,66 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
-  String _page = 'dash';
-  String? _openSec = 'basic';
+  /// حالة كل قسم (الإمداد/المحروقات) على حدة: تبويباته المفتوحة وصفحته الظاهرة
+  /// وأرقام تحديثه وتنبيهات تقادمه. **القسمان يحيَيان معًا**: التبديل بينهما
+  /// يُخفي أحدهما ولا يهدمه، فيعود كل قسمٍ بتبويباته وما في صفحاته من إدخال.
+  final Map<String, _SpaceState> _spaces = {};
+
+  _SpaceState _stateOf(String space) => _spaces.putIfAbsent(space, () => _SpaceState(space));
+
+  /// حالة القسم الظاهر.
+  _SpaceState get _st => _stateOf(_space ?? AppSpace.supply);
+
+  /// الصفحة الظاهرة في القسم الظاهر.
+  String get _page => _st.page;
+  set _page(String v) => _st.page = v;
+
+  /// الصفحات المفتوحة بحالتها (تبويبات سطح المكتب) في القسم الظاهر.
+  ///
+  /// **لماذا تبقى حيّةً:** التنقّل بين الشاشات كان يهدم السابقة (`ValueKey(_page)`)
+  /// فيضيع سندٌ نصف مملوء بمجرد نظرةٍ إلى الأرصدة. الآن تبقى مبنيّةً مخفيّة
+  /// ([ImdPageHost]) وتعود كما تُركت.
+  List<String> get _open => _st.open;
+
+  /// أقصى صفحاتٍ مفتوحة في كل قسم: كل واحدةٍ تحمل حالتها وبياناتها في الذاكرة.
+  static const int _maxOpen = 8;
+
+  /// رقم إعادة بناء كل صفحة — زيادته تُنشئ الصفحة من جديد (تحديث).
+  Map<String, int> get _gen => _st.gen;
+
+  /// عدّاد سجلات كل صفحة مفتوحة لشريط الحالة.
+  Map<String, ImdRecordSink> get _sinks => _st.sinks;
+
+  /// صفحاتٌ مخفيّة تغيّرت البيانات بعد إخفائها.
+  Set<String> get _stale => _st.stale;
+  StreamSubscription<Object?>? _dbSub;
+
+  /// آخر قياسٍ للقشرة — يقرّره البناء، ويقرؤه التنقّل لتقييد عدد الصفحات.
+  bool _handheld = false;
+
+  String? get _openSec => _st.openSec;
+  set _openSec(String? v) => _st.openSec = v;
+
+  // سمة المحروقات تُبنى مرةً لكل (سطوع، خط): بناؤها في كل إطار يعيد اشتقاق
+  // لوحة ألوان Material كاملة.
+  ThemeData? _fuelTheme;
+  bool? _fuelDark;
+  String? _fuelFont;
+
+  /// سمة القسم: الإمداد هو سمة التطبيق نفسها، والمحروقات لوحتها المستقلة
+  /// (برتقالي محروق) بنفس البنية — الحقول والجداول والقشرة واحدة.
+  ThemeData _themeFor(BuildContext context, String space) {
+    final base = Theme.of(context);
+    if (space != AppSpace.fuel) return base;
+    final dark = base.brightness == Brightness.dark;
+    final font = base.textTheme.bodyMedium?.fontFamily ?? ImdFonts.defaultFamily;
+    if (_fuelTheme == null || _fuelDark != dark || _fuelFont != font) {
+      _fuelTheme = AppTheme.fuelSection(dark: dark, font: font);
+      _fuelDark = dark;
+      _fuelFont = font;
+    }
+    return _fuelTheme!;
+  }
 
   static const double _sideMin = 220;
   static const double _sideMax = 420;
@@ -297,6 +372,82 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         Timer.periodic(const Duration(minutes: 5), (_) => _checkSession());
     WidgetsBinding.instance.addPostFrameCallback((_) => _restoreSpace());
     _loadSideWidth();
+    ImdDensity.load();
+    _watchData();
+  }
+
+  /// أي كتابةٍ في القاعدة (من هذه الشاشات أو من المزامنة) تجعل الصفحات
+  /// **المخفيّة** مشتبهةً بالتقادم؛ الظاهرة هي مصدر الكتابة فلا تُعلَّم.
+  void _watchData() {
+    final db = context.read<AppDatabase>();
+    _dbSub = db.tableUpdates().listen((_) {
+      if (!mounted) return;
+      final current = _space ?? AppSpace.supply;
+      var changed = false;
+      for (final e in _spaces.entries) {
+        for (final p in e.value.open) {
+          // الظاهر هو مصدر الكتابة؛ وكل ما عداه (حتى صفحات القسم الآخر) مشتبهٌ به.
+          if (e.key == current && p == e.value.page) continue;
+          changed = e.value.stale.add(p) || changed;
+        }
+      }
+      if (changed) setState(() {});
+    });
+  }
+
+  ImdRecordSink _sinkOf(String page) => _sinks.putIfAbsent(page, ImdRecordSink.new);
+
+  /// يُسقط صفحةً مفتوحة بحالتها كلّها.
+  void _drop(String page) {
+    _open.remove(page);
+    _stale.remove(page);
+    _gen.remove(page);
+    // يُتخلَّص منه بعد الإطار: جداول الصفحة المهدومة ما زالت تُبلّغ عنه حتى تُفكَّك.
+    final sink = _sinks.remove(page);
+    if (sink != null) WidgetsBinding.instance.addPostFrameCallback((_) => sink.dispose());
+  }
+
+  void _closePage(String page) {
+    if (_open.length <= 1) return;
+    setState(() {
+      final i = _open.indexOf(page);
+      _drop(page);
+      if (page == _page) _page = _open[i.clamp(0, _open.length - 1)];
+    });
+  }
+
+  void _closeOthers(String keep) => setState(() {
+        for (final p in List.of(_open)) {
+          if (p != keep) _drop(p);
+        }
+        _page = keep;
+      });
+
+  void _refreshPage(String page) => setState(() {
+        _gen[page] = (_gen[page] ?? 0) + 1;
+        _stale.remove(page);
+      });
+
+  static String _titleOf(String page) {
+    if (page == 'dash') return 'الرئيسية';
+    final id = _menuPageOf(page);
+    for (final sec in _menu) {
+      for (final it in sec.items) {
+        if (it.id == id) return it.name;
+      }
+    }
+    return page;
+  }
+
+  static String? _iconOf(String page) {
+    if (page == 'dash') return 'home';
+    final id = _menuPageOf(page);
+    for (final sec in _menu) {
+      for (final it in sec.items) {
+        if (it.id == id) return it.icon;
+      }
+    }
+    return null;
   }
 
   /// مفتاح الاختيار لكل مستخدم على حدة: جهازٌ يتشاركه أمين المستودع وأمين
@@ -321,19 +472,30 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_spaceKey(auth), space);
     if (!mounted) return;
-    setState(() {
-      _space = space;
-      _page = 'dash';
-      _openSec = space == AppSpace.fuel ? 'fuelMoves' : 'basic';
-    });
+    // لا تُصفَّر الحالة: العودة إلى قسمٍ زاره المستخدم تُظهر تبويباته كما تركها.
+    setState(() => _space = space);
   }
 
-  /// العودة إلى الاختيار — لا يُمسح المحفوظ حتى لا يُنسى تفضيله إن تراجع.
-  void _switchSpace() => setState(() => _space = null);
+  /// يبدّل إلى القسم التالي مباشرةً (دون شاشة الاختيار) ويحفظ اختياره. القسم
+  /// الذي غادره يبقى حيًّا بتبويباته وبياناته.
+  Future<void> _switchSpace() async {
+    final auth = context.read<AuthService>();
+    final available = AppSpace.availableFor((p) => _hasPerm(auth, p));
+    if (available.length < 2) return;
+    final current = _space ?? available.first;
+    final next = available[(available.indexOf(current) + 1) % available.length];
+    await _pickSpace(next);
+  }
 
   @override
   void dispose() {
     _sessionTimer?.cancel();
+    _dbSub?.cancel();
+    for (final st in _spaces.values) {
+      for (final s in st.sinks.values) {
+        s.dispose();
+      }
+    }
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -352,17 +514,27 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   void _go(String page) {
-    setState(() => _page = page);
+    setState(() {
+      if (!_open.contains(page)) {
+        _open.add(page);
+        // الجوال صفحةٌ واحدة كما كان: لا شريط تبويبات يتيح العودة لما أُخفي.
+        final cap = _handheld ? 1 : _maxOpen;
+        while (_open.length > cap) {
+          _drop(_open.firstWhere((p) => p != page));
+        }
+      }
+      _page = page;
+    });
     // يُغلق الدرج نفسه لا «أعلى مسار»: `Navigator.pop` كانت تغلق أي حوارٍ
     // مفتوح فوق الشاشة بدل الدرج.
     _scaffoldKey.currentState?.closeEndDrawer();
   }
 
-  bool _isAdmin(AuthService auth) => auth.currentUser?.role == 'admin';
+  bool _isAdmin(AuthService auth) => UserRole.isAdmin(auth.currentUser?.role);
 
   /// صفحات بلا صلاحية خاصة بها تتبع صلاحية صفحة أخرى، فلا يلزم تعديل الأدوار.
   static const _permPage = {
-    'lanSync': 'settings',
+    'lanSync': SysPerm.sync,
     'stockAlerts': 'balances',
     // بنود الحركة الأربعة شاشةٌ واحدة بتبويبات، فصلاحيتها واحدة.
     'fuelIssue': 'fuelMoves',
@@ -413,17 +585,18 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         );
     return AccessControl.can(
         isAdmin: _isAdmin(auth),
+        isOwner: UserRole.isOwner(user.role),
         permissions: perms,
         page: page,
         action: action);
   }
 
-  Widget _pageBody(String page) {
+  Widget _pageBody(String page, String space) {
     switch (page) {
       case 'dash':
         // «الرئيسية» تتبع القسم: لوحة الإمداد في مكانها، ولوحة المحروقات في
         // مكانها — ولا يرى صاحب قسمٍ لوحةَ القسم الآخر.
-        return _space == AppSpace.fuel
+        return space == AppSpace.fuel
             ? const FuelDashboardScreen()
             : const DashboardScreen();
       case 'items':
@@ -638,8 +811,55 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     }
     final space = _space ?? AppSpace.supply;
 
-    final allowed = _page == 'dash' || _hasPerm(auth, _page);
-    final body = allowed ? _pageBody(_page) : const _NoAccess();
+    _handheld = handheld;
+    final themed = _themeFor(context, space);
+    final sc = themed.extension<ImdColors>() ?? c;
+
+    // كل قسمٍ زاره المستخدم يبقى مبنيًّا (الظاهر وحده مرئي) بسمته: التبديل بين
+    // الإمداد والمحروقات لا يهدم تبويباتهما. على الجوال صفحةٌ واحدة فقط للقسم
+    // الظاهر — ما أُخفي لا شريط يعيده، فلا يُبقى حيًّا بلا فائدة.
+    Widget sectionStack(String sp, _SpaceState st) {
+      final isActive = sp == space;
+      final pages = handheld ? (isActive ? [st.page] : <String>[]) : List<String>.of(st.open);
+      return Offstage(
+        key: ValueKey('space:$sp'),
+        offstage: !isActive,
+        child: TickerMode(
+          enabled: isActive,
+          child: ExcludeFocus(
+            excluding: !isActive,
+            child: Theme(
+              data: _themeFor(context, sp),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  for (final p in pages)
+                    ImdPageHost(
+                      key: ValueKey('host:$sp:$p'),
+                      active: isActive && p == st.page,
+                      sink: st.sinks.putIfAbsent(p, ImdRecordSink.new),
+                      child: KeyedSubtree(
+                        key: ValueKey('$sp:$p#${st.gen[p] ?? 0}'),
+                        child: (p == 'dash' || _hasPerm(auth, p)) ? _pageBody(p, sp) : const _NoAccess(),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // الحالة تُنشأ للقسم الظاهر قبل البناء حتى يظهر في `_spaces`.
+    _stateOf(space);
+    final body = Stack(
+      fit: StackFit.expand,
+      children: [for (final e in _spaces.entries) sectionStack(e.key, e.value)],
+    );
+    final sync = context.watch<AutoSyncService>();
+    final syncFailed = !sync.isRunning &&
+        (sync.status.contains('تعذّر') || sync.status.contains('تعثّرت') || sync.status.contains('فشل'));
 
     final side = _Sidebar(
       page: _menuPageOf(_page),
@@ -687,13 +907,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         },
         child: Scaffold(
           key: _scaffoldKey,
-          backgroundColor: c.bg,
+          backgroundColor: sc.bg,
           // الدرج يحمل القائمة كاملةً في اليد: الشريط السفليّ لأشهر الأبواب،
           // وما وراءها يُفتح منه.
           endDrawer: handheld
               ? Drawer(
                   width: ImdSizes.sideWidth,
-                  backgroundColor: c.side,
+                  backgroundColor: sc.side,
                   child: _Sidebar(
                     page: _menuPageOf(_page),
                     space: space,
@@ -745,20 +965,64 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                         onEnd: _saveSideWidth,
                       ),
                     Expanded(
-                      child: KeyedSubtree(key: ValueKey(_page), child: body),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (!handheld)
+                            ImdPageTabs(
+                              pages: [
+                                for (final p in _open)
+                                  ImdOpenPage(
+                                    id: p,
+                                    title: _titleOf(p),
+                                    icon: _iconOf(p),
+                                    stale: _stale.contains(p),
+                                  ),
+                              ],
+                              activeId: _page,
+                              onSelect: _go,
+                              onClose: _closePage,
+                              onCloseOthers: _closeOthers,
+                            ),
+                          if (!handheld && _stale.contains(_page))
+                            ImdStaleBanner(
+                              onRefresh: () => _refreshPage(_page),
+                              onDismiss: () => setState(() => _stale.remove(_page)),
+                            ),
+                          Expanded(child: body),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
+              if (!handheld)
+                ImdStatusBar(
+                  records: _sinkOf(_page),
+                  onConnectionTap: () => _go('lanSync'),
+                  connection: sync.isRunning
+                      ? 'جارٍ التزامن'
+                      : !sync.enabled
+                          ? 'العمل محلي — المزامنة متوقفة'
+                          : syncFailed
+                              ? 'تعذّرت آخر مزامنة'
+                              : sync.lastAt == null
+                                  ? 'متصل — بانتظار أول مزامنة'
+                                  : 'متصل — آخر مزامنة ${DateFormat('HH:mm').format(sync.lastAt!)}',
+                  connectionOk: sync.isRunning
+                      ? true
+                      : !sync.enabled
+                          ? null
+                          : !syncFailed,
+                ),
             ],
           ),
         ),
       ),
     );
 
-    // قسم المحروقات يأخذ السمة العامة نفسها التي يأخذها الإمداد — لا سمةً
-    // داكنةً خاصة به (`AppTheme.fuel` أُزيلت من هنا عمدًا).
-    return shell;
+    // الإطار كله (الشريط الجانبي والعلوي والتبويبات) بسمة القسم الظاهر.
+    return Theme(data: themed, child: shell);
   }
 }
 
@@ -811,23 +1075,9 @@ class _Topbar extends StatelessWidget {
     // ما يُنقر. وبلا هذا التدرّج يفيض الصف ويُرسم شريطًا أصفر.
     return LayoutBuilder(builder: (context, cons) {
       final w = cons.maxWidth;
-      final showSync = w > 900;
       final showIam = w > 720;
       final showName = w > 560;
       final showTitle = w > 430;
-      final sync = context.watch<AutoSyncService>();
-      final failed = !sync.isRunning &&
-          (sync.status.contains('تعذّر') || sync.status.contains('تعثّرت') || sync.status.contains('فشل'));
-      final syncLabel = sync.isRunning
-          ? 'جارٍ التزامن'
-          : !sync.enabled
-              ? 'المزامنة متوقفة'
-              : failed
-                  ? 'تعذّرت آخر مزامنة'
-                  : sync.lastAt == null
-                      ? 'بانتظار أول مزامنة'
-                      : 'آخر مزامنة ${DateFormat('HH:mm').format(sync.lastAt!)}';
-
       // أندرويد ١٥+ يرسم التطبيق خلف شريط الحالة: بلا هذا الإزاحة يطلع الشريط
       // العلوي (الاسم والمزامنة) تحت الساعة والبطارية. على ويندوز الإزاحة صفر.
       final inset = MediaQuery.paddingOf(context).top;
@@ -941,15 +1191,6 @@ class _Topbar extends StatelessWidget {
                     const SizedBox(width: 10),
                     const _StatusPill(label: 'IAM محمي'),
                   ],
-                  if (showSync) ...[
-                    const SizedBox(width: 10),
-                    _StatusPill(
-                      label: syncLabel,
-                      tone: failed ? ImdTone.err : (sync.isRunning ? ImdTone.info : (sync.enabled ? ImdTone.ok : ImdTone.off)),
-                      tooltip: sync.status.isEmpty ? null : sync.status,
-                      onTap: () => onOpenPage('lanSync'),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -960,19 +1201,17 @@ class _Topbar extends StatelessWidget {
   }
 }
 
-/// كبسولة حالةٍ بنقطةٍ ملوّنة — تُستعمل لحالة المزامنة في الشريط العلوي.
+/// كبسولة حالةٍ بنقطةٍ ملوّنة (شارة «IAM محمي» في الشريط العلوي). حالة
+/// المزامنة انتقلت إلى [ImdStatusBar].
 class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.label, this.tone = ImdTone.ok, this.tooltip, this.onTap});
+  const _StatusPill({required this.label});
   final String label;
-  final ImdTone tone;
-  final String? tooltip;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
-    final (_, foreground) = ImdChip.colors(c, tone);
-    final pill = Container(
+    final (_, foreground) = ImdChip.colors(c, ImdTone.ok);
+    return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
         color: c.surface,
@@ -994,8 +1233,6 @@ class _StatusPill extends StatelessWidget {
                 height: 1.6)),
       ]),
     );
-    final tappable = onTap == null ? pill : InkWell(onTap: onTap, borderRadius: BorderRadius.circular(999), child: pill);
-    return tooltip == null || tooltip!.isEmpty ? tappable : Semantics(label: tooltip!, child: tappable);
   }
 }
 

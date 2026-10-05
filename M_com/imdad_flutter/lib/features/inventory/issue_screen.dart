@@ -805,6 +805,7 @@ class _IssueScreenState extends State<IssueScreen> {
   }
 
   void _print(bool both) {
+    if (!Perm.of(context).guard(context, 'issue', 'print')) return;
     final c = _collect();
     if (c.rows.isEmpty) return showImdToast(context, '✖ لا توجد أصناف للطباعة');
     final recipient = switch (_type) {
@@ -1433,6 +1434,7 @@ class _IssueScreenState extends State<IssueScreen> {
 
   /// `issPrintAggregated()` — مجموع الكميات لكل (صنف|وحدة) ضمن نتائج البحث.
   Future<void> _printAggregated() async {
+    if (!Perm.of(context).guard(context, 'issue', 'print')) return;
     final rows = await _issuedLines();
     if (!mounted) return;
     if (rows.isEmpty) return showImdToast(context, '✖ لا توجد بيانات للطباعة');

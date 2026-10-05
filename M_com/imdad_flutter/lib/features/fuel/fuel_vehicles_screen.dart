@@ -128,7 +128,6 @@ class _FuelVehiclesScreenState extends State<FuelVehiclesScreen> {
           ],
           pageSize: 50,
           maxHeight: ImdSizes.tableMaxHeight(context),
-          cards: true,
           rows: [
             for (final v in _visible)
               [
@@ -161,7 +160,6 @@ class _FuelVehiclesScreenState extends State<FuelVehiclesScreen> {
               ImdCol('الكمية', numeric: true),
             ],
             pageSize: 50,
-            cards: true,
             rows: [
               for (final i in _issues.where((x) => x.chassisNo.trim() == _open))
                 [

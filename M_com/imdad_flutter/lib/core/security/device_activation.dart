@@ -112,6 +112,13 @@ class DeviceActivation {
     return state != null && state.ok && state.role == DeviceRole.master;
   }
 
+  /// هل هذا جهاز فرع مفعَّل؟ (يستقبل حساباته ومالكه بالمزامنة.)
+  Future<bool> isBranch() async {
+    if (!_configured) return false;
+    final state = await current();
+    return state != null && state.ok && state.role == DeviceRole.branch;
+  }
+
   Future<ActivationState> activate(String token) async {
     final state = await verify(token, expectDeviceId: await deviceId());
     if (!state.ok) return state;

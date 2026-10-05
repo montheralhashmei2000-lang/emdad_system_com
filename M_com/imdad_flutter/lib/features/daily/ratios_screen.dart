@@ -199,6 +199,7 @@ class _RatiosScreenState extends State<RatiosScreen> {
 
   /// `ratExportExcel()`
   Future<void> _export() async {
+    if (!Perm.of(context).guard(context, 'ratios', 'export')) return;
     final rows = <List<String>>[];
     for (final (i, r) in _rows.indexed) {
       final q = double.tryParse(r.qty.text.trim()) ?? 0;
@@ -234,6 +235,7 @@ class _RatiosScreenState extends State<RatiosScreen> {
 
   /// `ratPrintMilitary()` — لائحة المقررات الرسمية.
   Future<void> _print() async {
+    if (!Perm.of(context).guard(context, 'ratios', 'print')) return;
     final visible = _visible();
     if (visible.isEmpty) {
       showImdToast(context, '✖ لا توجد بيانات للطباعة', error: true);
@@ -334,7 +336,6 @@ class _RatiosScreenState extends State<RatiosScreen> {
             ImdCol('ملاحظات', auto: false, width: 200),
           ],
           pageSize: 50,
-          cards: true,
           empty: 'لا توجد أصناف بعد — أضفها من شاشة «إدارة الأصناف»',
           rowColor: (i) => i < visible.length && visible[i].dirty
               ? context.imd.warnSoft.withValues(alpha: .5)

@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'imd_density.dart';
+import 'imd_style.dart';
+
 /// رموز ألوان النظام — المصدر الوحيد لكل لونٍ في الواجهة. تُقرأ من
 /// `context.imd`، ولا يُكتب لونٌ صريح في شاشةٍ ولا في مكوّن.
 @immutable
@@ -181,6 +184,132 @@ class ImdColors extends ThemeExtension<ImdColors> {
     isDark: true,
   );
 
+  /// النمط الكلاسيكي (فاتح): خلفية رمادية `#F3F4F6` وحدود رمادية رفيعة، وألوانٌ
+  /// دلالية بدرجات باهتة، وأخضر الإمداد `#047857` للتمييز. شريطه الجانبي كالفاتح.
+  static const classicLight = ImdColors(
+    bg: Color(0xFFF3F4F6),
+    surface: Color(0xFFFFFFFF),
+    subtle: Color(0xFFE5E7EB),
+    hover: Color(0xFFF3F4F6),
+    line: Color(0xFFD1D5DB),
+    lineStrong: Color(0xFF9CA3AF),
+    text: Color(0xFF1F2937),
+    text2: Color(0xFF374151),
+    muted: Color(0xFF4B5563),
+    faint: Color(0xFF6B7280),
+    accent: Color(0xFF047857),
+    accentHover: Color(0xFF065F46),
+    accentSoft: Color(0xFFECFDF5),
+    ring: Color(0x38047857),
+    onAccent: Color(0xFFFFFFFF),
+    success: Color(0xFF10B981),
+    successSoft: Color(0xFFD1FAE5),
+    danger: Color(0xFFEF4444),
+    dangerSoft: Color(0xFFFEE2E2),
+    warn: Color(0xFFF59E0B),
+    warnSoft: Color(0xFFFEF3C7),
+    info: Color(0xFF3B82F6),
+    infoSoft: Color(0xFFDBEAFE),
+    side: Color(0xFF0B3D3A),
+    side2: Color(0xFF104A46),
+    sideHover: Color(0xFF155A55),
+    sideActive: Color(0xFF1A6A63),
+    sideText: Color(0xFFF0FDFA),
+    sideMuted: Color(0xFF9CCFC7),
+    sideBorder: Color(0xFF1F665F),
+    sideLine: Color(0xFF17524D),
+    tableHead: Color(0xFFE5E7EB),
+    tableRowLine: Color(0xFFE5E7EB),
+    noteBg: Color(0xFFFFFAEB),
+    noteBorder: Color(0xFFFEDF89),
+    noteText: Color(0xFF7A2E0E),
+    isDark: false,
+  );
+
+  /// هوية قسم المحروقات (فاتح): برتقالي محروق مع شريط جانبي بنّي داكن — لوحةٌ
+  /// مستقلةٌ عن أخضر الإمداد بنفس البنية، فمن يعمل فيه يعرف قسمه من أول نظرة.
+  /// الألوان الدلالية (نجاح/خطر/تحذير) تبقى كما هي: معناها لا يتغيّر بالقسم.
+  static const fuelLight = ImdColors(
+    bg: Color(0xFFF7F6F4),
+    surface: Color(0xFFFFFFFF),
+    subtle: Color(0xFFEFEDEA),
+    hover: Color(0xFFF4F2EF),
+    line: Color(0xFFE6E2DC),
+    lineStrong: Color(0xFFD4CEC5),
+    text: Color(0xFF211D19),
+    text2: Color(0xFF3A342E),
+    muted: Color(0xFF625A51),
+    faint: Color(0xFF948B80),
+    accent: Color(0xFFC2410C),
+    accentHover: Color(0xFF9A3412),
+    accentSoft: Color(0xFFFFF1E8),
+    ring: Color(0x38C2410C),
+    onAccent: Color(0xFFFFFFFF),
+    success: Color(0xFF067647),
+    successSoft: Color(0xFFDCFAE6),
+    danger: Color(0xFFB42318),
+    dangerSoft: Color(0xFFFEE4E2),
+    warn: Color(0xFFB54708),
+    warnSoft: Color(0xFFFEF0C7),
+    info: Color(0xFF175CD3),
+    infoSoft: Color(0xFFEFF4FF),
+    side: Color(0xFF3B1D0E),
+    side2: Color(0xFF4A2512),
+    sideHover: Color(0xFF5C2F18),
+    sideActive: Color(0xFF6E3A1E),
+    sideText: Color(0xFFFFF4EC),
+    sideMuted: Color(0xFFD9AE91),
+    sideBorder: Color(0xFF6A3A20),
+    sideLine: Color(0xFF522B16),
+    tableHead: Color(0xFFFAF9F7),
+    tableRowLine: Color(0xFFF0EDE8),
+    noteBg: Color(0xFFFFFAEB),
+    noteBorder: Color(0xFFFEDF89),
+    noteText: Color(0xFF7A2E0E),
+    isDark: false,
+  );
+
+  /// هوية قسم المحروقات (داكن): برتقالي دافئ على رمادي فحمي بحرارةٍ خفيفة.
+  static const fuelDark = ImdColors(
+    bg: Color(0xFF171513),
+    surface: Color(0xFF211E1B),
+    subtle: Color(0xFF2F2B27),
+    hover: Color(0xFF2A2623),
+    line: Color(0xFF34302B),
+    lineStrong: Color(0xFF433E38),
+    text: Color(0xFFEFEBE6),
+    text2: Color(0xFFD8D2CB),
+    muted: Color(0xFFA8A097),
+    faint: Color(0xFF8E867C),
+    accent: Color(0xFFFB923C),
+    accentHover: Color(0xFFFDBA74),
+    accentSoft: Color(0x24FB923C),
+    ring: Color(0x52FB923C),
+    onAccent: Color(0xFF2B1204),
+    success: Color(0xFF4ADE80),
+    successSoft: Color(0x244ADE80),
+    danger: Color(0xFFF97066),
+    dangerSoft: Color(0x26F97066),
+    warn: Color(0xFFFDB022),
+    warnSoft: Color(0x26FDB022),
+    info: Color(0xFF84ADFF),
+    infoSoft: Color(0x2684ADFF),
+    side: Color(0xFF120F0C),
+    side2: Color(0xFF1C1814),
+    sideHover: Color(0xFF29231D),
+    sideActive: Color(0xFF3A2F25),
+    sideText: Color(0xFFEFEBE6),
+    sideMuted: Color(0xFFA8A097),
+    sideBorder: Color(0xFF332C25),
+    sideLine: Color(0xFF2B251F),
+    tableHead: Color(0xFF1C1A17),
+    tableRowLine: Color(0xFF2B2824),
+    noteBg: Color(0x1AFDB022),
+    noteBorder: Color(0x59FDB022),
+    noteText: Color(0xFFFEC84B),
+    isDark: true,
+  );
+
   /// شبكة الرسوم ونصوص محاورها في الوضع الفاتح (الداكن يشتقّها من `line`/`muted`).
   static const chartGridLight = Color(0xFFE7EEE9);
   static const chartTickLight = Color(0xFF66756C);
@@ -316,7 +445,7 @@ extension ImdThemeX on BuildContext {
 /// مقاسات النظام الثابتة: نصف القطر، وعرض الشريط الجانبي، وارتفاع الشريط
 /// العلوي، وحشوات المحتوى حسب العرض، وأهداف اللمس.
 class ImdSizes {
-  static const double radius = 12; // --ui-radius
+  static double get radius => ImdStyle.classic ? 2 : 12; // --ui-radius
   static const double sideWidth = 290; // .side
   static const double topbarHeight = 59; // .topbar
   static const EdgeInsets mainPadding = EdgeInsets.symmetric(horizontal: 36, vertical: 28); // ≥1200px
@@ -341,10 +470,11 @@ class ImdSizes {
 
   /// ارتفاع كل عناصر أشرطة الأعلى (تبويبات الصفحة وأزرار الإجراءات بجوارها) —
   /// واحدٌ للجميع فتقع على خطٍّ أفقيٍّ واحد في كل الشاشات.
-  static double get barControl => touchMin;
+  static double get barControl => ImdDensity.compactTargets ? 36 : touchMin;
 
-  /// ارتفاع الحقل المدمج (بدل [touchMin]).
-  static double get compactField => ImdBp.touch ? 40 : 34;
+  /// ارتفاع الحقل المدمج (بدل [touchMin]). الكثافة العالية تُنزله إلى 28 على
+  /// سطح المكتب وحده — أهداف اللمس لا تُضيَّق.
+  static double get compactField => ImdBp.touch ? 40 : (ImdDensity.isHigh ? 28 : 34);
 
   /// الفاصل الأفقي بين حقلين مترابطين في السطر (بين أعمدة جدول الإدخال) —
   /// أضيق من [ImdSizes.mainPadding] وأمثاله عمدًا: يمنع التحام حقلين
@@ -363,7 +493,7 @@ class ImdSizes {
   static const double compactPadH = 8;
 
   /// نصف قطر زوايا الحقل المدمج (بدل [radius] العام).
-  static const double compactRadius = 6;
+  static double get compactRadius => ImdStyle.classic ? 2 : 6;
   static const String font = 'IBMPlexSansArabic';
 }
 
@@ -405,7 +535,9 @@ class ImdCursor {
 }
 
 /// ظل البطاقات `--ui-shadow`.
-List<BoxShadow> imdShadow(ImdColors c) => [
+List<BoxShadow> imdShadow(ImdColors c) => ImdStyle.classic
+    ? const []
+    : [
       BoxShadow(
         color: c.isDark ? const Color(0x66000000) : const Color(0x0D101828),
         blurRadius: 2,
@@ -415,7 +547,9 @@ List<BoxShadow> imdShadow(ImdColors c) => [
 
 /// ظل القوائم المنسدلة والنوافذ الطافية فوق الصفحة — أعمق من [imdShadow]
 /// لأن ما يحمله يطفو فوق المحتوى لا يستقر عليه، فيحتاج فصلًا بصريًّا أوضح.
-List<BoxShadow> imdShadowOverlay(ImdColors c) => [
+List<BoxShadow> imdShadowOverlay(ImdColors c) => ImdStyle.classic
+    ? const []
+    : [
       BoxShadow(
         color: c.isDark ? const Color(0x8A000000) : const Color(0x24101828),
         blurRadius: 28,

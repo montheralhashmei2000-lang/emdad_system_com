@@ -1,3 +1,4 @@
+import '../../core/security/perm.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -178,7 +179,10 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
                   label: 'طباعة كشف الأرصدة',
                   icon: 'printer',
                   small: true,
-                  onPressed: () => FuelPrint.stocksReport(_db, _stocks),
+                  onPressed: () {
+                if (!Perm.of(context).guard(context, 'fuelReports', 'print')) return;
+                FuelPrint.stocksReport(_db, _stocks);
+              },
                 ),
               ]),
             ),
@@ -237,7 +241,6 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
         ImdCol('', center: true),
       ],
       pageSize: 50,
-      cards: true,
       rows: [
         for (final i in rows)
           [
@@ -254,13 +257,16 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
             ImdIconButton(
               icon: 'printer',
               tooltip: 'طباعة السند',
-              onPressed: () => FuelPrint.issueVoucher(
+              onPressed: () {
+                if (!Perm.of(context).guard(context, 'fuelMoves', 'print')) return;
+                FuelPrint.issueVoucher(
                 _db,
                 i,
                 allocation: _allocations
                     .where((a) => a.allocation.id == i.allocationId)
                     .firstOrNull,
-              ),
+              );
+              },
             ),
           ],
       ],
@@ -331,7 +337,6 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
         ImdCol('التسويات', numeric: true),
         ImdCol('الرصيد', numeric: true),
       ],
-      cards: true,
       rows: [
         for (final s in _stocks)
           [

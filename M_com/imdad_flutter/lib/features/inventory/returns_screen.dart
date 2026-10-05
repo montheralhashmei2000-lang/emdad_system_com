@@ -919,6 +919,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
 
   /// `retPrint(isUnit)`
   void _print(bool isUnit) {
+    if (!Perm.of(context).guard(context, 'returns', 'print')) return;
     final c = _collect(isUnit ? _uRows : _sRows, false);
     if (c.rows.isEmpty) {
       return showImdToast(context, '✖ لا توجد أصناف للطباعة${c.err.isNotEmpty ? ' — ${c.err}' : ''}');

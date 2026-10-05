@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/db/app_database.dart';
 import '../../data/repos/settings_repo.dart';
+import '../../domain/access_control.dart';
+import 'owner_promotion.dart';
 import 'password_hash.dart';
 import 'warehouse_scope.dart';
 import '../../data/sync/sync_marks.dart';
@@ -42,9 +44,61 @@ class AuthResult {
 ///   بملفٍّ نصي. القيم القديمة في `SharedPreferences` تُنقل مرةً واحدة عند أول
 ///   قراءة ثم تُمسح، فلا تسقط الجلسات القائمة عند الترقية.
 class AuthService {
-  AuthService(this.db);
+  AuthService(this.db, {this.isBranchDevice});
 
   final AppDatabase db;
+
+  /// هل هذا جهاز فرع؟ (يصله المالك بالمزامنة فلا يُرقّى فيه ولا يُحدَّد.)
+  /// `null` ⇒ ليس فرعًا (جهاز مستقل أو إدارة).
+  final Future<bool> Function()? isBranchDevice;
+
+  Future<bool> _isBranch() async {
+    try {
+      return await isBranchDevice?.call() ?? false;
+    } catch (err, stack) {
+      ErrorLogger.log('auth.isBranch', err, stack);
+      return true; // فشلٌ مغلق: لا ترقية إن لم نعرف
+    }
+  }
+
+  /// يرقّي المدير المحلي الوحيد إلى مالك إن انطبقت الشروط ([OwnerPromotion.run]).
+  /// لا يُفشل الدخول أبدًا: عطبٌ هنا يُسجَّل ويُترك.
+  Future<void> _promoteOwnerIfDue() async {
+    try {
+      await OwnerPromotion.run(db, isBranchDevice: await _isBranch());
+    } catch (err, stack) {
+      ErrorLogger.log('auth.ownerPromotion', err, stack);
+    }
+  }
+
+  /// لا مالك وأكثر من مدير ⇒ يُنبَّه المديرون ليحدّدوا المالك. (لا في الفروع.)
+  Future<bool> ownerSelectionNeeded() async {
+    if (await _isBranch()) return false;
+    return OwnerPromotion.needsSelection(db);
+  }
+
+  /// يؤكّد كلمة مرور المستخدم الحالي دون فتح جلسة ولا عدّ محاولات — لتأكيد
+  /// إجراءٍ حسّاس (تحديد المالك).
+  Future<bool> confirmCurrentPassword(String password) async {
+    final u = _current;
+    if (u == null || password.isEmpty) return false;
+    final fresh = await (db.select(db.users)..where((t) => t.id.equals(u.id))).getSingleOrNull();
+    if (fresh == null) return false;
+    return PasswordHash.verify(password, fresh.saltHex, fresh.hashHex, fresh.iterations);
+  }
+
+  /// يحدّد [userId] مالكًا: مديرٌ حالي، وكلمة مروره تأكيدٌ، وليس جهاز فرع.
+  Future<bool> assignOwner({required String userId, required String confirmPassword}) async {
+    final me = _current;
+    if (me == null || !UserRole.isAdmin(me.role)) return false;
+    if (await _isBranch()) return false;
+    if (!await confirmCurrentPassword(confirmPassword)) return false;
+    final ok = await OwnerPromotion.assign(db, userId: userId, actorEmail: me.email);
+    if (ok && userId == me.id) {
+      _current = await (db.select(db.users)..where((t) => t.id.equals(me.id))).getSingleOrNull() ?? _current;
+    }
+    return ok;
+  }
 
   /// الحد الأدنى لطول كلمة المرور عند إنشاء الحساب أو تغييرها.
   static const int minPasswordLength = 8;
@@ -52,7 +106,7 @@ class AuthService {
   /// هل يُنبَّه هذا المستخدم لتغيير كلمة مروره بعد الدخول؟ كلمته أقصر من الحد
   /// الحالي ([minPasswordLength]) وليس مديرًا (المدراء لا يُزعَجون بالتنبيه).
   static bool shouldSuggestPasswordChange({required String role, required String password}) =>
-      role != 'admin' && password.length < minPasswordLength;
+      !UserRole.isAdmin(role) && password.length < minPasswordLength;
 
   static const int maxAttempts = 5;
   static const Duration lockDuration = Duration(minutes: 3); // AUTHCORE.LOCK_MS = 180000
@@ -182,9 +236,31 @@ class AuthService {
     }
 
     await _lockStore(lockKey, const _LockState(0, 0));
-    final account = await _upgradeHash(found, password);
+    await _promoteOwnerIfDue();
+    final fresh =
+        await (db.select(db.users)..where((t) => t.id.equals(found.id))).getSingleOrNull() ?? found;
+    final account = await _upgradeHash(fresh, password);
     await _startSession(account);
     return AuthResult(status: AuthStatus.ok, user: account, message: '🌐 تم الدخول محليًا (بدون إنترنت)');
+  }
+
+  /// يفتح جلسةً لمستخدمٍ تحقّق منه مسارٌ آخر غير كلمة المرور (البصمة).
+  /// الشروط بعد التحقق هي نفسها: مفعَّل ومعتمد.
+  Future<AuthResult> startSessionFor(User user) async {
+    if (!user.active) {
+      return const AuthResult(
+        status: AuthStatus.inactive,
+        message: '✖ الحساب غير مفعّل — اطلب من مدير النظام تفعيل حسابك',
+      );
+    }
+    if (!user.approved) {
+      return const AuthResult(
+        status: AuthStatus.notApproved,
+        message: '✖ الحساب غير معتمد بعد — انتظر اعتماد المدير',
+      );
+    }
+    await _startSession(user);
+    return AuthResult(status: AuthStatus.ok, user: user, message: '🌐 تم الدخول بالبصمة');
   }
 
   /// إعادة تجزئة كلمة المرور بالعدد الحالي من الدورات إن كانت بصمتها أضعف.
@@ -315,6 +391,7 @@ class AuthService {
   }
 
   Future<User?> restoreSession() async {
+    await _promoteOwnerIfDue();
     final session = await _readSession();
     if (session == null) return null;
     final id = session.$1;
@@ -357,17 +434,16 @@ class AuthService {
   }
 
   bool can(User user, String page, [String action = 'view']) {
-    if (user.role == 'admin') return true;
+    if (SysPerm.isSys(page)) return UserRole.isOwner(user.role);
+    if (UserRole.isAdmin(user.role)) return true;
     final perms = permissionsOf(user);
-    final p = perms[page];
-    if (p is Map) return p[action] == true;
-    return false;
+    return AccessControl.allows(perms[page] is Map ? perms[page] as Map : null, action);
   }
 
   /// نطاق المستودعات: `null` ⇒ كل المستودعات (المدير أو `ALL`)، وإلا قائمة أسماء.
   /// التالف يُرجع قائمةً فارغة (فشل مغلق) — انظر [parseWarehouseScope].
   List<String>? warehouseScopeOf(User user) {
-    if (user.role == 'admin') return null;
+    if (UserRole.isAdmin(user.role)) return null;
     return parseWarehouseScope(user.warehouseScope, source: 'auth.warehouseScope');
   }
 

@@ -254,53 +254,43 @@ class _ImdSuggestions extends StatefulWidget {
 }
 
 class _ImdSuggestionsState extends State<_ImdSuggestions> {
-  bool _open = false;
+  final MenuController _menu = MenuController();
 
   void _pick(String v) {
     imdSetText(widget.controller, v);
     widget.onPick?.call(v);
-    setState(() => _open = false);
+    _menu.close();
   }
 
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Row(children: [
-        Expanded(child: widget.child),
-        const SizedBox(width: 6),
-        ImdIconButton(
-          icon: _open ? 'chevron-up' : 'chevron-down',
+    // The list floats in an overlay menu, so it never grows the field's own
+    // box (cells in entry tables have a fixed row height).
+    return Row(children: [
+      Expanded(child: widget.child),
+      const SizedBox(width: 6),
+      MenuAnchor(
+        controller: _menu,
+        alignmentOffset: const Offset(0, 4),
+        style: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(c.surface),
+          maximumSize: const WidgetStatePropertyAll(Size(320, 280)),
+        ),
+        menuChildren: [
+          for (final v in widget.items)
+            MenuItemButton(
+              onPressed: () => _pick(v),
+              child: Text(v, style: TextStyle(fontSize: 13, color: c.text2)),
+            ),
+        ],
+        builder: (context, controller, _) => ImdIconButton(
+          icon: controller.isOpen ? 'chevron-up' : 'chevron-down',
           tooltip: 'اقتراحات',
-          onPressed: () => setState(() => _open = !_open),
+          onPressed: () =>
+              controller.isOpen ? controller.close() : controller.open(),
         ),
-      ]),
-      if (_open)
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final v in widget.items)
-                InkWell(
-                  onTap: () => _pick(v),
-                  borderRadius: BorderRadius.circular(999),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: c.subtle,
-                      border: Border.all(color: c.line),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child:
-                        Text(v, style: TextStyle(fontSize: 12, color: c.text2)),
-                  ),
-                ),
-            ],
-          ),
-        ),
+      ),
     ]);
   }
 }
@@ -431,9 +421,8 @@ class ImdDateField extends StatelessWidget {
 
   static String _display(String v) {
     final d = DateTime.tryParse(v);
-    if (d == null) return arDigits('يوم/شهر/سنة');
-    return arDigits(
-        '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}');
+    if (d == null) return 'يوم-شهر-سنة';
+    return fmtDate(d);
   }
 
   @override

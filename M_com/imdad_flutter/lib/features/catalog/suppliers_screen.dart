@@ -129,6 +129,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
   }
 
   Future<void> _delete(Supplier it) async {
+    if (!Perm.of(context).guard(context, 'suppliers', 'delete')) return;
     final u = _usage[it.name.trim()];
     if ((u?.count ?? 0) > 0 &&
         !await imdConfirm(context, 'هذا المورد مستخدم في سجلات سابقة (${nf(u!.count)}). هل تريد حذفه رغم ذلك؟',
@@ -158,7 +159,8 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final can = Perm.of(context).admin;
+    // الإضافة والتعديل والحذف بصلاحية «الموردون» نفسها (لا بالمدير وحده)، وكل إجراءٍ محروسٌ في دالته.
+    final can = Perm.of(context).writable('suppliers');
     final cur = _items.where((x) => x.id == _editId).firstOrNull;
     final q = _q.text.trim().toLowerCase();
     final rows = _items
@@ -251,7 +253,6 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
           ],
           pageSize: 50,
           maxHeight: ImdSizes.tableMaxHeight(context),
-          cards: true,
           rowMenu: !can
               ? null
               : (i) => [
@@ -265,6 +266,23 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                     ),
                     ImdMenuItem(label: 'حذف', icon: 'trash', danger: true, onTap: () => _delete(rows[i])),
                   ],
+          // قيم الخلايا الخام: تصفية الأعمدة والتجميع (مثلًا حسب المدينة).
+          values: [
+            for (final x in rows)
+              () {
+                final u = _usage[x.name.trim()];
+                String or(String v) => v.isEmpty ? '—' : v;
+                return <Object?>[
+                  or(x.name),
+                  or(x.contact),
+                  or(x.phone),
+                  or(x.city),
+                  (u?.count ?? 0) > 0 ? 'وارد ${nf(u!.receipts)} • مرتجع ${nf(u.returns)}' : '—',
+                  or(u?.lastDate ?? ''),
+                  or(x.notes),
+                ];
+              }(),
+          ],
           rows: [
             for (final x in rows)
               () {

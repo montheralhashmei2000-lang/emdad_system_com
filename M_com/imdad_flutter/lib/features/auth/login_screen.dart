@@ -1,3 +1,4 @@
+import '../../domain/access_control.dart' show UserRole;
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../core/security/auth_service.dart';
+import '../../core/security/biometric_service.dart';
+import '../../core/security/sys_notice.dart';
 import '../../data/db/app_database.dart';
 import 'change_password_dialog.dart';
 import '../../core/ui/imd_form.dart';
@@ -42,6 +45,10 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _remember = false;
   String _error = '';
 
+  /// الدخول بالبصمة: مفعَّلةٌ على هذا الجهاز ومتاحةٌ الآن (أندرويد فقط).
+  bool _bioReady = false;
+  late final BiometricService _bio;
+
   /// زر «خروج» حيث يمكن للتطبيق أن يغلق نفسه (ويندوز وأندرويد).
   static bool get _canExit =>
       LoginScreen.debugShowExit ?? (Platform.isWindows || Platform.isAndroid);
@@ -51,7 +58,61 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    _bio = BiometricService(context.read<AppDatabase>(), context.read<AuthService>());
     _restoreRememberedUser();
+    _initBiometric();
+  }
+
+  /// يفحص جاهزية البصمة ثم يعرض نافذتها تلقائيًّا مرةً واحدة عند فتح الشاشة.
+  Future<void> _initBiometric() async {
+    if (await _bio.availability() != BiometricAvailability.available) return;
+    if (await _bio.enrolledUserId() == null) return;
+    if (!mounted) return;
+    setState(() => _bioReady = true);
+    // بعد أول إطار فتظهر الشاشة خلف نافذة البصمة لا فراغًا أسود.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _loginWithBiometric();
+    });
+  }
+
+  Future<void> _loginWithBiometric() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = '';
+    });
+    final res = await _bio.signIn();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (res.isOk) {
+      widget.onSignedIn();
+      return;
+    }
+    // الاعتماد أُبطل (تغيّرت كلمة المرور مثلًا): يختفي الزر ويبقى الدخول بالكلمة.
+    if (await _bio.enrolledUserId() == null && mounted) setState(() => _bioReady = false);
+    _lErr(res.message);
+  }
+
+  /// بعد دخولٍ ناجح بكلمة المرور: يعرض تفعيل البصمة إن كانت متاحةً ولم تُفعَّل
+  /// لهذا الحساب ولم يرفض المستخدم العرض من قبل.
+  Future<void> _offerBiometric(User user, ScaffoldMessengerState? messenger) async {
+    if (await _bio.availability() != BiometricAvailability.available) return;
+    if (await _bio.enrolledUserId() == user.id) return;
+    if (await _bio.declinedPrompt()) return;
+    if (!mounted) return;
+    final choice = await showDialog<_BioChoice>(
+      context: context,
+      builder: (_) => const _BioOfferDialog(),
+    );
+    if (choice == _BioChoice.never) {
+      await _bio.rememberDeclined();
+    } else if (choice == _BioChoice.enable) {
+      final ok = await _bio.enroll(user);
+      messenger?.showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text(ok ? 'تم تفعيل الدخول بالبصمة' : 'لم يُفعَّل الدخول بالبصمة'),
+      ));
+    }
   }
 
   /// اسم المستخدم المحفوظ من دخولٍ سابق — كلمة المرور لا تُحفظ أبدًا.
@@ -101,9 +162,35 @@ class _LoginScreenState extends State<LoginScreen> {
       final db = context.read<AppDatabase>();
       final laterColor = Theme.of(context).colorScheme.inversePrimary;
       final user = res.user;
+      // لا مالك وأكثر من مدير: يُنبَّه المدير ليحدّد المالك (مرة في كل دخول حتى يُحدَّد).
+      final ownerPending = user != null &&
+          UserRole.isAdmin(user.role) &&
+          await context.read<AuthService>().ownerSelectionNeeded();
+      if (!mounted) return;
+      // مرحلة الانتقال: مرةً واحدة لكل مدير غير مالك.
+      final sysNotice = SysTransitionNotice(db);
+      final showSysNotice = user != null && await sysNotice.shouldShow(user);
+      if (showSysNotice) await sysNotice.markSeen(user);
+      if (!mounted) return;
       final weak = user != null &&
           AuthService.shouldSuggestPasswordChange(role: user.role, password: _pass.text);
+      if (user != null) await _offerBiometric(user, messenger);
+      if (!mounted) return;
       widget.onSignedIn();
+      if (showSysNotice && messenger != null) {
+        messenger.showSnackBar(const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 15),
+          content: Text(SysTransitionNotice.message),
+        ));
+      }
+      if (ownerPending && messenger != null) {
+        messenger.showSnackBar(const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 12),
+          content: Text('لم يُحدَّد مالك للنظام — حدّد المالك من الإعدادات ← نظرة عامة.'),
+        ));
+      }
       if (weak && messenger != null) _offerPasswordUpgrade(messenger, db, user.id, laterColor);
       return;
     }
@@ -290,6 +377,10 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ],
         ]),
+        if (_bioReady) ...[
+          const SizedBox(height: 10),
+          _BioBtn(height: inputH, fontSize: inputFs, busy: _busy, onTap: _loginWithBiometric),
+        ],
       ],
     );
   }
@@ -630,6 +721,108 @@ class _ExitBtnState extends State<_ExitBtn> {
               Text('خروج', style: TextStyle(fontSize: widget.fontSize, fontWeight: FontWeight.w600, color: fg)),
             ]),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _BioChoice { enable, later, never }
+
+/// عرض تفعيل البصمة بعد أول دخولٍ ناجح بكلمة المرور.
+class _BioOfferDialog extends StatelessWidget {
+  const _BioOfferDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.imd;
+    return Dialog(
+      backgroundColor: c.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 380),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Center(
+              child: Container(
+                width: 64,
+                height: 64,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: c.accent.withValues(alpha: .12), shape: BoxShape.circle),
+                child: ImdIcon('fingerprint', size: 34, color: c.accent),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('الدخول بالبصمة',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: c.text)),
+            const SizedBox(height: 8),
+            Text('ادخل في المرات القادمة ببصمتك دون كتابة كلمة المرور. تبقى كلمة المرور مطلوبةً إن غيّرتها.',
+                textAlign: TextAlign.center, style: TextStyle(fontSize: 13, height: 1.6, color: c.text2)),
+            const SizedBox(height: 20),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: c.accent,
+                foregroundColor: c.onAccent,
+                minimumSize: const Size.fromHeight(46),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () => Navigator.pop(context, _BioChoice.enable),
+              child: const Text('تفعيل الآن'),
+            ),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context, _BioChoice.later),
+                  child: Text('لاحقًا', style: TextStyle(color: c.text2)),
+                ),
+              ),
+              Expanded(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context, _BioChoice.never),
+                  child: Text('لا تسألني مجددًا', style: TextStyle(color: c.muted)),
+                ),
+              ),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// زرّ «الدخول بالبصمة»: ثانويٌّ بإطارٍ بلون التمييز تحت زر «دخول».
+class _BioBtn extends StatelessWidget {
+  const _BioBtn({required this.height, required this.fontSize, required this.busy, required this.onTap});
+  final double height;
+  final double fontSize;
+  final bool busy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.imd;
+    return Semantics(
+      button: true,
+      label: 'الدخول بالبصمة',
+      child: InkWell(
+        onTap: busy ? null : onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          height: height,
+          decoration: BoxDecoration(
+            color: c.accent.withValues(alpha: .08),
+            border: Border.all(color: c.accent.withValues(alpha: .5)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            ImdIcon('fingerprint', size: fontSize + 5, color: c.accent),
+            const SizedBox(width: 8),
+            Text('الدخول بالبصمة',
+                style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w600, color: c.accent)),
+          ]),
         ),
       ),
     );

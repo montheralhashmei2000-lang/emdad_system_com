@@ -3,8 +3,11 @@ import 'dart:io';
 
 import 'package:excel/excel.dart' hide Border, BorderStyle;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../security/auth_service.dart';
+import '../security/perm.dart';
 import 'imd_files.dart';
 import 'imd_tokens.dart';
 import 'imd_widgets.dart';
@@ -112,8 +115,20 @@ class _ImdTableToolbarState extends State<ImdTableToolbar> {
 
   @override
   Widget build(BuildContext context) {
-    final t = _cfg;
-    if (t == null || (!t.p && !t.x && !t.i)) return const SizedBox.shrink();
+    final cfg = _cfg;
+    if (cfg == null) return const SizedBox.shrink();
+    // أدوات الشاشة تخضع لصلاحيات المستخدم: طباعة / تصدير / (استيراد = إضافة).
+    // بلا مزوّد مصادقة (الاختبارات المعزولة) لا تُقيَّد.
+    AuthService? auth;
+    try {
+      auth = context.read<AuthService>();
+    } on ProviderNotFoundException {
+      auth = null;
+    }
+    final perm = auth == null ? null : Perm(auth);
+    bool allowed(String action) => perm == null || perm.has(widget.page, action);
+    final t = (p: cfg.p && allowed('print'), x: cfg.x && allowed('export'), i: cfg.i && allowed('import'));
+    if (!t.p && !t.x && !t.i) return const SizedBox.shrink();
     final c = context.imd;
     return Container(
       margin: const EdgeInsets.only(top: 4, bottom: 10),

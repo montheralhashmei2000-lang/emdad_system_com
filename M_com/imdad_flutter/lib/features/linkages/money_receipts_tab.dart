@@ -181,7 +181,6 @@ class _MoneyReceiptsTabState extends State<MoneyReceiptsTab> {
             ImdCol(''),
           ],
           rows: [for (final r in rows) _row(context, r)],
-          cards: true,
           empty: 'لا سندات مطابقة',
           onRowTap: null,
         ),

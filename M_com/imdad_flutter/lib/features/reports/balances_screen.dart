@@ -228,8 +228,21 @@ class _BalancesScreenState extends State<BalancesScreen> {
           ],
           pageSize: 50,
           maxHeight: ImdSizes.tableMaxHeight(context),
-          cards: true,
           empty: 'لا أصناف مطابقة',
+          // قيم الخلايا الخام: تُفعّل تصفية الأعمدة والتجميع (مثلًا حسب التصنيف
+          // أو الحالة) ويُبلَّغ شريط الحالة بعدد الأصناف المعروضة.
+          values: [
+            for (final x in rows)
+              [
+                x.code,
+                x.name,
+                x.categoryName.isEmpty ? '—' : x.categoryName,
+                x.minQty > 0 ? nf(displayBalance(x, x.minQty).qty) : '—',
+                nf(displayBalance(x, _bal(x)).qty),
+                displayBalance(x, _bal(x)).unit,
+                _state(x).$1,
+              ],
+          ],
           rows: [
             for (final x in rows)
               [

@@ -102,22 +102,11 @@ class _SyncScreenState extends State<SyncScreen> {
     if (mounted) setState(() => _addresses = list.join('، '));
   }
 
+  /// المزامنة (`sys.sync`) للمالك وحده — عدا التشغيل الأول لجهازٍ بلا حسابات
+  /// حيث الحارس رمز الاقتران المعروض على جهاز الإدارة.
   bool _can(String action) {
-    // جهاز لم يصله حساب بعد لا يوجد فيه من يملك صلاحية: الحارس هنا هو رمز
-    // الاقتران المعروض على شاشة جهاز الإدارة، لا جدول الصلاحيات الفارغ.
     if (widget.firstRun) return true;
-    final auth = context.read<AuthService>();
-    final user = auth.currentUser;
-    if (user == null) return false;
-    final perms = auth.permissionsOf(user).map(
-          (k, v) => MapEntry(k, (v as Map).map((a, b) => MapEntry(a.toString(), b == true))),
-        );
-    return AccessControl.can(
-      isAdmin: user.role == 'admin',
-      permissions: perms,
-      page: 'settings',
-      action: action,
-    );
+    return UserRole.isOwner(context.read<AuthService>().currentUser?.role);
   }
 
   void _note(String message) {
@@ -287,7 +276,7 @@ class _SyncScreenState extends State<SyncScreen> {
     if (!_can(PermAction.view)) {
       return const ImdPage(children: [
         ImdPageTitle(title: 'مزامنة الأجهزة', icon: 'swap'),
-        ImdNote('👁 المزامنة متاحة لمن يملك صلاحية الإعدادات.'),
+        ImdNote('👁 المزامنة (الاقتران ومفاتيح الأجهزة) للمالك وحده.'),
       ]);
     }
     final editable = _can(PermAction.edit);

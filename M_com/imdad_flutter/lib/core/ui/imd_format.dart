@@ -40,8 +40,12 @@ String nf(num? n) {
   return arDigits(out);
 }
 
-/// تاريخٌ للعرض: يوم/شهر/سنة بأرقام هندية.
-String arDate(DateTime d) => arDigits('${d.day}/${d.month}/${d.year}');
+/// تاريخٌ للعرض بالصيغة الموحَّدة للنظام: `01-10-2026 م` (أرقام لاتينية).
+String arDate(DateTime d) => fmtDate(d);
+
+/// الصيغة الموحَّدة للتاريخ في كل النظام: `يوم-شهر-سنة م`.
+String fmtDate(DateTime d) =>
+    '${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.year} م';
 
 /// صيغة التاريخ المخزَّنة في قاعدة البيانات (YYYY-MM-DD) — تُرتَّب نصيًّا.
 String isoDay(DateTime d) =>

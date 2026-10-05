@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import '../../core/security/auth_service.dart';
 import '../../core/security/device_activation.dart';
 import '../../core/security/esign.dart';
+import '../../core/security/perm.dart';
+import '../../domain/access_control.dart' show SysPerm;
 import '../../core/ui/imd_context_menu.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_scan.dart';
@@ -34,6 +36,26 @@ bool showsReceiveAccounts({
 }) =>
     activated && !hasUsers && !canBootstrap;
 
+/// من يفعل ماذا في شاشة تفعيل الأجهزة (`sys.devices`).
+///
+/// • [enterToken]: إدخال رمز تفعيل لهذا الجهاز — في بوابة الجهاز الجديد
+///   ([standalone]) لأي أحد، وفي الإعدادات للمالك وحده.
+/// • [manage]: إصدار الرموز، وإلغاء الأجهزة وتسميتها وحذفها، واستيراد مفتاح
+///   المالك الخاص وإزالته — للمالك، أو لمن يقف أمام **جهازٍ جديد بلا حسابات**
+///   (حيث لا مالك بعد، ولا طريق غيره لتفعيل الجهاز الأول).
+/// • [bootstrap]: تهيئة جهاز الإدارة (إنشاء حساب المدير الأول) — في بوابة جهازٍ
+///   **بلا أي حساب** وحده؛ تُرفض متى وُجد مستخدمٌ واحد.
+({bool enterToken, bool manage, bool bootstrap}) deviceAccess({
+  required bool standalone,
+  required bool hasUsers,
+  required bool owner,
+}) =>
+    (
+      enterToken: standalone || owner,
+      manage: owner || (standalone && !hasUsers),
+      bootstrap: standalone && !hasUsers,
+    );
+
 /// تفعيل الأجهزة — إدخال رمز التفعيل على جهاز الفرع، وإصداره من جهاز الإدارة.
 ///
 /// الرمز موقَّع بـECDSA ويُملى هاتفيًا أو يُمسح من QR، فلا يحتاج إنترنت إطلاقًا
@@ -54,6 +76,7 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
   late final AppDatabase _db = context.read<AppDatabase>();
   late final DeviceActivation _act = DeviceActivation(_db);
   late final AuthService _auth = context.read<AuthService>();
+  late final Perm _perm = Perm.of(context);
 
   final _token = TextEditingController();
   final _adminUser = TextEditingController();
@@ -77,6 +100,17 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
   ActivationState? _state;
   int _months = 12;
   DeviceRole _role = DeviceRole.branch;
+
+  /// الصلاحيات الفعلية الآن (تتبع المالك وحالة الجهاز).
+  ({bool enterToken, bool manage, bool bootstrap}) get _access =>
+      deviceAccess(standalone: widget.standalone, hasUsers: _hasUsers, owner: _perm.owner);
+
+  /// حارسٌ داخل كل دالة — لا يُكتفى بإخفاء الزر. يُرجع `true` إن مُنع المستخدم.
+  bool _denied(bool allowed) {
+    if (allowed) return false;
+    showImdToast(context, '✖ هذا الإجراء للمالك وحده — ${SysPerm.labels[SysPerm.devices]}', error: true);
+    return true;
+  }
 
   @override
   void initState() {
@@ -116,6 +150,7 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
   }
 
   Future<void> _activate() async {
+    if (_denied(_access.enterToken)) return;
     final raw = _token.text.trim();
     if (raw.isEmpty) {
       showImdToast(context, '✖ أدخل رمز التفعيل', error: true);
@@ -193,6 +228,7 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
   }
 
   Future<void> _issue() async {
+    if (_denied(_access.manage)) return;
     final device = _targetDevice.text.trim().toUpperCase();
     if (device.length != 8) {
       showImdToast(context, '✖ معرّف الجهاز ثمانية أحرف', error: true);
@@ -239,8 +275,10 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
             'الرمز يُملى هاتفيًا أو يُمسح من QR — ولا يحتاج إنترنت.',
       ),
       _thisDevice(),
-      const SizedBox(height: 12),
-      _enterToken(),
+      if (_access.enterToken) ...[
+        const SizedBox(height: 12),
+        _enterToken(),
+      ],
       // جهاز الفرع **المفعَّل** ينتظر حساباته من المزامنة، فيُقال له ذلك صراحة
       // بدل أن يُترك أمام شاشة دخول لا حساب خلفها. وغير المفعَّل لا يرى إلا
       // خانة الرمز فوق: لا مزامنة قبل بطاقة تفعيل موقَّعة.
@@ -254,16 +292,18 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
       ],
       // إنشاء الحساب لا يظهر إلا على جهاز الإدارة وبلا حساب مدير سابق:
       // إمّا حمل رمزًا بدور الإدارة، أو كان عليه مفتاح المالك الخاص.
-      if (_fresh && _canBootstrap) ...[
+      if (_access.bootstrap && _fresh && _canBootstrap) ...[
         const SizedBox(height: 12),
         _masterSetup(),
       ],
       // متاحة دائمًا عن قصد: حيازة المفتاح الخاص **هي** إثبات الملكية، والمفتاح
       // الخاطئ يُرفض. لو خُبّئت خلف «جهاز إدارة» لاستحال تفعيل الجهاز الأول:
       // الإدارة تحتاج رمزًا، والرمز يحتاج المفتاح، والمفتاح يحتاج هذه اللوحة.
-      const SizedBox(height: 12),
-      _ownerKeyPanel(),
-      if (canIssue) ...[
+      if (_access.manage) ...[
+        const SizedBox(height: 12),
+        _ownerKeyPanel(),
+      ],
+      if (canIssue && _access.manage) ...[
         const SizedBox(height: 12),
         _issuer(),
         const SizedBox(height: 12),
@@ -353,6 +393,14 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
 
   /// إنشاء حساب المدير ومفتاح التوقيع على جهاز الإدارة — مرة واحدة.
   Future<void> _setupMaster() async {
+    // تُرفض متى وُجد أي مستخدم — يُقرأ من القاعدة الآن لا من حالةٍ قديمة في الشاشة.
+    if (!widget.standalone || await _auth.hasAnyUser()) {
+      if (mounted) {
+        showImdToast(context, '✖ لا تُهيَّأ الإدارة على جهازٍ فيه حسابات', error: true);
+      }
+      return;
+    }
+    if (!mounted) return;
     final user = _adminUser.text.trim();
     if (!RegExp(r'^[A-Za-z0-9_.]{3,20}$').hasMatch(user)) {
       showImdToast(context, '✖ اسم المستخدم: ٣-٢٠ حرفًا إنجليزيًا/أرقام/نقطة/شرطة', error: true);
@@ -446,6 +494,7 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
                 kind: ImdBtnKind.danger,
                 small: true,
                 onPressed: () async {
+                  if (_denied(_access.manage)) return;
                   await _act.forgetPrivateKey();
                   await _load();
                   if (mounted) showImdToast(context, '✔ أُزيل المفتاح من هذا الجهاز');
@@ -457,6 +506,7 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
       );
 
   Future<void> _importOwnerKey() async {
+    if (_denied(_access.manage)) return;
     setState(() => _busy = true);
     final ok = await _act.importPrivateKey(_ownerKey.text);
     if (!mounted) return;
@@ -567,6 +617,7 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
   String _day(DateTime d) => d.toIso8601String().substring(0, 10);
 
   Future<void> _rename(IssuedDevice d) async {
+    if (_denied(_access.manage)) return;
     final ctrl = TextEditingController(text: d.name);
     final name = await showImdModal<String>(
       context,
@@ -586,11 +637,13 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
     );
     ctrl.dispose();
     if (name == null) return;
+    if (_denied(_access.manage)) return;
     await _act.renameIssued(d.deviceId, name);
     await _load();
   }
 
   Future<void> _toggleRevoked(IssuedDevice d) async {
+    if (_denied(_access.manage)) return;
     final revoke = !d.revoked;
     final ok = await imdConfirm(
       context,
@@ -609,6 +662,7 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
   }
 
   Future<void> _removeDevice(IssuedDevice d) async {
+    if (_denied(_access.manage)) return;
     final ok = await imdConfirm(
       context,
       'حذف «${d.name.isEmpty ? d.deviceId : d.name}» من السجل؟\n\n'

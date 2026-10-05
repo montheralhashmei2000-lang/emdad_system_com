@@ -1,3 +1,4 @@
+import '../../core/security/perm.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -66,7 +67,10 @@ class _FuelStocksReportScreenState extends State<FuelStocksReportScreen> {
         trailing: ImdButton.outline(
           label: 'طباعة الكشف',
           icon: 'printer',
-          onPressed: () => FuelPrint.stocksReport(_db, _stocks),
+          onPressed: () {
+                if (!Perm.of(context).guard(context, 'fuelReports', 'print')) return;
+                FuelPrint.stocksReport(_db, _stocks);
+              },
         ),
       ),
       ImdKpis(children: [
@@ -112,7 +116,6 @@ class _FuelStocksReportScreenState extends State<FuelStocksReportScreen> {
             ImdCol('التسويات', numeric: true),
             ImdCol('الرصيد', numeric: true),
           ],
-          cards: true,
           rows: [
             for (final s in _stocks)
               [
@@ -459,7 +462,6 @@ class _FuelLedgerScreenState extends State<FuelLedgerScreen> {
         ImdCol('الرصيد', numeric: true),
       ],
       pageSize: 50,
-      cards: true,
       rows: [
         // السطر الأول رصيدٌ مُرحَّل لا حركة، فيُميَّز ولا يُجمع مع الوارد.
         [
@@ -621,7 +623,6 @@ class _FuelPlanVsIssuedScreenState extends State<FuelPlanVsIssuedScreen> {
         ImdCol('الاستهلاك'),
       ],
       pageSize: 50,
-      cards: true,
       rows: [
         for (final r in rows)
           [

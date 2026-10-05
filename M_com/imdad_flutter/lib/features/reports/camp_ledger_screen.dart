@@ -333,7 +333,6 @@ class _CampLedgerScreenState extends State<CampLedgerScreen> {
           ImdCol('', center: true),
         ],
         pageSize: 50,
-        cards: true,
         rows: [
           for (final r in _rows)
             [
@@ -411,7 +410,6 @@ class _CampLedgerScreenState extends State<CampLedgerScreen> {
           ImdCol('التراكمي', numeric: true),
         ],
         pageSize: 50,
-        cards: true,
         rows: [
           for (final d in _variance)
             [

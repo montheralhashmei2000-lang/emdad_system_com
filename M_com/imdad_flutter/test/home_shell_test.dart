@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/core/security/auth_service.dart';
 import 'package:imdad/core/security/perm.dart';
 import 'package:imdad/core/theme/app_theme.dart';
+import 'package:imdad/core/ui/imd_page_tabs.dart';
+import 'package:imdad/core/ui/imd_status_bar.dart';
 import 'package:imdad/core/ui/imd_widgets.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/sync/auto_sync.dart';
@@ -269,11 +271,11 @@ void main() {
     await tapSection('العمليات المخزنية'); // طيٌّ بلا فتح.
   });
 
-  /// شاشة اختيار القسم في نافذةٍ عريضة: `Row` بـ`stretch` داخل تمريرٍ يُعطي
+  /// تبديل القسم (كانت تمرّ بشاشة اختيار القسم: `Row` بـ`stretch` داخل تمريرٍ يُعطي
   /// ارتفاعًا لا نهائيًا فيفشل التخطيط. وبعدها تفشل كل حركة فأرة في
   /// `MouseTracker` (`!_debugDuringDeviceUpdate`) فيتجمّد التطبيق في وضع التطوير.
   /// لا يظهر إلا بمؤشر فأرة حقيقي، ولا يظهر بنقر اللمس الذي تستعمله بقية الاختبارات.
-  testWidgets('التبديل إلى شاشة اختيار القسم بالفأرة لا ينهار في نافذة عريضة',
+  testWidgets('تبديل القسم بالفأرة لا ينهار في نافذة عريضة',
       (tester) async {
     tester.view.physicalSize = const Size(1600, 900);
     tester.view.devicePixelRatio = 1;
@@ -302,11 +304,12 @@ void main() {
         (w) => w is Semantics && w.properties.label == 'تبديل القسم'));
     final error = tester.takeException();
     expect(error, isNull, reason: '$error');
-    // بطاقتا القسمين معروضتان.
-    expect(find.text('ادخل'), findsNWidgets(2));
+    // التبديل مباشرٌ إلى القسم الآخر (المحروقات) دون المرور بشاشة الاختيار.
+    expect(find.text('ادخل'), findsNothing);
 
-    // والدخول إلى المحروقات من البطاقة الثانية يفتح القشرة بلا خطأ.
-    await click(find.text('ادخل').last);
+    // والعودة إلى الإمداد بنقرةٍ ثانية بلا خطأ في تخطيط ولا في تتبّع الفأرة.
+    await click(find.byWidgetPredicate(
+        (w) => w is Semantics && w.properties.label == 'تبديل القسم'));
     final error2 = tester.takeException();
     expect(error2, isNull, reason: '$error2');
     expect(find.text('ادخل'), findsNothing);
@@ -364,5 +367,56 @@ void main() {
     expect(imdTheme.mode, ThemeMode.dark);
     expect((await SettingsRepo(db).identity()).themePref, 'dark');
     expect(tester.takeException(), isNull);
+  });
+
+  group('الصفحات المفتوحة وشريط الحالة', () {
+    testWidgets('سطح المكتب: شريط تبويبات وشريط حالة بالوقت والاتصال والكثافة', (tester) async {
+      wideWindow(tester);
+      await enterSupply(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.byType(ImdPageTabs), findsOneWidget);
+      expect(find.byType(ImdStatusBar), findsOneWidget);
+      expect(find.textContaining('المزامنة متوقفة'), findsWidgets);
+      expect(find.text('كثافة عالية'), findsOneWidget);
+    });
+
+    testWidgets('فتح شاشةٍ يضيف تبويبة، والعودة تُبقي حالة الأولى', (tester) async {
+      wideWindow(tester);
+      await enterSupply(tester);
+
+      // القسم الأول مفتوح: «الأصناف».
+      await tester.tap(find.text('الأصناف').first);
+      await pump(tester);
+      final tabsAfterItems = tester.widgetList<ImdPageHost>(find.byType(ImdPageHost, skipOffstage: false)).length;
+      expect(tabsAfterItems, 2, reason: 'الرئيسية + الأصناف');
+
+      await tester.tap(find.text('الرئيسية').first);
+      await pump(tester);
+      expect(tester.widgetList(find.byType(ImdPageHost, skipOffstage: false)).length, 2,
+          reason: 'الصفحة السابقة بقيت مفتوحة لا هُدمت');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('إغلاق تبويبة يُسقط صفحتها ولا تُغلق الأخيرة', (tester) async {
+      wideWindow(tester);
+      await enterSupply(tester);
+      await tester.tap(find.text('الأصناف').first);
+      await pump(tester);
+      expect(tester.widgetList(find.byType(ImdPageHost, skipOffstage: false)).length, 2);
+
+      // زر × للتبويبة الظاهرة.
+      await tester.tap(find.descendant(of: find.byType(ImdPageTabs), matching: find.byType(InkWell)).last);
+      await pump(tester);
+      expect(tester.widgetList(find.byType(ImdPageHost, skipOffstage: false)).length, 1);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('الجوال: لا شريط تبويبات ولا شريط حالة وصفحةٌ واحدة', (tester) async {
+      window(tester, 700);
+      await enterSupply(tester);
+      expect(find.byType(ImdPageTabs), findsNothing);
+      expect(find.byType(ImdStatusBar), findsNothing);
+      expect(tester.widgetList(find.byType(ImdPageHost, skipOffstage: false)).length, 1);
+    });
   });
 }

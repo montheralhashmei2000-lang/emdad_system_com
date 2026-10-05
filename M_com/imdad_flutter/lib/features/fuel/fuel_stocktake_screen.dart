@@ -320,7 +320,6 @@ class _FuelStocktakeScreenState extends State<FuelStocktakeScreen> {
           ImdCol('الحالة'),
         ],
         pageSize: 50,
-        cards: true,
         rows: [
           for (final l in _lines)
             [
@@ -368,7 +367,10 @@ class _FuelStocktakeScreenState extends State<FuelStocktakeScreen> {
           label: 'طباعة المحضر',
           icon: 'printer',
           small: true,
-          onPressed: () => FuelPrint.stocktakeReport(_db, take, _lines),
+          onPressed: () {
+                if (!Perm.of(context).guard(context, 'fuelStocktake', 'print')) return;
+                FuelPrint.stocktakeReport(_db, take, _lines);
+              },
         ),
         ImdButton.outline(
             label: 'إغلاق',
@@ -415,7 +417,6 @@ class _FuelStocktakeScreenState extends State<FuelStocktakeScreen> {
           ImdCol('', center: true),
         ],
         pageSize: 50,
-        cards: true,
         rows: [
           for (final t in _takes)
             [

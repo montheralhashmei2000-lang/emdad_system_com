@@ -818,7 +818,6 @@ class _AssetsScreenState extends State<AssetsScreen> {
           ImdCol('', center: true),
         ],
         pageSize: 50,
-        cards: true,
         rows: [
           for (final a in rows)
             [

@@ -13,6 +13,7 @@ import '../../data/repos/audit_repo.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/users_repo.dart';
 import '../../domain/access_control.dart';
+import '../../domain/perm_catalog.dart';
 import '../../core/ui/imd_layout.dart';
 
 /// مركز المستخدمين والصلاحيات — نقل `renderUsersAccess()`:
@@ -26,40 +27,6 @@ class UsersScreen extends StatefulWidget {
   State<UsersScreen> createState() => _UsersScreenState();
 }
 
-/// `PERM_CATALOG` — الشاشة وأفعالها المتاحة.
-const _permCatalog = <String, (String, List<String>)>{
-  'dashboard': ('الرئيسية', ['view']),
-  'items': ('الأصناف', ['view', 'create', 'edit', 'delete', 'print', 'export']),
-  'suppliers': ('الموردون', ['view', 'create', 'edit', 'delete', 'export']),
-  'units': ('الوحدات المستفيدة', ['view', 'create', 'edit', 'delete', 'print', 'export']),
-  'stores': ('المستودعات', ['view', 'create', 'edit', 'delete', 'export']),
-  'kitchens': ('المطابخ والأفران', ['view', 'create', 'edit', 'delete']),
-  'receive': ('الاستلام', ['view', 'create', 'edit', 'delete', 'approve', 'print']),
-  'issue': ('الصرف', ['view', 'create', 'edit', 'delete', 'approve', 'print']),
-  'transfer': ('التحويل المخزني', ['view', 'create', 'edit', 'delete', 'approve', 'print']),
-  'returns': ('المرتجعات', ['view', 'create', 'edit', 'delete', 'approve', 'print']),
-  'pendingOrders': ('أوامر التوريد المعلقة', ['view', 'approve', 'delete', 'print']),
-  'documents': ('سجل المستندات', ['view', 'print', 'edit', 'delete']),
-  'feeding': ('التغذية / القوة', ['view', 'create', 'edit', 'delete', 'print', 'export']),
-  'kitchenLog': ('سجل التشغيل والطهي', ['view', 'create', 'edit', 'delete', 'print', 'export']),
-  'ratios': ('نسب الاستحقاق', ['view', 'edit', 'print', 'export']),
-  'balances': ('الأرصدة الحالية', ['view', 'export', 'print']),
-  'stocktake': ('الجرد', ['view', 'create', 'edit', 'delete', 'approve', 'print', 'export']),
-  'reports': ('التقارير', ['view', 'export', 'print']),
-  'cables': ('البرقيات', ['view', 'create', 'edit', 'delete', 'print']),
-  'archive': ('الأرشيف الإلكتروني', ['view', 'create', 'edit', 'delete', 'print']),
-  'personnel': ('القوة البشرية للإمداد والتموين', ['view', 'create', 'edit', 'delete', 'print', 'export']),
-  // «approve»: اعتماد الإخلاء المالي وحذف المُعتمد منه.
-  'linkages': ('الارتباطات (القوة والمالية والتسليح)', ['view', 'create', 'edit', 'delete', 'approve', 'print', 'export']),
-  'auditTrail': ('سجل التدقيق', ['view', 'export', 'print']),
-  'activityIntel': ('ذكاء النشاط', ['view', 'export']),
-  'executiveCmd': ('القيادة التنفيذية', ['view', 'export', 'print']),
-  'sensitiveOps': ('المراجعة الحساسة', ['view', 'approve']),
-  'opening': ('الأرصدة الافتتاحية', ['view', 'create', 'edit', 'approve', 'print']),
-  'settings': ('الإعدادات والهوية', ['view', 'edit']),
-  'usersAccess': ('المستخدمون والصلاحيات', ['view', 'edit', 'approve']),
-};
-
 const _actionLabels = <String, String>{
   'view': 'مشاهدة',
   'create': 'إضافة',
@@ -68,6 +35,7 @@ const _actionLabels = <String, String>{
   'approve': 'اعتماد',
   'print': 'طباعة',
   'export': 'تصدير',
+  'import': 'استيراد',
 };
 
 class _UsersScreenState extends State<UsersScreen> {
@@ -132,6 +100,12 @@ class _UsersScreenState extends State<UsersScreen> {
     if (!_perm.guard(context, 'usersAccess', PermAction.approve)) return;
     final st = _status(u);
     final enable = st != 'ACTIVE';
+    // تعطيل الحسابات للمالك وحده، ولا يمسّ المديرُ حسابَ مديرٍ أو مالك.
+    if (!enable && !_perm.guardSys(context, SysPerm.users)) return;
+    if (UserRole.isAdmin(u.role) && !_perm.owner) {
+      showImdToast(context, '✖ لا يعدّل حسابَ مديرٍ أو مالكٍ إلا المالك', error: true);
+      return;
+    }
     final ok = await imdConfirm(
       context,
       enable
@@ -141,7 +115,7 @@ class _UsersScreenState extends State<UsersScreen> {
       danger: !enable,
     );
     if (!ok) return;
-    await _repo.updateUser(id: u.id, active: enable, actorEmail: _perm.email);
+    await _repo.updateUser(id: u.id, active: enable, actorEmail: _perm.email, actorRole: _auth.currentUser?.role);
     if (!u.approved) {
       await (_db.update(_db.users)..where((t) => t.id.equals(u.id)))
           .write(const UsersCompanion(approved: Value(true)));
@@ -160,7 +134,8 @@ class _UsersScreenState extends State<UsersScreen> {
 
   Future<void> _toggleRole(User u) async {
     if (!_perm.guard(context, 'usersAccess', PermAction.edit)) return;
-    final toAdmin = u.role != 'admin';
+    if (!_perm.guardSys(context, SysPerm.users)) return; // منح دور المدير للمالك وحده
+    final toAdmin = !UserRole.isAdmin(u.role);
     final ok = await imdConfirm(
       context,
       toAdmin
@@ -170,7 +145,7 @@ class _UsersScreenState extends State<UsersScreen> {
       danger: toAdmin,
     );
     if (!ok) return;
-    await _repo.updateUser(id: u.id, isAdmin: toAdmin, actorEmail: _perm.email);
+    await _repo.updateUser(id: u.id, isAdmin: toAdmin, actorEmail: _perm.email, actorRole: _auth.currentUser?.role);
     await AuditRepo(_db).write(
       'USER_ROLE_CHANGED',
       'user_access',
@@ -190,6 +165,7 @@ class _UsersScreenState extends State<UsersScreen> {
     final name = TextEditingController();
     final password = TextEditingController();
     var isAdmin = false;
+    var template = '';
 
     final saved = await showImdModal<bool>(
       context,
@@ -207,11 +183,32 @@ class _UsersScreenState extends State<UsersScreen> {
           const SizedBox(height: 10),
           ImdLabeled('كلمة المرور المبدئية', ImdFld(controller: password, hint: '٨ أحرف فأكثر')),
           const SizedBox(height: 10),
-          ImdCheckbox(
-            value: isAdmin,
-            label: 'منحه صلاحيات مدير النظام الكاملة',
-            onChanged: (v) => setLocal(() => isAdmin = v),
+          ImdLabeled(
+            'قالب صلاحيات جاهز (اختياري)',
+            ImdSelect<String>(
+              items: [
+                ('', 'بدون — أحدّد الصلاحيات لاحقًا'),
+                for (final r in AccessControl.roles.values) (r.id, r.label),
+              ],
+              value: template,
+              onChanged: (v) => setLocal(() => template = v ?? ''),
+            ),
           ),
+          if (template.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: ImdNote(AccessControl.roles[template]?.description ?? ''),
+            ),
+          const SizedBox(height: 10),
+          // منح دور المدير للمالك وحده؛ المدير ينشئ «مستخدمًا» بقالبٍ جاهز.
+          if (_perm.owner)
+            ImdCheckbox(
+              value: isAdmin,
+              label: 'منحه صلاحيات مدير النظام الكاملة',
+              onChanged: (v) => setLocal(() => isAdmin = v),
+            )
+          else
+            const ImdNote('ينشئ المدير «مستخدمًا» بقالب الصلاحيات المختار. منح دور المدير وتخصيص الصلاحيات للمالك وحده.'),
         ]),
       ),
       actions: (ctx) => [
@@ -226,7 +223,9 @@ class _UsersScreenState extends State<UsersScreen> {
           username: username.text,
           password: password.text,
           name: name.text,
-          isAdmin: isAdmin,
+          roleIds: template.isEmpty ? const [] : [template],
+          isAdmin: _perm.owner && isAdmin,
+          actorRole: _auth.currentUser?.role,
           actorEmail: _perm.email,
         );
         if (!mounted) return;
@@ -245,6 +244,7 @@ class _UsersScreenState extends State<UsersScreen> {
 
   /// `openUserPermissions(id)` — مصفوفة الصلاحيات لكل شاشة.
   Future<void> _openPermissions(User u) async {
+    if (!_perm.guardSys(context, SysPerm.permissions)) return;
     if (_isMe(u)) {
       showImdToast(context, '✖ لا يمكن تعديل صلاحيات حسابك الحالي من نفس الجلسة', error: true);
       return;
@@ -298,16 +298,45 @@ class _UsersScreenState extends State<UsersScreen> {
                 ]),
             ]),
           ),
-          ImdGrid(columns: 3, minItemWidth: 240, children: [
-            for (final e in _permCatalog.entries)
-              _permCard(
-                page: e.key,
-                label: e.value.$1,
-                actions: e.value.$2,
-                perms: perms,
-                onChanged: () => setLocal(() {}),
-              ),
-          ]),
+          // القالب يُضيف صلاحياته إلى المحدَّد ولا يسحب شيئًا — لإزالة صلاحيةٍ
+          // ألغِ تحديدها يدويًا أدناه.
+          ImdICard(
+            title: 'تطبيق قالب جاهز (يُضيف ولا يسحب)',
+            icon: 'users',
+            child: Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final r in AccessControl.roles.values)
+                Tooltip(
+                  message: r.description,
+                  child: ImdButton.outline(
+                    label: r.label,
+                    small: true,
+                    onPressed: () => setLocal(() {
+                      r.permissions.forEach((page, actions) {
+                        actions.forEach((a, on) {
+                          if (on) (perms[page] ??= {})[a] = true;
+                        });
+                      });
+                    }),
+                  ),
+                ),
+            ]),
+          ),
+          for (final section in PermSection.all) ...[
+            _permHeading(PermSection.labels[section]!, big: true),
+            for (final g in PermCatalog.groupsOf(section).entries) ...[
+              _permHeading(g.key),
+              ImdGrid(columns: 3, minItemWidth: 240, children: [
+                for (final e in g.value)
+                  _permCard(
+                    page: e.key,
+                    label: e.label,
+                    actions: e.actions,
+                    perms: perms,
+                    onChanged: () => setLocal(() {}),
+                  ),
+              ]),
+            ],
+          ],
           const SizedBox(height: 12),
           Wrap(spacing: 8, runSpacing: 8, children: [
             ImdButton.outline(
@@ -315,8 +344,8 @@ class _UsersScreenState extends State<UsersScreen> {
               icon: 'check',
               small: true,
               onPressed: () => setLocal(() {
-                for (final e in _permCatalog.entries) {
-                  perms[e.key] = {for (final a in e.value.$2) a: true};
+                for (final e in PermCatalog.entries) {
+                  perms[e.key] = {for (final a in e.actions) a: true};
                 }
               }),
             ),
@@ -339,6 +368,7 @@ class _UsersScreenState extends State<UsersScreen> {
     if (!_perm.guard(context, 'usersAccess', PermAction.edit)) return;
     await _repo.updateUser(
       id: u.id,
+      actorRole: _auth.currentUser?.role,
       permissions: perms,
       allWarehouses: allWarehouses,
       warehouseScope: allWarehouses ? null : scope.toList(),
@@ -354,6 +384,19 @@ class _UsersScreenState extends State<UsersScreen> {
     if (!mounted) return;
     showImdToast(context, '✔ حُفظت الصلاحيات');
     await _load();
+  }
+
+  /// عنوان قسمٍ (كبير) أو مجموعةٍ داخله في مصفوفة الصلاحيات.
+  Widget _permHeading(String text, {bool big = false}) {
+    final c = context.imd;
+    return Padding(
+      padding: EdgeInsets.only(top: big ? 16 : 10, bottom: 6),
+      child: Text(text,
+          style: TextStyle(
+              fontSize: big ? 15 : 13,
+              fontWeight: FontWeight.w700,
+              color: big ? c.accent : c.text2)),
+    );
   }
 
   /// بطاقة صلاحياتٍ لمجموعةٍ من الأذونات.
@@ -437,7 +480,6 @@ class _UsersScreenState extends State<UsersScreen> {
           ],
           pageSize: 50,
           maxHeight: ImdSizes.tableMaxHeight(context),
-          cards: true,
           empty: 'لا نتائج',
           rows: [for (final u in rows) _row(u)],
         ),
@@ -454,14 +496,19 @@ class _UsersScreenState extends State<UsersScreen> {
         Text(u.name.isEmpty ? '—' : u.name, style: const TextStyle(fontWeight: FontWeight.w700)),
         Text(u.username, style: TextStyle(fontSize: 11.5, color: c.muted)),
       ]),
-      u.role == 'admin'
-          ? const ImdChip('مدير النظام', tone: ImdTone.err, icon: 'award')
-          : const ImdChip('مستخدم', tone: ImdTone.ok),
+      UserRole.isOwner(u.role)
+          ? const ImdChip('المالك', tone: ImdTone.err, icon: 'award')
+          : UserRole.isAdmin(u.role)
+              ? const ImdChip('مدير النظام', tone: ImdTone.err, icon: 'award')
+              : const ImdChip('مستخدم', tone: ImdTone.ok),
       ImdChip(statusLabel, tone: statusTone),
       Text(scope == null ? 'كل المستودعات' : scope.join('، ')),
       isMe
           ? const ImdChip('أنت', tone: ImdTone.ok)
-          : Wrap(spacing: 6, runSpacing: 6, children: [
+          : (UserRole.isOwner(u.role) || (UserRole.isAdmin(u.role) && !_perm.owner))
+              // حساب المالك محميّ، وحساب المدير لا يمسّه إلا المالك.
+              ? const ImdChip('محميّ', tone: ImdTone.off)
+              : Wrap(spacing: 6, runSpacing: 6, children: [
               ImdButton(
                 label: _status(u) == 'ACTIVE'
                     ? 'إيقاف'
@@ -471,19 +518,24 @@ class _UsersScreenState extends State<UsersScreen> {
                 kind: _status(u) == 'ACTIVE' ? ImdBtnKind.danger : ImdBtnKind.primary,
                 onPressed: () => _toggleAccess(u),
               ),
-              ImdButton.outline(
-                label: u.role == 'admin' ? 'جعله مستخدمًا' : 'منحه مديرًا',
-                icon: u.role == 'admin' ? 'arrow-down' : 'arrow-up',
-                small: true,
-                onPressed: () => _toggleRole(u),
-              ),
+              if (_perm.owner)
+                ImdButton.outline(
+                  label: UserRole.isAdmin(u.role) ? 'جعله مستخدمًا' : 'منحه مديرًا',
+                  icon: UserRole.isAdmin(u.role) ? 'arrow-down' : 'arrow-up',
+                  small: true,
+                  onPressed: () => _toggleRole(u),
+                ),
             ]),
-      ImdButton(
-        label: 'ضبط الصلاحيات',
-        icon: 'sliders',
-        small: true,
-        onPressed: isMe ? null : () => _openPermissions(u),
-      ),
+      // مصفوفة الصلاحيات للمالك وحده (`sys.permissions`).
+      if (_perm.owner)
+        ImdButton(
+          label: 'ضبط الصلاحيات',
+          icon: 'sliders',
+          small: true,
+          onPressed: isMe ? null : () => _openPermissions(u),
+        )
+      else
+        const Text('—'),
     ];
   }
 }

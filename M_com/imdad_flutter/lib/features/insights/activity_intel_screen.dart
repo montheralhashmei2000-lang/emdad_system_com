@@ -393,7 +393,6 @@ class _ActivityIntelScreenState extends State<ActivityIntelScreen> {
               ImdCol('الرصيد/الحد'),
             ],
             pageSize: 50,
-            cards: true,
             empty: 'لا توجد أصناف بسلوك استهلاك مقلق حاليًا',
             rows: [
               for (final x in _riskyItems)
@@ -436,7 +435,7 @@ class _ActivityIntelScreenState extends State<ActivityIntelScreen> {
             'توزيع النشاط بين المستخدمين يبدو متوازنًا خلال آخر ١٤ يومًا.')
       ];
     }
-    const roles = {'admin': 'مدير النظام', 'user': 'مستخدم'};
+    const roles = {'owner': 'المالك', 'admin': 'مدير النظام', 'user': 'مستخدم'};
     return [
       for (final a in _actorFlags)
         (

@@ -73,7 +73,7 @@ const _actionFilter = <String, String>{
   'WAREHOUSE_DELETED': 'حذف مستودع',
 };
 
-const _roles = <String, String>{'admin': 'مدير النظام', 'user': 'مستخدم'};
+const _roles = <String, String>{'owner': 'المالك', 'admin': 'مدير النظام', 'user': 'مستخدم'};
 
 /// `audActionLbl(a)`
 String auditActionLabel(String action) =>

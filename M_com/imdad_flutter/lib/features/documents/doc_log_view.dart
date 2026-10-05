@@ -307,7 +307,6 @@ class _DocLogViewState extends State<DocLogView> {
             ImdCol('المُنشئ'),
             ImdCol(''),
           ],
-          cards: true,
           pageSize: 50,
           empty: 'لا توجد مستندات مطابقة',
           rows: [
@@ -397,7 +396,6 @@ class _DocLogViewState extends State<DocLogView> {
             const ImdCol('ملاحظات'),
           ],
           pageSize: 50,
-          cards: true,
           rows: [
             for (final (i, l) in lines.indexed)
               [
@@ -432,7 +430,6 @@ class _DocLogViewState extends State<DocLogView> {
               ImdCol('مَن', width: 140),
               ImdCol('ما تغيّر', flex: 3),
             ],
-            cards: true,
             rows: [
               for (final e in g.editLog)
                 [
@@ -864,7 +861,6 @@ class _EditFormState extends State<_EditForm> {
           ImdCol('', width: 52),
         ],
         pageSize: 50,
-        cards: true,
         rows: [
           for (final (i, r) in _rows.indexed) _lineRow(i, r),
         ],

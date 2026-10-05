@@ -147,6 +147,21 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
 
   bool get _canWrite => _perm.admin || _perm.manage('stocktake');
 
+  /// العدّ: سطرٌ لم يُعدّ بعد = إضافة (`create`)، وتصحيح عدٍّ مسجَّل = `edit`.
+  /// فمدخل البيانات (إضافة فقط) يعدّ ما لم يُعدّ، ولا يغيّر عدًّا سبقه إليه غيره؛
+  /// ومن كان يملك `edit` يعدّ ويصحّح كما كان.
+  /// وما عدَّه هو نفسه في هذه الجلسة يبقى له (المسح المتكرر يزيد عدّ الصنف ذاته).
+  final Set<String> _countedHere = {};
+
+  bool _canCountLine(StocktakeLine l) =>
+      _perm.has('stocktake', PermAction.edit) ||
+      _countedHere.contains(l.id) ||
+      (l.countedQty == null && _perm.has('stocktake', PermAction.create));
+
+  /// هل يملك المستخدم أي صلاحية عدٍّ (إضافة أو تعديل)؟
+  bool get _canCountAny =>
+      _perm.has('stocktake', PermAction.edit) || _perm.has('stocktake', PermAction.create);
+
   /// `loadBase()`
   Future<void> _load() async {
     final scope = _perm.scope;
@@ -288,8 +303,12 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
       showImdToast(context, '✖ اختر أمر الجرد', error: true);
       return;
     }
-    if (!_perm.guard(context, 'stocktake', PermAction.edit)) return;
+    if (!_canCountAny) {
+      _perm.guard(context, 'stocktake', PermAction.create);
+      return;
+    }
     var n = 0;
+    var denied = 0;
     for (final l in _lines) {
       final units = _unitsOf(l);
       final entered = <String, double>{};
@@ -301,16 +320,24 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
       final before = StocktakeRepo.countsOf(l);
       if (entered.isEmpty && l.countedQty == null) continue;
       if (entered.toString() == before.toString()) continue;
+      if (!_canCountLine(l)) {
+        denied++;
+        continue;
+      }
       await _repo.saveCount(
         lineId: l.id,
         countsByUnit: entered,
         factors: {for (final u in units) u.name: u.factor},
       );
+      _countedHere.add(l.id);
       n++;
     }
     if (!mounted) return;
+    if (denied > 0) {
+      showImdToast(context, '⚠ لم يُغيَّر ${nf(denied)} صنف سبق عدّه — تصحيح العد المسجَّل يتطلب صلاحية التعديل', error: true);
+    }
     if (n == 0) {
-      showImdToast(context, 'لا توجد تغييرات للحفظ');
+      if (denied == 0) showImdToast(context, 'لا توجد تغييرات للحفظ');
       return;
     }
     showImdToast(context, '✔ حُفظ العد الفعلي (${nf(n)} صنف)');
@@ -323,7 +350,10 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
       showImdToast(context, '✖ اختر أمر الجرد أولًا', error: true);
       return;
     }
-    if (!_perm.guard(context, 'stocktake', PermAction.edit)) return;
+    if (!_canCountAny) {
+      _perm.guard(context, 'stocktake', PermAction.create);
+      return;
+    }
     final it = _itemById(_addItemId);
     if (it == null) {
       showImdToast(context, '✖ اختر الصنف', error: true);
@@ -348,7 +378,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
   Future<String> _onScan(String code) async {
     final o = _order;
     if (o == null || o.status != 'COUNTING' || !_canWrite) return '✖ اختر أمر جرد مفتوحًا لديك صلاحية العد فيه';
-    if (!_perm.has('stocktake', PermAction.edit)) return '✖ لا تملك صلاحية تعديل الجرد';
+    if (!_canCountAny) return '✖ لا تملك صلاحية العدّ في الجرد';
     ScanResult resolve() => StocktakeScan.resolve(
           code,
           [for (final it in _items) (id: it.id, code: it.code, barcode: it.barcode)],
@@ -372,6 +402,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
     }
     final counted = result as ScanCounted;
     final line = _lines.firstWhere((l) => l.id == counted.lineId);
+    if (!_canCountLine(line)) return '✖ «${line.itemName}» سبق عدّه — تصحيح العد يتطلب صلاحية التعديل';
     final units = _unitsOf(line);
     final ctrls = _counts[line.id]!;
     final current = <String, double>{
@@ -385,6 +416,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
       countsByUnit: next,
       factors: {for (final u in units) u.name: u.factor},
     );
+    _countedHere.add(line.id);
     if (!mounted) return '';
     setState(() => ctrls[smallest.name]!.text = _plain(next[smallest.name]!));
     final fresh = (await _repo.lines(_cur)).firstWhere((l) => l.id == line.id);
@@ -396,6 +428,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
 
   /// `printBlank()` — استمارة عد فارغة.
   Future<void> _printBlank() async {
+    if (!Perm.of(context).guard(context, 'stocktake', 'print')) return;
     final o = _order;
     if (o == null) {
       showImdToast(context, '✖ اختر أمر الجرد أولًا', error: true);
@@ -447,6 +480,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
 
   /// `printVar()` — تقرير الفروقات.
   Future<void> _printVar() async {
+    if (!Perm.of(context).guard(context, 'stocktake', 'print')) return;
     final o = _order;
     if (o == null) {
       showImdToast(context, '✖ اختر أمر الجرد أولًا', error: true);
@@ -703,7 +737,6 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
             ImdCol('تجميد'),
           ],
           pageSize: 50,
-          cards: true,
           empty: 'لا توجد أوامر جرد مفتوحة',
           onRowTap: (i) async {
             setState(() {
@@ -841,7 +874,6 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
           ],
           rowKeys: [for (final l in rows) ValueKey(l.id)],
           pageSize: 50,
-          cards: true,
           empty: _lines.isEmpty ? 'لا توجد أصناف في هذا الأمر' : 'لا نتائج مطابقة للبحث',
           rows: [for (final l in rows) _countRow(l, open)],
         ),
@@ -986,7 +1018,6 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
           ImdCol('الحالة'),
         ],
         pageSize: 50,
-        cards: true,
         empty: 'لا توجد أوامر جرد',
         onRowTap: (i) async {
           setState(() {
@@ -1086,7 +1117,6 @@ class _AnalysisTabState extends State<_AnalysisTab> {
             ImdCol('القرار', auto: false, width: 140),
           ],
           pageSize: 50,
-          cards: true,
           empty: 'لا توجد أصناف للعرض',
           rows: [for (final l in rows) _row(l, open)],
         ),

@@ -98,7 +98,7 @@ void main() {
     }
   });
 
-  testWidgets('مستخدمٌ بلا صلاحية القسم يرى رسالة لا الشاشة', (tester) async {
+  testWidgets('غير المالك لا يرى قسم «تفعيل الأجهزة» ولو طلبه (sys.devices)', (tester) async {
     final other = AppDatabase.forTesting(NativeDatabase.memory());
     addTearDown(other.close);
     final a = AuthService(other);
@@ -133,7 +133,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 60));
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
     }
-    expect(find.textContaining('لا تملك صلاحية'), findsWidgets);
+    // لا يُرسم القسم ولا زر الوصول إليه، ويُردّ الطلب إلى «نظرة عامة».
     expect(find.textContaining('معرّف هذا الجهاز'), findsNothing);
+    expect(find.text('تفعيل الأجهزة'), findsNothing);
   });
 }

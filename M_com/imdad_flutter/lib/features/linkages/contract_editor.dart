@@ -356,7 +356,6 @@ class _ContractEditorState extends State<ContractEditor> {
   Widget _itemsTable(BuildContext context) {
     const cell = ImdEntryTable.cell;
     return ImdEntryTable(
-      cards: true,
       minWidth: 880,
       columns: const [
         ImdCol('م', width: 40),

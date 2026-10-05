@@ -467,7 +467,6 @@ class _ElectronicArchiveScreenState extends State<ElectronicArchiveScreen> {
           ],
           rows: [for (final f in rows) _row(f)],
           pageSize: 50,
-          cards: true,
           empty: 'لا ملفات مطابقة',
           maxHeight: ImdSizes.tableMaxHeight(context),
           onRowTap: (i) => _openFile(rows[i]),

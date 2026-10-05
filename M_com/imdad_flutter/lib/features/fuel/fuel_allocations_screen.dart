@@ -223,6 +223,7 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
       _rows.where((r) => r.allocation.fuelType == fuelType).toList();
 
   Future<void> _printPlan() async {
+    if (!Perm.of(context).guard(context, 'fuelAllocations', 'print')) return;
     final settings = _settings;
     if (settings == null) return;
     if (_rows.isEmpty) {
@@ -441,7 +442,6 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
             ImdCol('', center: true),
           ],
           pageSize: 50,
-          cards: true,
           rows: [
             for (final r in list)
               [

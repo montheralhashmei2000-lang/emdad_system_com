@@ -1,3 +1,4 @@
+import '../../domain/access_control.dart' show UserRole;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -219,7 +220,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _load() async {
     final auth = context.read<AuthService>();
-    final can = auth.currentUser?.role == 'admin';
+    final can = UserRole.isAdmin(auth.currentUser?.role);
     final db = _db;
     final items = await db.select(db.items).get();
     final units = await db.select(db.beneficiaryUnits).get();
@@ -532,7 +533,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             final byId = {
               'items': ImdKpi(label: 'إجمالي الأصناف', value: v((d) => d.items)),
               'warehouses': ImdKpi(label: 'المستودعات الفعالة', value: v((d) => d.warehouses), color: c.accent),
-              'todayOps': ImdKpi(label: 'حركات اليوم', value: v((d) => d.todayOps)),
+              'todayOps': ImdKpi(
+                label: 'حركات اليوم',
+                value: v((d) => d.todayOps),
+                // مجموع وارد + صرف + تحويل لكل يومٍ من آخر ١٤ يومًا (الأقدم أولًا).
+                spark: [for (var i = 0; i < d.rcv.length; i++) (d.rcv[i] + d.iss[i] + d.trf[i]).toDouble()],
+              ),
               'interventions':
                   ImdKpi(label: 'إجراءات تحتاج تدخل', value: v((d) => d.interventions), color: c.danger),
               'stock': ImdKpi(
@@ -604,7 +610,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 onPressed: () {
                   final auth = context.read<AuthService>();
                   final user = auth.currentUser;
-                  final available = _quickActions.where((a) => user != null && (user.role == 'admin' || auth.can(user, a.$3))).toList();
+                  final available = _quickActions.where((a) => user != null && (UserRole.isAdmin(user.role) || auth.can(user, a.$3))).toList();
                   _configureQuickActions(context, available);
                 },
                 icon: Icon(Icons.tune, color: c.muted, size: 19),
@@ -617,7 +623,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Builder(builder: (context) {
                   final user = context.read<AuthService>().currentUser;
                   final auth = context.read<AuthService>();
-                  final available = _quickActions.where((a) => user != null && (user.role == 'admin' || auth.can(user, a.$3))).toList();
+                  final available = _quickActions.where((a) => user != null && (UserRole.isAdmin(user.role) || auth.can(user, a.$3))).toList();
                   final orderedIds = _quickActionIds.isEmpty
                       ? available.map((a) => a.$3).toList()
                       : _quickActionIds;
@@ -715,7 +721,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ImdCol('الحد'),
                       ImdCol('الحالة'),
                     ],
-                    cards: true,
                     empty: 'لا توجد تنبيهات مخزون حرجة الآن 👌',
                     rows: [
                       for (final (i, bal) in d.urgent)
@@ -777,7 +782,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ImdCol('التاريخ'),
                       ImdCol('الحالة'),
                     ],
-                    cards: true,
                     empty: 'لا توجد حركة حديثة بعد',
                     rows: [
                       for (final r in d.feed)

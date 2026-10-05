@@ -10,6 +10,7 @@ import '../../data/repos/cable_repo.dart';
 import '../../domain/free_table.dart';
 import '../ui/imd_format.dart';
 import 'military_print.dart';
+import 'print_format.dart';
 import 'voucher_print.dart';
 import '../../core/error_log.dart';
 
@@ -27,7 +28,7 @@ class CablePrint {
   static String _slashDate(String iso) {
     final d = DateTime.tryParse(iso);
     if (d == null) return iso;
-    return '${d.year}/${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}';
+    return printDate(iso);
   }
 
   /// `15:07` ⇒ `3:07 م`؛ ما لا يُفهم يُعاد كما هو.

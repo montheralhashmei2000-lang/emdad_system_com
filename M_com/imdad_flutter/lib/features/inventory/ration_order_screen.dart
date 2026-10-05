@@ -625,6 +625,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
 
   /// طباعة الطلبية مستندًا — تُحمل بين المستودعين وتُوقَّع.
   Future<void> _print(RationOrderFull full) async {
+    if (!Perm.of(context).guard(context, 'rationOrders', PermAction.print)) return;
     final o = full.order;
     final layout = await SettingsRepo(_db).printLayout();
     if (!mounted) return;
@@ -954,7 +955,6 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
           ImdCol('', center: true),
         ],
         pageSize: 50,
-        cards: true,
         rows: [
           for (final o in _orders)
             [
@@ -1163,7 +1163,6 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
               ImdCol('الفرق', numeric: true),
             ],
             pageSize: 50,
-            cards: true,
             rows: [
               for (final l in full.lines)
                 [

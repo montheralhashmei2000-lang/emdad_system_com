@@ -248,13 +248,21 @@ class _StrengthScreenState extends State<StrengthScreen> {
 
   /// `tfSave()`
   Future<void> _save() async {
-    if (!_perm.guard(context, 'feeding', PermAction.edit)) return;
     if (_campId.isEmpty) {
       showImdToast(context, '✖ اختر المعسكر أولًا', error: true);
       return;
     }
     if (_date.isEmpty) {
       showImdToast(context, '✖ اختر التاريخ', error: true);
+      return;
+    }
+    // يومٌ جديد يكفيه «إضافة»، وتصحيح يومٍ مسجَّل يتطلب «تعديل» — ومن كان يملك
+    // «تعديل» يحفظ الاثنين كما كان.
+    final dayExists = (await _daily.strengths(date: _date, campId: _campId)).isNotEmpty;
+    if (!mounted) return;
+    if (!_perm.has('feeding', PermAction.edit) &&
+        !(!dayExists && _perm.has('feeding', PermAction.create))) {
+      _perm.guard(context, 'feeding', dayExists ? PermAction.edit : PermAction.create);
       return;
     }
     final pct = _pctValue;
@@ -317,6 +325,7 @@ class _StrengthScreenState extends State<StrengthScreen> {
 
   /// `tfPrintMilitary()` — استمارة التفريدة وحصر القوة اليومية.
   Future<void> _print() async {
+    if (!Perm.of(context).guard(context, 'feeding', 'print')) return;
     if (_campId.isEmpty) {
       showImdToast(context, '✖ اختر المعسكر أولًا', error: true);
       return;

@@ -264,7 +264,6 @@ class _LinkArmamentTabState extends State<LinkArmamentTab> {
             ImdCol(''),
           ],
           rows: [for (final a in _filtered) _row(context, a)],
-          cards: true,
           empty: 'لا سجلاتٍ مطابقة',
           onRowTap: null,
         ),

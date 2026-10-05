@@ -566,7 +566,6 @@ class _TransferScreenState extends State<TransferScreen> {
                 ImdCol('المطابقة'),
               ],
               pageSize: 50,
-              cards: true,
               rows: [
                 for (final r in _rows)
                   if (r.itemId.isNotEmpty)
@@ -667,6 +666,7 @@ class _TransferScreenState extends State<TransferScreen> {
   }
 
   void _print() {
+    if (!Perm.of(context).guard(context, 'transfer', 'print')) return;
     final c = _collect();
     if (c.rows.isEmpty) {
       return showImdToast(context, '✖ لا توجد أصناف للطباعة${c.err.isNotEmpty ? ' — ${c.err}' : ''}');

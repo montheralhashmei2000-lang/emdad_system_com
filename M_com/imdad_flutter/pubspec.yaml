@@ -52,6 +52,7 @@ dependencies:
   shimmer: ^3.0.0
   flutter_acrylic: ^1.1.4
   desktop_drop: ^0.8.4
+  local_auth: ^3.0.2
 dev_dependencies:
   flutter_test:
     sdk: flutter

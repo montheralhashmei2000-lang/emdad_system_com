@@ -251,7 +251,6 @@ class _ItemsScreenState extends State<ItemsScreen> {
           ],
           pageSize: 50,
           maxHeight: ImdSizes.tableMaxHeight(context),
-          cards: true,
           // كليك يمين / ضغطة مطوّلة: نفس إجراءي عمود الأزرار.
           rowMenu: !w
               ? null
@@ -266,6 +265,11 @@ class _ItemsScreenState extends State<ItemsScreen> {
                     ),
                     ImdMenuItem(label: 'حذف', icon: 'trash', danger: true, onTap: () => _delete(rows[i])),
                   ],
+          // قيم الخلايا الخام: تصفية الأعمدة والتجميع (مثلًا حسب التصنيف).
+          values: [
+            for (final x in rows)
+              [x.code, x.name, x.categoryName.isEmpty ? '—' : x.categoryName, x.minQty != 0 ? nf(x.minQty) : '—', nf(_qty(x))],
+          ],
           rows: [
             for (final x in rows)
               [
@@ -323,6 +327,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
   }
 
   Future<void> _exportList(List<Item> rows, bool w) async {
+    if (!Perm.of(context).guard(context, 'items', 'export')) return;
     await ImdExcel.save(
       context,
       'الأصناف ${ImdFiles.today()}',
@@ -353,6 +358,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
 
   /// `importItems(rows)` — يحدّث الصنف بنفس الكود أو يُنشئه.
   Future<void> _import({String? path}) async {
+    if (!Perm.of(context).guard(context, 'items', 'import')) return;
     final actor = Perm.of(context).email;
     final rows = await ImdExcel.pickAndRead(context, path: path);
     if (rows == null) return;
@@ -485,7 +491,6 @@ class _ItemsScreenState extends State<ItemsScreen> {
               const ImdCol('الوصف', flex: 3),
               if (w) const ImdCol('', width: 110),
             ],
-            cards: true,
             rows: [
               for (var i = 0; i < _cats.length; i++)
                 [
@@ -969,7 +974,6 @@ class _ItemsScreenState extends State<ItemsScreen> {
           ImdCol('ملاحظات', flex: 2),
         ],
         pageSize: 50,
-        cards: true,
         rows: [
           for (final m in movs.take(100))
             [
@@ -1124,6 +1128,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
 
   /// `itmPrintLabels()`
   Future<void> _printLabels() async {
+    if (!Perm.of(context).guard(context, 'items', 'print')) return;
     final sel = _items.where((x) => x.barcode.isNotEmpty && _bcChecked.contains(x.id)).toList();
     if (sel.isEmpty) return showImdToast(context, '⚠ حدد صنوفًا لها باركود');
     final copies = (int.tryParse(_bcCopies.text.trim()) ?? 1).clamp(1, 50);

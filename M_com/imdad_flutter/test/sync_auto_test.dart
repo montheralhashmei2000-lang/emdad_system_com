@@ -333,7 +333,7 @@ void main() {
       await b.server.startReceiving(trustedOnly: true);
       expect((await b.client.autoSync()).ok, isTrue);
 
-      final res = await AuthService(branch).login('admin', 'Test@12345');
+      final res = await AuthService(branch, isBranchDevice: () async => true).login('admin', 'Test@12345');
       expect(res.isOk, isTrue, reason: 'وصل الحساب ولم يُقبل الدخول به: ${res.message}');
       expect(res.user!.role, 'admin');
     });
@@ -345,21 +345,21 @@ void main() {
       await b.server.startReceiving(trustedOnly: true);
       await b.client.autoSync();
 
-      final res = await AuthService(branch).login('admin', 'wrong-password');
+      final res = await AuthService(branch, isBranchDevice: () async => true).login('admin', 'wrong-password');
       expect(res.isOk, isFalse, reason: 'قُبلت كلمة مرور خاطئة');
     });
 
     test('حمولة بلا بصمات لا تمحو كلمة مرور قائمة', () async {
       // نسخة ويب قديمة لا تحمل salt/hash: الاستيراد منها كان سيُفرغ كلمات
       // المرور على هذا الجهاز، فيقفل الجميع خارج النظام بلا سبب ظاهر.
-      await AuthService(branch).createAdmin(username: 'admin', password: 'Test@12345');
+      await AuthService(branch, isBranchDevice: () async => true).createAdmin(username: 'admin', password: 'Test@12345');
       await LegacyImporter(branch).importJson({
         'users': [
           {'id': 'local-admin', 'username': 'admin', 'name': 'admin', 'role': 'admin'},
         ],
       });
 
-      final res = await AuthService(branch).login('admin', 'Test@12345');
+      final res = await AuthService(branch, isBranchDevice: () async => true).login('admin', 'Test@12345');
       expect(res.isOk, isTrue, reason: 'مُحيت كلمة المرور القائمة: ${res.message}');
     });
   });
@@ -373,10 +373,10 @@ void main() {
       await b.server.stopReceiving();
       await b.server.startReceiving(trustedOnly: true);
       await b.client.autoSync();
-      expect(await AuthService(branch).hasAnyUser(), isTrue);
+      expect(await AuthService(branch, isBranchDevice: () async => true).hasAnyUser(), isTrue);
 
-      await AuthService(branch).localReset();
-      expect(await AuthService(branch).hasAnyUser(), isFalse, reason: 'لم تُمسح محليًا');
+      await AuthService(branch, isBranchDevice: () async => true).localReset();
+      expect(await AuthService(branch, isBranchDevice: () async => true).hasAnyUser(), isFalse, reason: 'لم تُمسح محليًا');
 
       await b.client.autoSync();
 
@@ -396,11 +396,11 @@ void main() {
       await b.server.startReceiving(trustedOnly: true);
       await b.client.autoSync();
 
-      await AuthService(branch).localReset();
+      await AuthService(branch, isBranchDevice: () async => true).localReset();
       await b.client.autoSync();
 
       // بلا تصفير علامة السحب يظن الجهاز أنه استلمها فلا يطلبها مرة أخرى.
-      final res = await AuthService(branch).login('admin', 'Test@12345');
+      final res = await AuthService(branch, isBranchDevice: () async => true).login('admin', 'Test@12345');
       expect(res.isOk, isTrue, reason: 'لم تعد الحسابات بعد إعادة التعيين: ${res.message}');
     });
   });

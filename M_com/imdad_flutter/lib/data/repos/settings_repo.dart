@@ -115,6 +115,8 @@ class SettingsRepo {
     'security',
     // جدولة النسخ الاحتياطي: مجلد الجهاز وآخر تشغيلة.
     'backupSchedule',
+    // تنبيه «انتقلت الصلاحيات الخاصة للمالك»: هل رآه كلُّ مدير على هذا الجهاز؟
+    'sysNotice',
   };
 
   static const String printLayoutKey = 'printLayout';

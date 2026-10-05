@@ -14,9 +14,11 @@ import 'core/print/print_preview.dart';
 import 'core/security/auth_service.dart';
 import 'core/security/idle_lock.dart';
 import 'core/security/owner_key.dart';
+import 'core/ui/imd_density.dart';
 import 'core/ui/imd_fonts.dart';
 import 'core/ui/imd_layout.dart';
 import 'core/ui/imd_screen_actions.dart';
+import 'core/ui/imd_style.dart';
 import 'core/ui/imd_widgets.dart';
 import 'core/ui/imd_window.dart';
 import 'core/theme/app_theme.dart';
@@ -30,6 +32,7 @@ import 'data/sync/auto_sync.dart';
 import 'features/auth/idle_lock_host.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_shell.dart';
+import 'core/security/device_activation.dart';
 import 'features/settings/device_activation_screen.dart';
 
 Future<void> main() async {
@@ -46,7 +49,7 @@ Future<void> main() async {
 
   final db = AppDatabase();
   _wireErrorLogger(db);
-  final auth = AuthService(db);
+  final auth = AuthService(db, isBranchDevice: () => DeviceActivation(db).isBranch());
   final restored = await auth.restoreSession();
   await _cleanupPlainBackups(db);
   final identity = await SettingsRepo(db).identity();
@@ -197,6 +200,9 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
   @override
   void initState() {
     super.initState();
+    // تفضيلات الشكل (نمط كلاسيكي/كثافة) قبل أول إطار ما أمكن حتى لا يومض الشكل الآخر.
+    ImdStyle.load();
+    ImdDensity.load();
     // الإعداد يُقرأ من القاعدة ثم تبدأ المراقبة إن كانت الجلسة مستعادة.
     _idle.load().then((_) {
       if (mounted && _signedIn) _idle.activate();
@@ -293,7 +299,7 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
         navigatorKey: imdNavigatorKey,
         title: 'نظام الإمداد والتموين',
         debugShowCheckedModeBanner: false,
-        theme: AppTheme.light(font: theme.font),
+        theme: ImdStyle.classic ? AppTheme.classic(font: ImdStyle.classicFont) : AppTheme.light(font: theme.font),
         darkTheme: AppTheme.dark(font: theme.font),
         themeMode: theme.mode,
         locale: const Locale('ar'),

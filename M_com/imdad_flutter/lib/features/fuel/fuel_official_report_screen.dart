@@ -1,3 +1,4 @@
+import '../../core/security/perm.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -124,6 +125,7 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
   }
 
   Future<void> _print() async {
+    if (!Perm.of(context).guard(context, 'fuelReports', 'print')) return;
     final settings = _settings;
     if (settings == null) return;
     await FuelReportDocs.printOfficial(_db,
@@ -284,7 +286,6 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
         ImdCol('الكمية', numeric: true),
       ],
       pageSize: 50,
-      cards: true,
       rows: [
         for (final r in s.incoming)
           [
@@ -336,7 +337,6 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
         ImdCol('الكمية', numeric: true),
       ],
       pageSize: 50,
-      cards: true,
       rows: [
         for (final r in rows)
           [
@@ -385,7 +385,6 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
         ImdCol('الكمية', numeric: true),
       ],
       pageSize: 50,
-      cards: true,
       rows: [
         for (final r in s.outgoing)
           [
@@ -435,7 +434,6 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
               ImdCol('محوَّل إلى معسكر', numeric: true),
               ImdCol('إجمالي الصادر', numeric: true),
             ],
-            cards: true,
             rows: [
               for (final s in r.sections)
                 [

@@ -38,6 +38,18 @@ class AppTheme {
   static ThemeData fuel({String font = ImdFonts.defaultFamily}) =>
       _base(font: font, brightness: Brightness.dark, tokens: ImdColors.fuel);
 
+  /// النمط الكلاسيكي الفاتح: لوحة [ImdColors.classicLight] وخط [font] (Tahoma).
+  static ThemeData classic({String font = 'Tahoma'}) =>
+      _base(font: font, brightness: Brightness.light, tokens: ImdColors.classicLight);
+
+  /// قسم المحروقات بهويّته: برتقالي محروق، فاتحًا أو داكنًا بحسب [dark]. الحقول
+  /// والجداول والقشرة هي نفسها — اللوحة وحدها تتبدّل.
+  static ThemeData fuelSection({required bool dark, String font = ImdFonts.defaultFamily}) => _base(
+        font: font,
+        brightness: dark ? Brightness.dark : Brightness.light,
+        tokens: dark ? ImdColors.fuelDark : ImdColors.fuelLight,
+      );
+
   static ThemeData _base({
     required String font,
     required Brightness brightness,

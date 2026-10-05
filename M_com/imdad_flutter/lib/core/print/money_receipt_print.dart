@@ -35,6 +35,13 @@ class MoneyReceiptPrint {
   static String figure(double amount, String currency) =>
       amount <= 0 ? '' : '${printMoney(amount)} ${LinkCurrency.symbol(currency)}';
 
+  /// وزنُ الحقل في السطر بحسب طول قيمته: الحقل الأطول يأخذ مساحةً أكبر،
+  /// وللفارغ حدٌّ أدنى ([minimum]) ليبقى سطرُ التعبئة اليدوي واسعًا.
+  static int _flexOf(String? value, int minimum) {
+    final n = (value ?? '').length;
+    return n < minimum ? minimum : n + 4;
+  }
+
   /// حقلٌ: تسميةٌ فقيمةٌ على سطرٍ منقَّط (نقاطٌ كاملة إن لم توجد قيمة).
   static pw.Widget _field(String label, String value, {double size = 12, int flex = 1}) => pw.Expanded(
         flex: flex,
@@ -84,8 +91,8 @@ class MoneyReceiptPrint {
   static pw.Widget _letterhead(MilitaryPrint engine, Uint8List? logo, LinkMoneyReceipt? r) {
     final date = DateTime.tryParse(r?.receiptDate ?? '');
     final gregorian = date == null
-        ? '  /    /  ${DateTime.now().year}م'
-        : '${printDate(r!.receiptDate)}م';
+        ? '   -    -  ${DateTime.now().year} م'
+        : printDate(r!.receiptDate);
     pw.Widget kv(String k, String v) => pw.Padding(
           padding: const pw.EdgeInsets.only(bottom: 3),
           child: pw.Text('$k $v', style: pw.TextStyle(fontSize: 10.5, fontWeight: pw.FontWeight.bold)),
@@ -107,7 +114,7 @@ class MoneyReceiptPrint {
       pw.Expanded(
         flex: 4,
         child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-          kv('التاريخ:', '  /    /      هـ'),
+          kv('التاريخ:', '   -    -      هـ'),
           kv('الموافق:', gregorian),
           kv('المرفقات:', r?.attachments ?? ''),
         ]),
@@ -146,32 +153,25 @@ class MoneyReceiptPrint {
                   fontSize: 14, fontWeight: pw.FontWeight.bold, color: _titleRed, decoration: pw.TextDecoration.underline)),
         ),
         pw.SizedBox(height: 16),
-        pw.Row(children: [
-          pw.Text('استلمت انا/', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(width: 4),
-          _field('', r?.receiverName ?? '', flex: 3),
-          pw.SizedBox(width: 8),
-          pw.Text('( بصفتي)', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(width: 4),
-          _field('', r?.capacity ?? '', flex: 2),
+        pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+          _field('استلمت انا/', r?.receiverName ?? '', flex: _flexOf(r?.receiverName, 26)),
+          pw.SizedBox(width: 12),
+          _field('بصفتي', r?.capacity ?? '', flex: _flexOf(r?.capacity, 12)),
         ]),
         pw.SizedBox(height: 14),
-        pw.Row(children: [
-          _field('مبلغ مالي رقماً:(', figure(amount, cur), flex: 2),
-          pw.Text(')', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(width: 8),
-          _field('كتابتاً(', words(amount, cur), flex: 5),
-          pw.Text(')', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+        pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+          _field('مبلغ مالي رقماً:', figure(amount, cur), flex: _flexOf(figure(amount, cur), 14)),
+          pw.SizedBox(width: 12),
+          _field('كتابتاً', words(amount, cur), flex: _flexOf(words(amount, cur), 30)),
         ]),
         pw.SizedBox(height: 14),
-        pw.Row(children: [
-          _field('بتاريخ(', date, flex: 2),
-          pw.Text(')', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(width: 8),
-          _field('وذلك مقابل', r?.purpose ?? '', flex: 5),
+        pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+          _field('بتاريخ', date, flex: _flexOf(date, 14)),
+          pw.SizedBox(width: 12),
+          _field('وذلك مقابل', r?.purpose ?? '', flex: _flexOf(r?.purpose, 30)),
         ]),
         pw.SizedBox(height: 14),
-        pw.Row(children: [
+        pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
           pw.Text('كاش', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(width: 6),
           _box(r?.method == 'cash'),
@@ -179,9 +179,8 @@ class MoneyReceiptPrint {
           pw.Text('حوالة مالية', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(width: 6),
           _box(r?.method == 'transfer'),
-          pw.SizedBox(width: 8),
-          _field('رقم (', r?.method == 'transfer' ? (r?.transferNo ?? '') : '', flex: 1),
-          pw.Text(')', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(width: 12),
+          _field('رقم', r?.method == 'transfer' ? (r?.transferNo ?? '') : '', flex: 1),
         ]),
         pw.SizedBox(height: 18),
         pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [

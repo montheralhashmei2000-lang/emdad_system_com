@@ -237,7 +237,6 @@ class _FuelWarehousesScreenState extends State<FuelWarehousesScreen> {
         ImdCol('', center: true),
       ],
       pageSize: 50,
-      cards: true,
       rows: [
         for (final w in _items)
           [
@@ -502,7 +501,6 @@ class _FuelUnitsScreenState extends State<FuelUnitsScreen> {
             ImdCol('', center: true),
           ],
           pageSize: 50,
-          cards: true,
           rows: [
             for (final u in _items)
               [

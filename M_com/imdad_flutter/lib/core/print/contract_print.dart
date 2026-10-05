@@ -107,7 +107,7 @@ class ContractPrint {
       _cell(it == null ? '' : n(it.price), flex: _flex[4], height: _rowH),
       _cell(it == null ? '' : n(it.total), flex: _flex[5], height: _rowH),
       _cell(it?.invoiceNo ?? '', flex: _flex[6], height: _rowH),
-      _cell(it == null || it.date.isEmpty ? '' : '${printDate(it.date)}م', flex: _flex[7], height: _rowH, size: 9),
+      _cell(it == null || it.date.isEmpty ? '' : printDate(it.date), flex: _flex[7], height: _rowH, size: 9),
       _cell(it?.note ?? '', flex: _flex[8], height: _rowH, size: 9),
     ]);
   }
@@ -186,7 +186,7 @@ class ContractPrint {
       pw.Expanded(
         flex: 4,
         child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-          kv('التاريخ:', c.listDate.isEmpty ? '' : '${printDate(c.listDate)}م'),
+          kv('التاريخ:', c.listDate.isEmpty ? '' : printDate(c.listDate)),
           kv('رقم العقد:', _cap(c.contractNo, 60)),
           kv('مرفقات:', '( ${invoices.isEmpty ? '   ' : invoices.length} )'),
           // الملاحظات الطويلة تُقتطع في الترويسة (ولا تُقسَّم على صفحات: ودجتها داخل صفٍّ ثابت).
@@ -232,7 +232,7 @@ class ContractPrint {
       pw.SizedBox(height: 4),
       pw.Center(
         child: pw.Text(
-          'قائمة الكمية المستهلكة: بتاريخ ${c.listDate.isEmpty ? '   /   /      ' : printDate(c.listDate)}م',
+          'قائمة الكمية المستهلكة: بتاريخ ${c.listDate.isEmpty ? '   -   -      ' : printDate(c.listDate)}',
           style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline),
         ),
       ),

@@ -95,11 +95,13 @@ void main() {
     expect(find.text('كود 50'), findsNothing);
   });
 
-  testWidgets('جدول فارغ مع maxHeight: رسالة الفراغ بلا رأسٍ ثابت', (tester) async {
+  testWidgets('جدول فارغ مع maxHeight: الرأس يبقى مع سطح «لا بيانات» بلا جسمٍ يُمرَّر', (tester) async {
     await tester.pumpWidget(host(
         ImdTable(columns: cols(), rows: const [], cards: false, maxHeight: 300, empty: 'لا بيانات')));
     expect(find.text('لا بيانات'), findsOneWidget);
-    expect(find.byType(Table), findsNothing);
+    // رأسٌ وحده (جدولٌ واحد بصفٍّ واحد) — لا جسم ولا تمرير.
+    expect(find.byType(Table), findsOneWidget);
+    expect(find.byType(SingleChildScrollView), findsOneWidget); // تمرير المضيف وحده لا جسم الجدول
   });
 
   testWidgets('headerBackground/headerForeground: يُطليان صفّ الرأس ونصّه معًا',

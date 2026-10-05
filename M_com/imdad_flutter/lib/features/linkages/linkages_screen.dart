@@ -407,7 +407,6 @@ class _LinkPersonnelTabState extends State<LinkPersonnelTab> {
                 ]),
               ],
           ],
-          cards: true,
           empty: 'لا أفراد مطابقين',
           onRowTap: null,
           // عمود التحديد الجماعي يسبق الأعمدة فيُزاح الفهرس به.

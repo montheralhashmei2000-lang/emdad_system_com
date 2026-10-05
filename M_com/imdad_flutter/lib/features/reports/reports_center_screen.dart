@@ -262,6 +262,7 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
 
   /// `doPrint()`
   Future<void> _print() async {
+    if (!Perm.of(context).guard(context, 'reports', 'print')) return;
     if (!_hasRows()) return;
     final layout = await SettingsRepo(_db).printLayout();
     final totals = _totalTexts(_rows());
@@ -288,6 +289,7 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
 
   /// `doXlsx()`
   Future<void> _export() async {
+    if (!Perm.of(context).guard(context, 'reports', 'export')) return;
     if (!_hasRows()) return;
     final totals = _totalTexts(_rows());
     final bytes = ExcelExport.build(
@@ -520,7 +522,6 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
           // عمود «م» يتقدّم أعمدة البيانات، فمؤشر الفرز يزيح بمقداره.
           sortIndex: _sortCol == null ? null : _sortCol! + 1,
           sortAsc: _sortDir > 0,
-          cards: true,
           pageSize: 100,
           empty: 'لا توجد بيانات مطابقة للفلاتر الحالية',
           onHeaderTap: (i) {

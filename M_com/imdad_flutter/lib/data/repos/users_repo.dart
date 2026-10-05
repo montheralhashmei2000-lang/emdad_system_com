@@ -40,7 +40,7 @@ class UsersRepo {
 
   static String scopeLabel(User user) {
     final scope = scopeOf(user);
-    if (user.role == 'admin') return 'كل المستودعات (مدير النظام)';
+    if (UserRole.isAdmin(user.role)) return 'كل المستودعات (${UserRole.label(user.role)})';
     if (scope == null) return 'كل المستودعات';
     return scope.isEmpty ? 'بدون مستودعات' : scope.join('، ');
   }
@@ -51,6 +51,24 @@ class UsersRepo {
           if (AccessControl.roles[id] != null) AccessControl.roles[id]!.permissions,
       ]);
 
+  /// قواعد من يفعل ماذا في إدارة الحسابات — تُطبَّق حين يُمرَّر [actorRole].
+  ///
+  /// • **المالك:** كل شيء (ما عدا المساس بحساب مالكٍ — يحميه الفحص أدناه).
+  /// • **المدير:** ينشئ مستخدمين بدور `user` بقالبٍ جاهز فقط، ويعدّل بياناتهم
+  ///   العادية ويفعّلهم. **لا** يمنح دور مدير، **ولا** يعدّل مصفوفة صلاحيات أحد
+  ///   ولا نطاقه، **ولا** يعطّل حسابًا، **ولا** يمسّ حساب مديرٍ أو مالك.
+  /// • غيرهما: لا شيء.
+  ///
+  /// `actorRole == null` ⇒ استدعاءٌ داخليٌّ موثوق (تهيئة، ترحيل، اختبارات) لا
+  /// يخضع للقواعد. الشاشات تمرّر دور المستخدم الحالي دائمًا.
+  static void _requireActor(String? actorRole, {bool owner = false, String why = ''}) {
+    if (actorRole == null) return;
+    final ok = owner ? UserRole.isOwner(actorRole) : UserRole.isAdmin(actorRole);
+    if (!ok) {
+      throw ArgumentError(owner ? '✖ هذا الإجراء للمالك وحده${why.isEmpty ? '' : ' — $why'}' : '✖ لا تملك صلاحية إدارة الحسابات');
+    }
+  }
+
   Future<String> createUser({
     required String username,
     required String password,
@@ -60,7 +78,18 @@ class UsersRepo {
     List<String>? warehouseScope,
     bool isAdmin = false,
     String actorEmail = '',
+    String? actorRole,
   }) async {
+    _requireActor(actorRole);
+    if (actorRole != null && !UserRole.isOwner(actorRole)) {
+      // المدير: مستخدمٌ عاديٌّ بقالبٍ جاهز — لا مدير، ولا مصفوفة صلاحياتٍ مخصَّصة، ولا نطاق.
+      if (isAdmin) _requireActor(actorRole, owner: true, why: 'منح دور مدير النظام');
+      if (permissions != null) _requireActor(actorRole, owner: true, why: 'تخصيص الصلاحيات');
+      if (warehouseScope != null) _requireActor(actorRole, owner: true, why: 'تحديد نطاق المستودعات');
+      if (roleIds.any((r) => !AccessControl.roles.containsKey(r))) {
+        throw ArgumentError('✖ قالب صلاحيات غير معروف');
+      }
+    }
     final u = username.trim().toLowerCase();
     if (!RegExp(r'^[a-z0-9._-]{3,40}$').hasMatch(u)) {
       throw ArgumentError('اسم المستخدم بالإنجليزية أو الأرقام أو النقاط، 3 أحرف فأكثر');
@@ -108,7 +137,27 @@ class UsersRepo {
     bool? isAdmin,
     bool? active,
     String actorEmail = '',
+    String? actorRole,
   }) async {
+    _requireActor(actorRole);
+    // حساب المالك محميّ: لا يتغيّر دوره ولا يُعطَّل من هذا المسار.
+    final target = await (db.select(db.users)..where((t) => t.id.equals(id))).getSingleOrNull();
+    if (target != null && UserRole.isOwner(target.role)) {
+      if (isAdmin != null) throw ArgumentError('✖ حساب المالك لا يتغيّر دوره');
+      if (active == false) throw ArgumentError('✖ حساب المالك لا يُعطَّل');
+    }
+    if (actorRole != null && !UserRole.isOwner(actorRole)) {
+      // المدير لا يمسّ حساب مديرٍ أو مالك، ولا يرفع ولا يعدّل صلاحيات ولا يعطّل.
+      if (target != null && UserRole.isAdmin(target.role)) {
+        throw ArgumentError('✖ لا يعدّل حسابَ مديرٍ أو مالكٍ إلا المالك');
+      }
+      if (isAdmin != null) _requireActor(actorRole, owner: true, why: 'تغيير دور الحساب');
+      if (permissions != null) _requireActor(actorRole, owner: true, why: 'تعديل مصفوفة الصلاحيات');
+      if (allWarehouses != null || warehouseScope != null) {
+        _requireActor(actorRole, owner: true, why: 'تعديل نطاق المستودعات');
+      }
+      if (active == false) _requireActor(actorRole, owner: true, why: 'تعطيل الحسابات');
+    }
     await (db.update(db.users)..where((t) => t.id.equals(id))).write(UsersCompanion(
       name: name == null ? const Value.absent() : Value(name),
       roles: roleIds == null ? const Value.absent() : Value(jsonEncode(roleIds)),
@@ -162,11 +211,14 @@ class UsersRepo {
       ));
 
   /// لا يجوز حذف آخر مدير نظام حتى لا يُغلق النظام على نفسه.
-  Future<bool> deleteUser(String id) async {
+  Future<bool> deleteUser(String id, {String? actorRole}) async {
+    _requireActor(actorRole, owner: true, why: 'حذف المستخدمين');
     final rows = await db.select(db.users).get();
     final target = rows.where((u) => u.id == id).toList();
     if (target.isEmpty) return false;
-    if (target.first.role == 'admin' && rows.where((u) => u.role == 'admin').length <= 1) {
+    // المالك لا يُحذف أبدًا، وآخر مدير (أو مالك) لا يُحذف حتى لا يُغلق النظام على نفسه.
+    if (UserRole.isOwner(target.first.role)) return false;
+    if (UserRole.isAdmin(target.first.role) && rows.where((u) => UserRole.isAdmin(u.role)).length <= 1) {
       return false;
     }
     await (db.delete(db.users)..where((t) => t.id.equals(id))).go();

@@ -180,6 +180,7 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
   }
 
   Future<void> _delete(Warehouse it) async {
+    if (!Perm.of(context).guard(context, 'stores', 'delete')) return;
     final u = _usage[it.name.trim()];
     if ((u?.count ?? 0) > 0 &&
         !await imdConfirm(context, 'هذا المستودع مرتبط بحركات سابقة (${nf(u!.count)}). هل تريد حذفه رغم ذلك؟',
@@ -204,6 +205,7 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
 
   /// تعيين المخزن الرئيسي — منه وحده تُغذّى المعسكرات.
   Future<void> _setMain(Warehouse w) async {
+    if (!Perm.of(context).guard(context, 'stores', 'edit')) return;
     final current = await CampLedgerRepo(_db).mainWarehouse();
     if (!mounted) return;
     final ok = await imdConfirm(
@@ -234,7 +236,8 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final can = Perm.of(context).admin;
+    // الإضافة والتعديل والحذف بصلاحية «المستودعات» نفسها (لا بالمدير وحده)، وكل إجراءٍ محروسٌ في دالته.
+    final can = Perm.of(context).writable('stores');
     final cur = _items.where((x) => x.id == _editId).firstOrNull;
     final q = _q.text.trim().toLowerCase();
     final rows = _items
@@ -354,7 +357,6 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
             if (can) const ImdCol('', width: 110),
           ],
           pageSize: 50,
-          cards: true,
           rows: [
             for (final x in rows)
               () {

@@ -536,6 +536,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
   }
 
   void _print() {
+    if (!Perm.of(context).guard(context, 'receive', 'print')) return;
     final c = _collect();
     if (c.rows.isEmpty) {
       showImdToast(context, '✖ لا توجد أصناف للطباعة${c.err.isNotEmpty ? ' — ${c.err}' : ''}');

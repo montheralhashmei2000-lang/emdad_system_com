@@ -1,3 +1,4 @@
+import '../../core/security/perm.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -154,6 +155,7 @@ class _FuelDailyReportScreenState extends State<FuelDailyReportScreen> {
   }
 
   Future<void> _print() async {
+    if (!Perm.of(context).guard(context, 'fuelReports', 'print')) return;
     final settings = _settings;
     if (settings == null) return;
     await FuelReportDocs.printDaily(_db,
@@ -299,7 +301,6 @@ class _FuelDailyReportScreenState extends State<FuelDailyReportScreen> {
           const ImdCol('المتبقي', numeric: true),
         ],
         pageSize: 50,
-        cards: true,
         rows: [
           for (final day in r.days)
             for (final b in day.balances)
@@ -444,7 +445,6 @@ class _FuelDailyReportScreenState extends State<FuelDailyReportScreen> {
         ImdCol('الكمية', numeric: true),
       ],
       pageSize: 50,
-      cards: true,
       rows: [
         for (var i = 0; i < c.incoming.length; i++)
           [
@@ -500,7 +500,6 @@ class _FuelDailyReportScreenState extends State<FuelDailyReportScreen> {
         ImdCol('الكمية', numeric: true),
       ],
       pageSize: 50,
-      cards: true,
       rows: [
         for (var i = 0; i < c.issued.length; i++)
           [
@@ -558,7 +557,6 @@ class _FuelDailyReportScreenState extends State<FuelDailyReportScreen> {
         ImdCol('الكمية', numeric: true),
       ],
       pageSize: 50,
-      cards: true,
       rows: [
         for (var i = 0; i < c.transfers.length; i++)
           [

@@ -699,7 +699,6 @@ class _CablesScreenState extends State<CablesScreen> {
                 ]),
               ],
           ],
-          cards: true,
           empty: 'لا برقيات مطابقة',
           onRowTap: null,
         ),

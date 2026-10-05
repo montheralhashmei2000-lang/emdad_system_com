@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
@@ -57,7 +58,7 @@ class ImdKpis extends StatelessWidget {
 
 /// بطاقة مؤشرٍ واحد: عنوانٌ ورقمٌ كبير، وإضافةٌ اختيارية تحتهما.
 class ImdKpi extends StatelessWidget {
-  const ImdKpi({super.key, required this.label, required this.value, this.color, this.extra, this.icon});
+  const ImdKpi({super.key, required this.label, required this.value, this.color, this.extra, this.icon, this.spark});
   final String label;
   final String value;
   final Color? color;
@@ -68,6 +69,10 @@ class ImdKpi extends StatelessWidget {
   /// أيقونة اختيارية بجوار العنوان — لا تغيّر شيئًا في الاستخدامات القائمة
   /// التي لا تمرّرها.
   final String? icon;
+
+  /// سلسلة قيم (من الأقدم إلى الأحدث) تُرسم خطًّا صغيرًا أسفل القيمة — اتجاهٌ
+  /// بنظرة. لا تُرسم بأقل من نقطتين. بلا تمريرها لا يتغيّر شيء.
+  final List<double>? spark;
 
   @override
   Widget build(BuildContext context) {
@@ -102,11 +107,62 @@ class ImdKpi extends StatelessWidget {
           Text(value,
               style: TextStyle(
                   fontSize: mobile ? 22 : 28, fontWeight: FontWeight.w700, color: color ?? c.text, height: 1)),
+          if (spark != null && spark!.length >= 2) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 22,
+              width: double.infinity,
+              child: CustomPaint(painter: ImdSparkPainter(spark!, color ?? c.accent)),
+            ),
+          ],
           if (extra != null) ...[const SizedBox(height: 6), extra!],
         ],
       ),
     );
   }
+}
+
+/// خطٌّ مصغَّر (sparkline) بلا محاور — مقياسه من أدنى السلسلة إلى أعلاها، ونقطته
+/// الأخيرة معلَّمةٌ بدائرة. في RTL يُرسم الأحدث عند الطرف البدئي (اليمين).
+class ImdSparkPainter extends CustomPainter {
+  const ImdSparkPainter(this.values, this.color);
+
+  final List<double> values;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.length < 2) return;
+    var lo = values.first, hi = values.first;
+    for (final v in values) {
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    final span = (hi - lo) == 0 ? 1.0 : (hi - lo);
+    const pad = 3.0;
+    Offset at(int i) {
+      final x = pad + (size.width - 2 * pad) * i / (values.length - 1);
+      final y = size.height - pad - (size.height - 2 * pad) * ((values[i] - lo) / span);
+      return Offset(x, y);
+    }
+
+    final path = Path()..moveTo(at(0).dx, at(0).dy);
+    for (var i = 1; i < values.length; i++) {
+      path.lineTo(at(i).dx, at(i).dy);
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color.withValues(alpha: .85)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5
+        ..strokeJoin = StrokeJoin.round,
+    );
+    canvas.drawCircle(at(values.length - 1), 2.5, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(ImdSparkPainter old) => old.color != color || !listEquals(old.values, values);
 }
 
 /// صفوف شبكة متساوية الأعمدة بارتفاع موحّد داخل كل صف (سلوك CSS grid: align-items: stretch).

@@ -1,3 +1,4 @@
+import '../../core/security/perm.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -118,6 +119,7 @@ class _FuelConsumptionScreenState extends State<FuelConsumptionScreen> {
   }
 
   Future<void> _print() async {
+    if (!Perm.of(context).guard(context, 'fuelConsumption', 'print')) return;
     final rows = FuelConsumption.group(_filtered, _groupBy);
     if (rows.isEmpty) {
       showImdToast(context, '✖ لا حركات في هذا المدى');
@@ -326,7 +328,6 @@ class _FuelConsumptionScreenState extends State<FuelConsumptionScreen> {
         ImdCol('', center: true),
       ],
       pageSize: 50,
-      cards: true,
       rows: [
         for (final i in rows)
           [
@@ -343,13 +344,16 @@ class _FuelConsumptionScreenState extends State<FuelConsumptionScreen> {
             ImdIconButton(
               icon: 'printer',
               tooltip: 'طباعة السند',
-              onPressed: () => FuelPrint.issueVoucher(
+              onPressed: () {
+                if (!Perm.of(context).guard(context, 'fuelMoves', 'print')) return;
+                FuelPrint.issueVoucher(
                 _db,
                 i,
                 allocation: _allocations
                     .where((a) => a.allocation.id == i.allocationId)
                     .firstOrNull,
-              ),
+              );
+              },
             ),
           ],
       ],
@@ -369,7 +373,6 @@ class _FuelConsumptionScreenState extends State<FuelConsumptionScreen> {
         ImdCol('الإجمالي', numeric: true),
         ImdCol('النسبة'),
       ],
-      cards: true,
       rows: [
         for (final r in rows)
           [

@@ -248,6 +248,7 @@ class _OpeningScreenState extends State<OpeningScreen> {
 
   /// `opbPrintReport()`
   Future<void> _print() async {
+    if (!Perm.of(context).guard(context, 'opening', 'print')) return;
     final rows = _rows();
     if (rows.isEmpty) {
       showImdToast(context, '✖ لا توجد بيانات للطباعة', error: true);
@@ -341,7 +342,6 @@ class _OpeningScreenState extends State<OpeningScreen> {
         ],
         rowKeys: [for (final x in rows) ValueKey(x.id)],
         pageSize: 50,
-        cards: true,
         empty: 'لا أصناف مطابقة',
         rows: [
           for (final x in rows)

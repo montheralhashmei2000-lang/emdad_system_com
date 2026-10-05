@@ -115,7 +115,6 @@ class _CustodyDetailState extends State<CustodyDetail> {
                 Text(k.displayInvoiceNo.isEmpty ? '—' : k.displayInvoiceNo),
               ],
           ],
-          cards: true,
           empty: 'لا عقود',
           onRowTap: null,
         ),

@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:provider/provider.dart';
 
 import '../../domain/access_control.dart';
+import '../../domain/perm_catalog.dart';
 import '../ui/imd_widgets.dart';
 import 'auth_service.dart';
 
@@ -10,69 +11,31 @@ class Perm {
   Perm(this._auth);
   final AuthService _auth;
 
-  /// `PERM_CATALOG` — أسماء الصفحات كما تظهر في رسائل الصلاحية.
-  static const labels = <String, String>{
-    'dashboard': 'الرئيسية',
-    'items': 'الأصناف',
-    'suppliers': 'الموردون',
-    'units': 'الوحدات المستفيدة',
-    'stores': 'المستودعات',
-    'kitchens': 'المطابخ والأفران',
-    'assets': 'الأصول الثابتة',
-    'rationOrders': 'طلبيات الإعاشة',
-    'supplyAuthorities': 'جهات الاعتمادات',
-    'fuelDashboard': 'لوحة المحروقات',
-    'fuelAllocations': 'تفريدة المحروقات',
-    'fuelMoves': 'حركة المحروقات',
-    'fuelStocktake': 'جرد المحروقات',
-    'fuelWarehouses': 'مستودعات المحروقات',
-    'fuelUnits': 'وحدات المحروقات',
-    'fuelSettings': 'إعدادات المحروقات',
-    'fuelVehicles': 'سجل المركبات',
-    'fuelReports': 'تقارير المحروقات (الرسمي والأرصدة والكشف)',
-    'fuelData': 'البيانات الأساسية للمحروقات',
-    'fuelConsumption': 'تقرير الاستهلاك',
-    'fuelIssue': 'صرف المحروقات',
-    'fuelSupply': 'توريد المحروقات',
-    'fuelTransfer': 'تحويل المحروقات',
-    'fuelOpening': 'الرصيد الافتتاحي للمحروقات',
-    'receive': 'الاستلام',
-    'issue': 'الصرف',
-    'transfer': 'التحويل المخزني',
-    'returns': 'المرتجعات',
-    'pendingOrders': 'أوامر التوريد المعلقة',
-    'documents': 'سجل المستندات (السندات المحفوظة)',
-    'feeding': 'التغذية / القوة',
-    'kitchenLog': 'سجل التشغيل والطهي',
-    'mealPlans': 'خطط الوجبات',
-    'ratios': 'نسب الاستحقاق',
-    'balances': 'الأرصدة الحالية',
-    'stocktake': 'الجرد',
-    'reports': 'التقارير',
-    'actualEntitlement': 'حساب الاستحقاق الفعلي',
-    'campLedger': 'سجل حساب المعسكر',
-    'campSettlement': 'تصفية الشهر',
-    'campDashboard': 'لوحة المعسكرات',
-    'cables': 'البرقيات',
-    'archive': 'الأرشيف الإلكتروني',
-    'personnel': 'القوة البشرية للإمداد والتموين',
-    'linkages': 'الارتباطات (القوة والمالية والتسليح)',
-    'auditTrail': 'سجل التدقيق',
-    'activityIntel': 'ذكاء النشاط',
-    'executiveCmd': 'القيادة التنفيذية',
-    'sensitiveOps': 'المراجعة الحساسة',
-    // كانت بلا صلاحيةٍ معرَّفة فلا يراها إلا المدير بلا قصد، وأخواتها
-    // الثلاث معرَّفة — فأُلحقت بهنّ لتُمنح كما تُمنح.
-    'healthOps': 'صحة النظام والعمليات',
-    'opening': 'الأرصدة الافتتاحية',
-    'settings': 'الإعدادات والهوية',
-    'usersAccess': 'المستخدمون والصلاحيات',
+  /// أسماء الصفحات كما تظهر في رسائل الصلاحية — من [PermCatalog] (المصدر الوحيد)
+  /// مضافًا إليها أسماء بنود القائمة التي تتبع صلاحية غيرها.
+  static final Map<String, String> labels = {
+    ...PermCatalog.aliasLabels,
+    ...PermCatalog.labels,
   };
 
   static Perm of(BuildContext context) => Perm(context.read<AuthService>());
 
   /// `can()` — مدير النظام.
-  bool get admin => _auth.currentUser?.role == 'admin';
+  /// مدير أو مالك: كل صلاحيات الصفحات.
+  bool get admin => UserRole.isAdmin(_auth.currentUser?.role);
+
+  /// المالك وحده: يملك `sys.*`.
+  bool get owner => UserRole.isOwner(_auth.currentUser?.role);
+
+  /// صلاحية نظامٍ خاصة (`sys.*`) — للمالك وحده.
+  bool sys(String key) => owner;
+
+  /// حارس `sys.*`: يرفض بإشعارٍ يسمّي الصلاحية.
+  bool guardSys(BuildContext context, String key) {
+    if (sys(key)) return true;
+    showImdToast(context, '✖ هذا الإجراء للمالك وحده — ${SysPerm.labels[key] ?? key}', error: true);
+    return false;
+  }
 
   String get email => _auth.currentUser?.email ?? '';
 
@@ -83,12 +46,14 @@ class Perm {
     return u.name.trim().isNotEmpty ? u.name.trim() : u.username;
   }
 
+  static Map? _pageMap(Object? v) => v is Map ? v : null;
+
   bool has(String page, [String action = PermAction.view]) {
     final u = _auth.currentUser;
     if (u == null) return false;
+    if (SysPerm.isSys(page)) return owner;
     if (admin) return true;
-    final p = _auth.permissionsOf(u)[page];
-    return p is Map && p[action] == true;
+    return AccessControl.allows(_pageMap(_auth.permissionsOf(u)[page]), action);
   }
 
   /// `pageManage(page)`

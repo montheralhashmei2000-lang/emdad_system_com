@@ -12,6 +12,79 @@ class PermAction {
   static const String approve = 'approve';
   static const String print = 'print';
   static const String export = 'export';
+
+  /// استيراد بياناتٍ من ملف (Excel وغيره) — إجراءٌ مستقل عن «إضافة».
+  static const String import = 'import';
+}
+
+/// أدوار الحساب (عمود `users.role`).
+///
+/// • [owner]: المالك — كل الصلاحيات ومعها `sys.*`، ولا يُعدَّل من أحد.
+/// • [admin]: مدير النظام — كل صلاحيات الصفحات، **بلا** `sys.*`.
+/// • [user]: مستخدم عادي — بحسب صلاحياته المخزَّنة.
+///
+/// القيمة القديمة `admin` تبقى كما هي، فلا ترحيل لها: المالك أضيف فوقها.
+class UserRole {
+  const UserRole._();
+
+  static const String owner = 'owner';
+  static const String admin = 'admin';
+  static const String user = 'user';
+
+  /// يملك كل صلاحيات الصفحات (مالك أو مدير).
+  static bool isAdmin(String? role) => role == admin || role == owner;
+
+  static bool isOwner(String? role) => role == owner;
+
+  static String label(String? role) => switch (role) {
+        owner => 'المالك',
+        admin => 'مدير النظام',
+        _ => 'مستخدم',
+      };
+}
+
+/// الصلاحيات الخاصة بالنظام (`sys.*`) — **للمالك وحده**.
+///
+/// ليست في كتالوج الصلاحيات ولا في القوالب ولا في مصفوفة الصلاحيات، ولا تُقرأ
+/// من `users.permissions` إطلاقًا: فمفتاحٌ `sys.backup: true` يصل بمزامنةٍ أو
+/// بملف استعادة أو بتعديلٍ يدوي للقاعدة **لا أثر له** (فشلٌ مغلق). الفحص دور
+/// الحساب [UserRole.owner] لا غير.
+class SysPerm {
+  const SysPerm._();
+
+  static const String prefix = 'sys.';
+
+  /// تعديل صلاحيات الآخرين وأدوارهم وحجب الأقسام.
+  static const String permissions = 'sys.permissions';
+
+  /// منح دور مدير النظام، وحذف المستخدمين وتعطيلهم، وإعادة كلمة مرور مدير.
+  static const String users = 'sys.users';
+
+  /// النسخ الاحتياطي الكامل (تصدير واستعادة وجدولة) والإعادة المحلية واستيراد
+  /// حسابات المستخدمين بالجملة.
+  static const String backup = 'sys.backup';
+
+  /// تفعيل الأجهزة: إصدار الرموز والإلغاء والمفتاح الخاص.
+  static const String devices = 'sys.devices';
+
+  /// المزامنة: الاقتران والمفاتيح الدائمة واستقبال الحسابات.
+  static const String sync = 'sys.sync';
+
+  /// الإعدادات الحساسة: قواعد المحرك ومفتاح التوقيع والأرشفة التلقائية.
+  static const String settingsSensitive = 'sys.settingsSensitive';
+
+  static const Map<String, String> labels = {
+    permissions: 'تعديل الصلاحيات والأدوار وحجب الأقسام',
+    users: 'منح دور المدير وحذف المستخدمين وتعطيلهم',
+    backup: 'النسخ الاحتياطي الكامل واستيراد المستخدمين',
+    devices: 'تفعيل الأجهزة',
+    sync: 'المزامنة والاقتران',
+    settingsSensitive: 'الإعدادات الحساسة (القواعد والتوقيع والأرشفة)',
+  };
+
+  static List<String> get all => labels.keys.toList();
+
+  static bool isSys(String page) => page.startsWith(prefix);
 }
 
 /// صلاحيات على شكل: { 'receive': {'view': true, 'create': true}, ... }
@@ -76,22 +149,40 @@ class AccessControl {
     'data_entry': RoleTemplate(
       id: 'data_entry',
       label: 'مدخل بيانات',
-      description: 'إدخال السندات والتغذية وسجل التشغيل في مستودعات نطاقه، دون اعتماد أو حذف',
+      description: 'إضافة سندات وتفريدات وسجلات جديدة فقط في مستودعات نطاقه — دون تعديل ما سُجّل أو حذفه أو اعتماده',
       permissions: merge([
         grant(basicPages, [PermAction.view]),
         grant(opsPages, [PermAction.view, PermAction.create]),
-        grant(['feeding', 'kitchenLog', 'mealPlans'], [PermAction.view, PermAction.create, PermAction.edit]),
+        // إضافةٌ فقط: التفريدة تُحفظ لليوم الجديد بـ«إضافة» (انظر strength_screen)،
+        // وتصحيح ما سُجّل لمن يملك «تعديل».
+        grant(['feeding', 'kitchenLog', 'mealPlans'], [PermAction.view, PermAction.create]),
         grant(['balances', 'pendingOrders'], [PermAction.view]),
         grant(['documents'], [PermAction.view]),
-        grant(['stocktake'], [PermAction.view, PermAction.edit]),
+        // العدّ إضافة: سطرٌ لم يُعدّ بعد يكفيه «إضافة» (انظر _canCountLine في
+        // شاشة الجرد)، وتصحيح عدٍّ مسجَّل يتطلب «تعديل».
+        grant(['stocktake'], [PermAction.view, PermAction.create]),
       ]),
     ),
     'storekeeper': RoleTemplate(
       id: 'storekeeper',
       label: 'أمين مخزن',
-      description: 'الاستلام والصرف والتحويل والمرتجعات والجرد واعتمادها وطباعتها في مستودعات نطاقه',
+      description: 'الاستلام والصرف والتحويل والمرتجعات والجرد واعتمادها وطباعتها، وإدارة الكتالوج (الأصناف والموردون والوحدات…) والأرصدة والتقارير، في مستودعات نطاقه',
       permissions: merge([
         grant(basicPages, [PermAction.view]),
+        // الكتالوج: يضيف ويعدّل ويستورد ويصدّر ويطبع — بلا حذف، وبلا إدارة المستودعات نفسها.
+        grant(['items'], [
+          PermAction.view, PermAction.create, PermAction.edit,
+          PermAction.print, PermAction.export, PermAction.import,
+        ]),
+        grant(['suppliers'], [
+          PermAction.view, PermAction.create, PermAction.edit, PermAction.export,
+        ]),
+        grant(['kitchens', 'assets'], [
+          PermAction.view, PermAction.create, PermAction.edit,
+        ]),
+        grant(['units'], [
+          PermAction.view, PermAction.create, PermAction.edit, PermAction.print, PermAction.export,
+        ]),
         grant(opsPages, [
           PermAction.view, PermAction.create, PermAction.edit, PermAction.approve, PermAction.print,
         ]),
@@ -117,7 +208,7 @@ class AccessControl {
         grant(['balances'], [PermAction.view, PermAction.print, PermAction.export]),
         grant(['campDashboard'], [PermAction.view]),
         grant(['stocktake'], [PermAction.view, PermAction.create, PermAction.edit, PermAction.print]),
-        grant(['reports'], [PermAction.view, PermAction.print]),
+        grant(['reports'], [PermAction.view, PermAction.print, PermAction.export]),
         grant(['documents'], [PermAction.view, PermAction.print, PermAction.edit]),
       ]),
     ),
@@ -149,6 +240,38 @@ class AccessControl {
         grant(['balances', 'reports', 'actualEntitlement'], [PermAction.view, PermAction.print, PermAction.export]),
         grant(['stocktake'], [PermAction.view, PermAction.approve, PermAction.print]),
         grant(['documents'], [PermAction.view, PermAction.print]),
+      ]),
+    ),
+    'fuel_keeper': RoleTemplate(
+      id: 'fuel_keeper',
+      label: 'أمين المحروقات',
+      description: 'قسم المحروقات وحده: التفريدة والصرف والتوريد والتحويل والجرد والتقارير — بلا أي صلاحية على الإمداد',
+      permissions: merge([
+        grant(['fuelDashboard', 'fuelVehicles'], [PermAction.view]),
+        grant(['fuelMoves', 'fuelAllocations'], [
+          PermAction.view, PermAction.create, PermAction.edit, PermAction.delete, PermAction.print,
+        ]),
+        grant(['fuelWarehouses', 'fuelUnits'], [
+          PermAction.view, PermAction.create, PermAction.edit, PermAction.delete,
+        ]),
+        grant(['fuelReports', 'fuelConsumption'], [PermAction.view, PermAction.print]),
+        grant(['fuelStocktake'], [PermAction.view, PermAction.approve, PermAction.print]),
+        grant(['fuelSettings'], [PermAction.view, PermAction.edit]),
+      ]),
+    ),
+    'finance': RoleTemplate(
+      id: 'finance',
+      label: 'المالية',
+      description: 'الارتباطات: القوة البشرية والمالية (السندات والعهد والعقود والمسيرات والإخلاء) وطباعتها وتصديرها واستيرادها',
+      permissions: merge([
+        grant(['personnel'], [
+          PermAction.view, PermAction.create, PermAction.edit, PermAction.delete,
+          PermAction.print, PermAction.export,
+        ]),
+        grant(['linkages'], [
+          PermAction.view, PermAction.create, PermAction.edit, PermAction.delete, PermAction.approve,
+          PermAction.print, PermAction.export, PermAction.import,
+        ]),
       ]),
     ),
     'office_manager': RoleTemplate(
@@ -190,15 +313,32 @@ class AccessControl {
           if (roles.containsKey(id)) roles[id]!.permissions,
       ]);
 
+  /// هل تسمح خريطة إجراءات صفحةٍ ([pageActions]) بـ[action]؟
+  ///
+  /// **توافقٌ مع ما قبل «import»:** الاستيراد كان يُحرس بـ«إضافة»، فمن لم
+  /// يُذكر له مفتاح `import` صراحةً (لا `true` ولا `false`) يرث صلاحية
+  /// «إضافة» كما كانت — فلا يفقد أحدٌ قدرةً كانت له. وإن حدّد المالك
+  /// `import` صراحةً (تفعيلًا أو إلغاءً) فهو الحكم.
+  static bool allows(Map? pageActions, String action) {
+    if (pageActions == null) return false;
+    if (action == PermAction.import && !pageActions.containsKey(PermAction.import)) {
+      return pageActions[PermAction.create] == true;
+    }
+    return pageActions[action] == true;
+  }
+
   /// فحص صلاحية صفحة/إجراء.
   static bool can({
     required bool isAdmin,
     required PermissionMap permissions,
     required String page,
     String action = PermAction.view,
+    bool isOwner = false,
   }) {
+    // `sys.*` للمالك وحده، ولا يُقرأ من الصلاحيات المخزَّنة أبدًا.
+    if (SysPerm.isSys(page)) return isOwner;
     if (isAdmin) return true;
-    return permissions[page]?[action] == true;
+    return allows(permissions[page], action);
   }
 
   /// هل يملك المستخدم أي صلاحية إدارة على الصفحة (إضافة/تعديل/حذف/اعتماد)؟

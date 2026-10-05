@@ -174,7 +174,6 @@ class _FinanceStatementState extends State<FinanceStatement> {
                   Text(FinCurrency.label(l.currency)),
                 ],
             ],
-            cards: true,
             empty: 'لا حركة',
             onRowTap: null,
           ),

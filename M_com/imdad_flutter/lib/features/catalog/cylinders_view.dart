@@ -124,7 +124,6 @@ class _CylindersViewState extends State<CylindersView> {
               ImdCol('غير مسجلة', numeric: true),
               ImdCol('الرصيد', numeric: true),
             ],
-            cards: true,
             empty: 'لا أسطوانات في مستودعات نطاقك',
             rows: [
               for (final e in byWh)
@@ -150,7 +149,6 @@ class _CylindersViewState extends State<CylindersView> {
           icon: 'users',
           child: ImdTable(
             columns: const [ImdCol('الجهة'), ImdCol('النوع'), ImdCol('العدد', numeric: true)],
-            cards: true,
             empty: 'لا عهد قائمة — تُسجَّل من «صرف بضاعة» بعملية «تسليم عهدة»',
             rows: [
               for (final h in holders)

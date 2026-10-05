@@ -255,7 +255,6 @@ class _AuthoritiesScreenState extends State<AuthoritiesScreen> {
             ImdCol('', center: true),
           ],
           pageSize: 50,
-          cards: true,
           rowMenu: !can
               ? null
               : (i) => [
