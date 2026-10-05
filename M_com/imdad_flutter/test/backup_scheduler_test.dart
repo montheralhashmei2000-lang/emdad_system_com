@@ -33,9 +33,10 @@ void main() {
     return (path: path, records: 12, encrypted: true);
   }
 
-  BackupScheduler make({BackupWriter? writer}) => BackupScheduler(
+  BackupScheduler make({BackupWriter? writer, bool owner = true}) => BackupScheduler(
         db,
         secrets: secrets,
+        isOwnerDevice: () async => owner,
         writer: writer ?? fakeWriter,
         clock: () => now,
         defaultDirectory: () async => p.join(dir.path, 'default'),

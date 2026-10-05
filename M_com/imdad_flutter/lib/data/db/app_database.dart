@@ -4,6 +4,7 @@ import '../repos/audit_repo.dart';
 import '../repos/signatures_repo.dart';
 import '../sync/sync_marks.dart';
 import 'connection/connection.dart';
+import 'pre_migration_backup.dart';
 
 import 'archive_tables.dart';
 import 'cable_tables.dart';
@@ -1083,8 +1084,12 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_open());
   AppDatabase.forTesting(super.executor);
 
+  /// إصدار المخطط الحالي. ثابتٌ ساكن لتقرأه طبقة الاتصال (النسخة الاحتياطية قبل
+  /// الترحيل) قبل أن تُنشأ نسخةٌ من القاعدة.
+  static const int kSchemaVersion = 24;
+
   @override
-  int get schemaVersion => 24;
+  int get schemaVersion => kSchemaVersion;
 
   /// الفهارس المخدومة فعليًا بالاستعلامات: البحث بالمرجع (فتح سند من سجل
   /// المستندات)، وبالحالة (الأوامر المعلقة والمسودات)، وبالمستودع والصنف
@@ -1558,6 +1563,8 @@ class AppDatabase extends _$AppDatabase {
           await SyncMarks(this).pruneTombstones();
           // وكذلك سجل التدقيق العادي — وعالي الخطورة يبقى.
           await AuditRepo(this).prune();
+          // نسخة ما قبل الترحيل: تسجيل إنشائها بعد نجاح الفتح، وحذف المنقضية.
+          await PreMigrationBackup.settle(this, schemaVersion: schemaVersion);
         },
       );
 }

@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../db_cipher.dart';
+import '../pre_migration_backup.dart';
 
 /// قاعدة البيانات على أندرويد وويندوز: ملف SQLite **مشفَّر** (SQLCipher) في
 /// مجلد بيانات التطبيق، مفتاحه في مخزن اعتمادات النظام (انظر [DbCipher]).
@@ -22,8 +23,12 @@ QueryExecutor openConnection() {
     return NativeDatabase.createInBackground(
       file,
       isolateSetup: DbCipher.setupIsolate,
-      // المفتاح أول ما يُنفَّذ على الاتصال، قبل أي قراءة.
-      setup: (db) => DbCipher.applyKey(db, key),
+      setup: (db) {
+        // المفتاح أول ما يُنفَّذ على الاتصال، قبل أي قراءة.
+        DbCipher.applyKey(db, key);
+        // نسخة كاملة من الملف قبل أن يُرحِّله drift؛ فشلها يمنع الفتح والترحيل معًا.
+        PreMigrationBackup.createIfNeeded(db, file);
+      },
     );
   });
 }

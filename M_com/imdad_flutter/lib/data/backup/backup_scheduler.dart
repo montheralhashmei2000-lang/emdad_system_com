@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/error_log.dart';
+import '../../core/security/device_activation.dart';
 import '../db/app_database.dart';
 import '../migration/data_export.dart';
 import '../repos/settings_repo.dart';
@@ -171,17 +172,20 @@ class BackupScheduler extends ChangeNotifier {
     BackupWriter? writer,
     DateTime Function()? clock,
     Future<String> Function()? defaultDirectory,
+    Future<bool> Function()? isOwnerDevice,
     this.checkEvery = const Duration(minutes: 30),
   })  : _secrets = secrets ?? const SecureBackupSecretStore(),
         _writer = writer ?? _defaultWriter(_db),
         _now = clock ?? DateTime.now,
-        _defaultDir = defaultDirectory ?? _documentsBackupDir;
+        _defaultDir = defaultDirectory ?? _documentsBackupDir,
+        _isOwnerDevice = isOwnerDevice ?? (() => _defaultIsOwnerDevice(_db));
 
   final AppDatabase _db;
   final BackupSecretStore _secrets;
   final BackupWriter _writer;
   final DateTime Function() _now;
   final Future<String> Function() _defaultDir;
+  final Future<bool> Function() _isOwnerDevice;
   final Duration checkEvery;
 
   static const String settingsKey = 'backupSchedule';
@@ -192,7 +196,7 @@ class BackupScheduler extends ChangeNotifier {
   static const Duration retryAfter = Duration(hours: 1);
 
   /// الفواصل المعروضة بالساعات: يوميًّا / كل ٣ أيام / أسبوعيًّا.
-  static const List<int> intervalChoices = [24, 72, 168];
+  static const List<int> intervalChoices = [24, 72, 168, 720];
   static const List<int> keepChoices = [3, 7, 14, 30];
 
   Timer? _timer;
@@ -202,6 +206,12 @@ class BackupScheduler extends ChangeNotifier {
   static BackupWriter _defaultWriter(AppDatabase db) =>
       (path, {required includeUsers, required password}) =>
           DataExporter(db).writeToFile(path, includeUsers: includeUsers, password: password);
+
+  /// جهاز المالك: جهاز الإدارة المفعَّل، أو الجهاز الذي يحمل مفتاح المالك الخاص.
+  static Future<bool> _defaultIsOwnerDevice(AppDatabase db) async {
+    final act = DeviceActivation(db);
+    return await act.isMaster() || await act.canIssue();
+  }
 
   static Future<String> _documentsBackupDir() async =>
       p.join((await getApplicationDocumentsDirectory()).path, 'imdad_backups');
@@ -269,7 +279,10 @@ class BackupScheduler extends ChangeNotifier {
       final name = fileName(started);
       final finalPath = p.join(dir.path, name);
       final partPath = '$finalPath.part';
-      final result = await _writer(partPath, includeUsers: cfg.includeUsers, password: password);
+      // **هجين:** النسخة الكاملة (بالمستخدمين) لجهاز المالك وحده. الفرع يحفظ بياناته
+      // دون حسابات ولا مفاتيح — فقدُ جهاز فرعٍ لا يُفلت منه ما يخصّ الإدارة.
+      final includeUsers = cfg.includeUsers && await _isOwnerDevice();
+      final result = await _writer(partPath, includeUsers: includeUsers, password: password);
       await File(partPath).rename(finalPath);
 
       await prune(dir, cfg.keep);
