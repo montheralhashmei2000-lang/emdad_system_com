@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import '../../data/db/app_database.dart';
 import '../../data/repos/audit_repo.dart';
+import '../../data/repos/users_repo.dart';
 import '../../domain/access_control.dart';
 
 /// نتيجة محاولة الترقية التلقائية للمالك.
@@ -79,6 +80,8 @@ class OwnerPromotion {
     await (db.update(db.users)..where((t) => t.id.equals(only.id) & t.role.equals(UserRole.admin))).write(
       UsersCompanion(role: const Value(UserRole.owner), updatedAt: Value(DateTime.now())),
     );
+    // `updatedAt` تغيّر: يُجدَّد توقيع الدور إن كان مفتاح المالك على هذا الجهاز.
+    await UsersRepo(db).resign(only.id);
     await AuditRepo(db).log(
       action: autoPromotedAction,
       entityType: 'مستخدم',
@@ -109,6 +112,7 @@ class OwnerPromotion {
     await (db.update(db.users)..where((t) => t.id.equals(userId) & t.role.equals(UserRole.admin))).write(
       UsersCompanion(role: const Value(UserRole.owner), updatedAt: Value(DateTime.now())),
     );
+    await UsersRepo(db).resign(userId, actorEmail: actorEmail);
     await AuditRepo(db).log(
       action: assignedAction,
       entityType: 'مستخدم',

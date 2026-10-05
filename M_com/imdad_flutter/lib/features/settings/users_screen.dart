@@ -14,6 +14,7 @@ import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/users_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/perm_catalog.dart';
+import '../../domain/section_block.dart';
 import '../../core/ui/imd_layout.dart';
 
 /// مركز المستخدمين والصلاحيات — نقل `renderUsersAccess()`:
@@ -386,6 +387,66 @@ class _UsersScreenState extends State<UsersScreen> {
     await _load();
   }
 
+  /// حجب أقسامٍ كاملة عن مستخدم (للمالك وحده): الإمداد، المحروقات، وخمسة أقسامٍ
+  /// إدارية. الحجب يسري فورًا ولو كانت صلاحيات الحساب تسمح؛ وفكّه يُوقَّع بمفتاح
+  /// المالك إن كان على هذا الجهاز (انظر [UsersRepo.setSectionBlocked]).
+  Future<void> _openSectionBlock(User u) async {
+    if (!_perm.guardSys(context, SysPerm.permissions)) return;
+    if (_isMe(u)) {
+      showImdToast(context, '✖ لا يمكن حجب أقسام حسابك الحالي', error: true);
+      return;
+    }
+    final blocked = SectionBlock.parse(u.sectionBlocked);
+    final saved = await showImdModal<bool>(
+      context,
+      title: 'حجب الأقسام: ${u.name.isNotEmpty ? u.name : u.username}',
+      icon: 'ban',
+      maxWidth: 560,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const ImdNote('القسم المحجوب يُغلق على المستخدم كله حتى لو كانت صلاحياته تسمح، '
+              'وحتى لو كان مديرًا. الحجب فوريّ؛ أمّا فكّه فيُوقَّع بمفتاح المالك لينتشر للأجهزة الأخرى.'),
+          const SizedBox(height: 12),
+          for (final section in SectionBlock.all)
+            ImdCheckbox(
+              value: blocked.contains(section),
+              label: SectionBlock.labels[section] ?? section,
+              onChanged: (v) => setLocal(() {
+                if (v) {
+                  blocked.add(section);
+                } else {
+                  blocked.remove(section);
+                }
+              }),
+            ),
+        ]),
+      ),
+      actions: (ctx) => [
+        ImdButton.outline(label: 'إغلاق', onPressed: () => Navigator.of(ctx).pop(false)),
+        ImdButton(label: 'حفظ', icon: 'save', onPressed: () => Navigator.of(ctx).pop(true)),
+      ],
+    );
+    if (saved != true || !mounted) return;
+    if (!_perm.guardSys(context, SysPerm.permissions)) return;
+
+    final result = await _repo.setSectionBlocked(
+      id: u.id,
+      blocked: blocked,
+      actorRole: _auth.currentUser?.role,
+      actorEmail: _perm.email,
+    );
+    if (!mounted) return;
+    if (!result.changed) {
+      showImdToast(context, 'لا تغيير');
+    } else if (result.unsignedUnblock) {
+      // الحجب أُلغي محليًّا فقط: لا مفتاح مالك على هذا الجهاز يوقّع القرار.
+      showImdToast(context, 'أُلغي الحجب محلياً. لن ينتشر للأجهزة الأخرى حتى يُوقَّع من جهاز الإدارة.');
+    } else {
+      showImdToast(context, '✔ حُفظ حجب الأقسام');
+    }
+    await _load();
+  }
+
   /// عنوان قسمٍ (كبير) أو مجموعةٍ داخله في مصفوفة الصلاحيات.
   Widget _permHeading(String text, {bool big = false}) {
     final c = context.imd;
@@ -526,14 +587,24 @@ class _UsersScreenState extends State<UsersScreen> {
                   onPressed: () => _toggleRole(u),
                 ),
             ]),
-      // مصفوفة الصلاحيات للمالك وحده (`sys.permissions`).
+      // مصفوفة الصلاحيات وحجب الأقسام للمالك وحده (`sys.permissions`).
       if (_perm.owner)
-        ImdButton(
-          label: 'ضبط الصلاحيات',
-          icon: 'sliders',
-          small: true,
-          onPressed: isMe ? null : () => _openPermissions(u),
-        )
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          ImdButton(
+            label: 'ضبط الصلاحيات',
+            icon: 'sliders',
+            small: true,
+            onPressed: isMe ? null : () => _openPermissions(u),
+          ),
+          // لا يُحجب عن المالك شيء.
+          if (!UserRole.isOwner(u.role))
+            ImdButton.outline(
+              label: SectionBlock.parse(u.sectionBlocked).isEmpty ? 'حجب الأقسام' : 'حجب الأقسام (${SectionBlock.parse(u.sectionBlocked).length})',
+              icon: 'ban',
+              small: true,
+              onPressed: isMe ? null : () => _openSectionBlock(u),
+            ),
+        ])
       else
         const Text('—'),
     ];

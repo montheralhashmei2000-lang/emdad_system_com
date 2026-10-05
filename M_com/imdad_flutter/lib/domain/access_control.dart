@@ -4,6 +4,8 @@
 /// • مدير النظام (role = admin) يملك كل الصلاحيات ولا يخضع للنطاق.
 library;
 
+import 'section_block.dart';
+
 class PermAction {
   static const String view = 'view';
   static const String create = 'create';
@@ -334,9 +336,15 @@ class AccessControl {
     required String page,
     String action = PermAction.view,
     bool isOwner = false,
+    String? sectionBlocked,
   }) {
     // `sys.*` للمالك وحده، ولا يُقرأ من الصلاحيات المخزَّنة أبدًا.
     if (SysPerm.isSys(page)) return isOwner;
+    // القسم المحجوب مغلقٌ على المدير أيضًا؛ المالك وحده لا يُحجب عنه شيء. الفحص
+    // على هوية الصفحة كما مُرِّرت (قبل أي تطبيعٍ إلى صلاحيةٍ أخرى).
+    if (SectionBlock.blocksPage(role: isOwner ? 'owner' : 'user', blockedJson: sectionBlocked, page: page)) {
+      return false;
+    }
     if (isAdmin) return true;
     return allows(permissions[page], action);
   }

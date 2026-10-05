@@ -5,6 +5,10 @@ import 'package:drift/drift.dart';
 
 import '../../core/security/pbkdf2.dart';
 import '../../core/security/device_activation.dart';
+import '../../core/security/owner_key.dart';
+import '../../core/security/owner_signature.dart';
+import '../../domain/section_block.dart';
+import '../repos/audit_repo.dart';
 import '../db/app_database.dart';
 import '../repos/settings_repo.dart';
 import 'backup_crypto.dart';
@@ -15,11 +19,29 @@ import '../../core/error_log.dart';
 /// المصدر: ملف JSON مُصدَّر منه بالشكل:
 /// { "items": [...], "warehouses": [...], "receipts": [...], ... }
 /// كل مجموعة مصفوفة من الوثائق بأسماء حقولها الأصلية.
+/// حسابٌ رُفض استقباله لأنه يرفع دورًا أو يفكّ حجبًا بلا توقيع مالكٍ صحيح.
+class RejectedUser {
+  const RejectedUser({required this.id, required this.username, required this.kind, required this.reason});
+
+  final String id;
+  final String username;
+
+  /// `role` (رفع دور) أو `unblock` (فكّ حجب).
+  final String kind;
+  final String reason;
+}
+
 class LegacyImportResult {
   LegacyImportResult();
 
   final Map<String, int> inserted = {};
   final List<String> warnings = [];
+
+  /// حسابات رُفضت لغياب توقيع المالك (لا تُكتب، ويبقى المحلي كما هو).
+  final List<RejectedUser> rejectedUsers = [];
+
+  /// حسابات تجاوزها الدمج لأن المحلي أحدث (ليست رفضًا أمنيًّا).
+  int usersSkipped = 0;
 
   int get total => inserted.values.fold(0, (a, b) => a + b);
 
@@ -29,24 +51,47 @@ class LegacyImportResult {
 }
 
 class LegacyImporter {
-  LegacyImporter(this.db);
+  /// [ownerPublicKey] حقنٌ للاختبارات؛ الإنتاج يتحقق بالمفتاح المدفون ([OwnerKey]).
+  LegacyImporter(this.db, {String? ownerPublicKey}) : _ownerKey = ownerPublicKey ?? OwnerKey.publicKey;
 
   final AppDatabase db;
+  final String _ownerKey;
 
   /// يستورد ملف نسخة احتياطية، مشفَّرًا كان أو JSON عاديًا.
   ///
   /// [password] تلزم للملف المشفَّر فقط؛ وغيابها عنه يرمي [BackupError] برسالة
   /// صريحة بدل استيراد نصف ملف.
-  Future<LegacyImportResult> importFile(File file, {String password = ''}) async {
+  ///
+  /// **الاستعادة موثوقة:** يملكها المالك وحده (`sys.backup`) فلا يُشترط توقيعٌ على
+  /// الأدوار والحجب في الملف — وإلا استحال استرجاع نسخةٍ قديمة بمديريها. ويُسجَّل
+  /// `backup.restore` باسم الملف وعدد الحسابات وما تجاوزه الدمج أو رُفض.
+  Future<LegacyImportResult> importFile(File file, {String password = '', String actorEmail = ''}) async {
     final bytes = await file.readAsBytes();
+    final Map<String, dynamic> data;
     if (BackupCrypto.isEncrypted(bytes)) {
       if (password.isEmpty) {
         throw const BackupError('هذه نسخة احتياطية مشفّرة — أدخل كلمة مرورها');
       }
-      return importJson(jsonDecode(BackupCrypto.open(bytes, password))
-          as Map<String, dynamic>);
+      data = jsonDecode(BackupCrypto.open(bytes, password)) as Map<String, dynamic>;
+    } else {
+      data = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
     }
-    return importJson(jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>);
+    final result = await importJson(data, trusted: true);
+    await AuditRepo(db).log(
+      action: 'backup.restore',
+      entityType: 'نسخة احتياطية',
+      summary: 'استعادة نسخة احتياطية: ${file.uri.pathSegments.last} (${result.inserted['users'] ?? 0} حسابًا)',
+      details: {
+        'file': file.uri.pathSegments.last,
+        'users': result.inserted['users'] ?? 0,
+        'rejected': result.rejectedUsers.length,
+        'skipped': result.usersSkipped,
+        'records': result.total,
+      },
+      risk: AuditRepo.riskHigh,
+      actorEmail: actorEmail,
+    );
+    return result;
   }
 
   /// هل الملف نسخة مشفّرة؟ تستعمله الواجهة لتسأل كلمة المرور قبل الاستيراد.
@@ -71,7 +116,9 @@ class LegacyImporter {
     return incoming.stamp >= local.stamp;
   }
 
-  Future<LegacyImportResult> importJson(Map<String, dynamic> data) async {
+  /// [trusted] = الاستعادة من ملف يقرّرها المالك (`sys.backup`): لا يُشترط توقيع
+  /// المالك على رفع الأدوار وفكّ الحجب. المزامنة (الافتراضي) تشترطه.
+  Future<LegacyImportResult> importJson(Map<String, dynamic> data, {bool trusted = false}) async {
     final res = LegacyImportResult();
     final marks = SyncMarks(db);
 
@@ -82,7 +129,7 @@ class LegacyImporter {
           if (m != null) m.key: m,
       };
 
-      await _importUsers(data['users'], res);
+      await _importUsers(data['users'], res, trusted: trusted);
       await _importCategories(data['categories'], res);
       await _importItems(data['items'], res);
       await _importWarehouses(data['warehouses'], res);
@@ -825,11 +872,86 @@ class LegacyImporter {
       res.inserted[key] = (res.inserted[key] ?? 0) + n;
 
   // ───────── الجداول ─────────
-  Future<void> _importUsers(Object? raw, LegacyImportResult res) async {
+  /// سبب رفض استقبال حسابٍ، أو `null` إن قُبل.
+  ///
+  /// **قاعدتان، كلتاهما تُقاس بالمحلي لا بالوارد وحده:**
+  ///  • **رفع الدور** إلى `admin`/`owner` (حسابٌ جديد، أو رتبةٌ أعلى من المحلية) يلزمه
+  ///    توقيع المالك `r` على `userId|role|updatedAt`. خفضُ الدور أو بقاؤه لا يلزمه.
+  ///  • **فكّ حجبٍ** (قسمٌ محجوبٌ محليًّا غاب من الوارد) يلزمه توقيع `s` على
+  ///    `userId|section_blocked|updatedAt`. إضافة حجب لا تلزمه.
+  ///
+  /// وبلا مفتاح مالكٍ مضبوط (وضع تطوير) لا تُفرض القاعدتان — كحال تفعيل الأجهزة.
+  ({String kind, String reason})? _userRejection(Map<String, dynamic> u, User? local) {
+    if (_ownerKey.isEmpty) return null;
+    final id = _id(u);
+    final role = _s(u, 'role', 'user');
+    final updatedSec = u['updatedAt'] is num ? (u['updatedAt'] as num).toInt() : null;
+    final sigs = OwnerSignature.parse(u['ownerSig'] is String ? u['ownerSig'] as String : null);
+
+    if (OwnerSignature.rank(role) > OwnerSignature.rank(local?.role)) {
+      final ok = updatedSec != null &&
+          OwnerSignature.verifyRole(
+            sigB64: sigs[OwnerSignature.roleKey] ?? '',
+            userId: id,
+            role: role,
+            updatedAtSec: updatedSec,
+            publicKey: _ownerKey,
+          );
+      if (!ok) return (kind: 'role', reason: 'رفع الدور إلى «$role» بلا توقيع مالكٍ صحيح');
+    }
+
+    // غياب الحقل (نظيرٌ أقدم) ليس فكًّا: لا يمسّ حجبًا قائمًا أصلًا (يُترك الحقل).
+    if (u['sectionBlocked'] is String) {
+      final incomingJson = u['sectionBlocked'] as String;
+      final localSet = SectionBlock.parse(local?.sectionBlocked);
+      final removed = localSet.difference(SectionBlock.parse(incomingJson));
+      if (removed.isNotEmpty) {
+        final ok = updatedSec != null &&
+            OwnerSignature.verifySections(
+              sigB64: sigs[OwnerSignature.sectionsKey] ?? '',
+              userId: id,
+              blockedJson: incomingJson,
+              updatedAtSec: updatedSec,
+              publicKey: _ownerKey,
+            );
+        if (!ok) return (kind: 'unblock', reason: 'فكّ حجب (${(removed.toList()..sort()).join('، ')}) بلا توقيع مالكٍ صحيح');
+      }
+    }
+    return null;
+  }
+
+  Future<void> _importUsers(Object? raw, LegacyImportResult res, {required bool trusted}) async {
     final rows = _rows(raw);
     var passwordless = 0;
+    final existing = {for (final x in await db.select(db.users).get()) x.id: x};
     for (final u in rows) {
-      if (!_accept('users', _id(u))) continue;
+      if (!_accept('users', _id(u))) {
+        res.usersSkipped++;
+        continue;
+      }
+
+      final local = existing[_id(u)];
+      final rejection = trusted ? null : _userRejection(u, local);
+      if (rejection != null) {
+        final username = _s(u, 'username', _s(u, 'email').split('@').first);
+        res.rejectedUsers.add(RejectedUser(id: _id(u), username: username, kind: rejection.kind, reason: rejection.reason));
+        await AuditRepo(db).log(
+          action: 'sync.role_rejected',
+          entityType: 'مستخدم',
+          summary: 'رُفض استقبال «$username»: ${rejection.reason}',
+          details: {
+            'userId': _id(u),
+            'username': username,
+            'kind': rejection.kind,
+            'incomingRole': _s(u, 'role', 'user'),
+            'localRole': local?.role,
+            'reason': rejection.reason,
+          },
+          risk: AuditRepo.riskHigh,
+          actorEmail: 'sync',
+        );
+        continue;
+      }
 
       // **كلمة المرور تُنقل مع الحساب.** الملح والبصمة يخرجان في التصدير، وكان
       // الاستيراد لا يقرؤهما — فيصل الحساب إلى الفرع ببصمة فارغة، ويستحيل
@@ -861,6 +983,14 @@ class LegacyImporter {
             active: Value(_b(u, 'active', true)),
             approved: Value(_b(u, 'approved', true)),
             createdAt: Value(_created(u)),
+            // الحقول الأمنية الجديدة: الغياب (نظيرٌ أقدم) يترك القائم لا يمحوه.
+            sectionBlocked: u['sectionBlocked'] is String ? Value(u['sectionBlocked'] as String) : const Value.absent(),
+            ownerSig: u['ownerSig'] is String && (u['ownerSig'] as String).isNotEmpty
+                ? Value(u['ownerSig'] as String)
+                : const Value.absent(),
+            updatedAt: u['updatedAt'] is num
+                ? Value(DateTime.fromMillisecondsSinceEpoch((u['updatedAt'] as num).toInt() * 1000))
+                : const Value.absent(),
           ));
     }
     _count(res, 'users', rows.length);

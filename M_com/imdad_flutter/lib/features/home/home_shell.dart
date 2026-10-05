@@ -26,6 +26,7 @@ import '../../core/ui/imd_widgets.dart';
 import '../../domain/access_control.dart';
 import '../../domain/app_space.dart';
 import '../../domain/menu_doors.dart';
+import '../../domain/section_block.dart';
 import '../../data/sync/auto_sync.dart';
 import 'space_chooser_screen.dart';
 import '../fuel/fuel_allocations_screen.dart';
@@ -374,6 +375,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _loadSideWidth();
     ImdDensity.load();
     _watchData();
+    // دور المستخدم أو حجب أقسامه تغيّر (مزامنة): تُعاد الواجهة فيسري فورًا.
+    _userVersion = context.read<AuthService>().userVersion..addListener(_onUserChanged);
+  }
+
+  late final ValueNotifier<int> _userVersion;
+
+  void _onUserChanged() {
+    if (mounted) setState(() {});
   }
 
   /// أي كتابةٍ في القاعدة (من هذه الشاشات أو من المزامنة) تجعل الصفحات
@@ -491,6 +500,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   void dispose() {
     _sessionTimer?.cancel();
     _dbSub?.cancel();
+    // المرجع محفوظ منذ initState: القراءة من السياق أثناء dispose غير آمنة.
+    _userVersion.removeListener(_onUserChanged);
     for (final st in _spaces.values) {
       for (final s in st.sinks.values) {
         s.dispose();
@@ -569,8 +580,22 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     'linkArmament': 'linkages',
   };
 
+  /// هل قسم العمل [space] (`supply`/`fuel`) محجوبٌ عن المستخدم الحالي؟
+  bool _spaceBlocked(AuthService auth, String space) {
+    final u = auth.currentUser;
+    if (u == null) return false;
+    return SectionBlock.blocksSection(role: u.role, blockedJson: u.sectionBlocked, section: space);
+  }
+
   bool _hasPerm(AuthService auth, String page,
       [String action = PermAction.view]) {
+    // الحجب أولًا وعلى **هوية الصفحة الأصلية**: التطبيع التالي قد يحوّلها إلى
+    // صلاحيةٍ لا تُنبئ بقسمها (`lanSync` ← `sys.sync`).
+    final blockedUser = auth.currentUser;
+    if (blockedUser != null &&
+        SectionBlock.blocksPage(role: blockedUser.role, blockedJson: blockedUser.sectionBlocked, page: page)) {
+      return false;
+    }
     page = _permPage[page] ?? page;
     // بابٌ بتبويبات يُفتح لمن ملك إحداها، والتبويبات تُخفي ما لا يملك —
     // فالجمع تنظيمٌ للقائمة لا توسيعٌ للأذونات.
@@ -809,6 +834,15 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         onPick: _pickSpace,
       );
     }
+    // قسمٌ حُجب عن المستخدم أثناء جلسته (مزامنة/تعديل المالك) لا يبقى مفتوحًا:
+    // يُنقل إلى أول قسمٍ متاح بعد هذا الإطار. وإطارٌ واحد يُبنى فيه القسم المحجوب
+    // صفحاتُه كلها «لا صلاحية» (الحجب fail-closed في `_hasPerm`).
+    if (_space != null && available.isNotEmpty && !available.contains(_space)) {
+      final fallback = available.first;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _space != fallback) setState(() => _space = fallback);
+      });
+    }
     final space = _space ?? AppSpace.supply;
 
     _handheld = handheld;
@@ -840,7 +874,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                       sink: st.sinks.putIfAbsent(p, ImdRecordSink.new),
                       child: KeyedSubtree(
                         key: ValueKey('$sp:$p#${st.gen[p] ?? 0}'),
-                        child: (p == 'dash' || _hasPerm(auth, p)) ? _pageBody(p, sp) : const _NoAccess(),
+                        // «الرئيسية» مفتوحةٌ لكل مستخدم، إلا أن يُحجب قسمُها نفسه.
+                        child: ((p == 'dash' && !_spaceBlocked(auth, sp)) || _hasPerm(auth, p))
+                            ? _pageBody(p, sp)
+                            : const _NoAccess(),
                       ),
                     ),
                 ],

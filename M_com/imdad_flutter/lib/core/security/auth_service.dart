@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/db/app_database.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../domain/access_control.dart';
+import '../../domain/section_block.dart';
 import 'owner_promotion.dart';
 import 'password_hash.dart';
 import 'warehouse_scope.dart';
@@ -122,6 +125,27 @@ class AuthService {
 
   User? _current;
   User? get currentUser => _current;
+
+  /// يرتفع كلما تغيّر **دور** المستخدم الحالي أو **حجب أقسامه** في القاعدة (وصل
+  /// بالمزامنة مثلًا) فتُعيد الشاشات بناءها. الكائن الحالي يُستبدل بالمحدَّث فيسري
+  /// الحجب والدور الجديدان فورًا لا عند الدخول التالي فقط.
+  final ValueNotifier<int> userVersion = ValueNotifier<int>(0);
+  StreamSubscription<Object?>? _userWatch;
+
+  void _watchCurrent() {
+    _userWatch?.cancel();
+    _userWatch = db.tableUpdates(TableUpdateQuery.onTable(db.users)).listen((_) => _refreshCurrent());
+  }
+
+  Future<void> _refreshCurrent() async {
+    final me = _current;
+    if (me == null) return;
+    final fresh = await (db.select(db.users)..where((t) => t.id.equals(me.id))).getSingleOrNull();
+    if (fresh == null || _current?.id != me.id) return; // الحذف والإيقاف يعالجهما فحص الجلسة
+    if (fresh.role == me.role && fresh.sectionBlocked == me.sectionBlocked) return;
+    _current = fresh;
+    userVersion.value++;
+  }
 
   /// لا يوجد أي مستخدم بعد ⇒ تظهر تهيئة حساب المدير الأول.
   /// يظهر قسم التهيئة ما دام لا يوجد حساب مدير مُهيّأ محليًا.
@@ -406,10 +430,13 @@ class AuthService {
       return null;
     }
     _current = rows.first;
+    _watchCurrent();
     return _current;
   }
 
   Future<void> logout() async {
+    _userWatch?.cancel();
+    _userWatch = null;
     _current = null;
     await SettingsRepo(db).write(_sessionKey, {});
     await _clearLegacySession(await SharedPreferences.getInstance());
@@ -417,6 +444,7 @@ class AuthService {
 
   Future<void> _startSession(User user) async {
     _current = user;
+    _watchCurrent();
     await SettingsRepo(db).write(_sessionKey, {
       'userId': user.id,
       'startedAt': DateTime.now().millisecondsSinceEpoch,
@@ -435,6 +463,8 @@ class AuthService {
 
   bool can(User user, String page, [String action = 'view']) {
     if (SysPerm.isSys(page)) return UserRole.isOwner(user.role);
+    // القسم المحجوب مغلق (المالك وحده لا يُحجب عنه شيء).
+    if (SectionBlock.blocksPage(role: user.role, blockedJson: user.sectionBlocked, page: page)) return false;
     if (UserRole.isAdmin(user.role)) return true;
     final perms = permissionsOf(user);
     return AccessControl.allows(perms[page] is Map ? perms[page] as Map : null, action);

@@ -76,6 +76,10 @@ class DataExporter {
                   'iterations': u.iterations,
                   'active': u.active,
                   'approved': u.approved,
+                  // بثوانٍ (دقة التخزين): بصمة توقيع المالك تضمّها، فيتحقق المستقبِل منها.
+                  'updatedAt': u.updatedAt == null ? null : u.updatedAt!.millisecondsSinceEpoch ~/ 1000,
+                  'sectionBlocked': u.sectionBlocked,
+                  'ownerSig': u.ownerSig,
                 })
             .toList(),
       'categories': (await _rows(db.categories, ids('categories'), (t) => t.id))

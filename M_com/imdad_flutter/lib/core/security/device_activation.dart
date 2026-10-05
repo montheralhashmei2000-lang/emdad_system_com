@@ -160,6 +160,15 @@ class DeviceActivation {
     return true;
   }
 
+  /// يوقّع [digest] بمفتاح المالك الخاص المستورد على هذا الجهاز (٦٤ بايت خام)،
+  /// أو `null` إن لم يكن المفتاح هنا. مستعملٌ في توقيع قرارات المالك (فكّ الحجب،
+  /// منح الأدوار) — التحقق بالمفتاح العام المدفون ([OwnerKey]) على أي جهاز.
+  Future<Uint8List?> signDigest(Uint8List digest) async {
+    final priv = await _privateKey();
+    if (priv.isEmpty) return null;
+    return ESign.signRawWithKey(privateHex: priv, digest: digest);
+  }
+
   Future<void> forgetPrivateKey() async {
     final settings = SettingsRepo(db);
     final map = await settings.read(_settingsKey)..remove('owner');

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../domain/access_control.dart';
 import '../../domain/perm_catalog.dart';
+import '../../domain/section_block.dart';
 import '../ui/imd_widgets.dart';
 import 'auth_service.dart';
 
@@ -52,8 +53,17 @@ class Perm {
     final u = _auth.currentUser;
     if (u == null) return false;
     if (SysPerm.isSys(page)) return owner;
+    if (SectionBlock.blocksPage(role: u.role, blockedJson: u.sectionBlocked, page: page)) return false;
     if (admin) return true;
     return AccessControl.allows(_pageMap(_auth.permissionsOf(u)[page]), action);
+  }
+
+  /// هل القسم [section] (من [SectionBlock.all]) محجوبٌ عن المستخدم الحالي؟
+  /// المالك لا يُحجب عنه شيء.
+  bool blocked(String section) {
+    final u = _auth.currentUser;
+    if (u == null) return true;
+    return SectionBlock.blocksSection(role: u.role, blockedJson: u.sectionBlocked, section: section);
   }
 
   /// `pageManage(page)`

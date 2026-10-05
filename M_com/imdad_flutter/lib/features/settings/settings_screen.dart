@@ -40,6 +40,7 @@ import '../../data/repos/selfcheck_repo.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../domain/access_control.dart';
+import '../../domain/section_block.dart';
 import '../../domain/rules_engine.dart';
 import '../home/home_shell.dart';
 import '../archive/archive_auto_settings.dart';
@@ -101,15 +102,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// الأقسام الظاهرة: «تفعيل الأجهزة» للمالك وحده (`sys.devices`).
   List<_Section> get _visibleSections => [
         for (final s in _sections)
-          if ((s.id != 'devices' || _perm.sys(SysPerm.devices)) &&
-              (s.id != 'archiveAuto' || _perm.sys(SysPerm.settingsSensitive)))
-            s,
+          if (_sectionAllowed(s.id)) s,
       ];
 
-  String _allowedSection(String id) =>
-      (id == 'devices' && !_perm.sys(SysPerm.devices)) || (id == 'archiveAuto' && !_perm.sys(SysPerm.settingsSensitive))
-          ? 'general'
-          : id;
+  /// هل يُعرض قسم الإعدادات [id]؟ «تفعيل الأجهزة» للمالك وحده (`sys.devices`)،
+  /// والأقسام التي حجبها المالك عن هذا المستخدم (`admin.*`) تختفي كليًّا.
+  bool _sectionAllowed(String id) {
+    if (id == 'devices' && !_perm.sys(SysPerm.devices)) return false;
+    if (id == 'archiveAuto' && !_perm.sys(SysPerm.settingsSensitive)) return false;
+    final blocker = SectionBlock.settingsSections[id];
+    return blocker == null || !_perm.blocked(blocker);
+  }
+
+  String _allowedSection(String id) => _sectionAllowed(id) ? id : 'general';
   bool _loading = true;
 
   int _items = 0;
@@ -323,7 +328,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (!ok) return;
     try {
-      final result = await LegacyImporter(_db).importFile(File(path), password: password);
+      final result = await LegacyImporter(_db).importFile(File(path), password: password, actorEmail: _perm.email);
       if (!mounted) return;
       setState(() => _note = result.toString());
       _toast('✔ اكتملت الاستعادة: ${nf(result.total)} سجل');

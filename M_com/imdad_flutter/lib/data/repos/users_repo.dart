@@ -3,9 +3,12 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 
 import '../db/app_database.dart';
+import '../../core/security/device_activation.dart';
+import '../../core/security/owner_signature.dart';
 import '../../core/security/password_hash.dart';
 import '../../core/security/warehouse_scope.dart';
 import '../../domain/access_control.dart';
+import '../../domain/section_block.dart';
 import 'audit_repo.dart';
 import '../../core/error_log.dart';
 
@@ -114,7 +117,12 @@ class UsersRepo {
           saltHex: Value(ph.saltHex),
           hashHex: Value(ph.hashHex),
           iterations: Value(ph.iterations),
+          // مديرٌ جديد يُختم بثوانٍ كاملة ليُوقَّع دورُه (بصمة التوقيع تضمّ `updatedAt`).
+          updatedAt: isAdmin
+              ? Value(DateTime.fromMillisecondsSinceEpoch(OwnerSignature.seconds(DateTime.now()) * 1000))
+              : const Value.absent(),
         ));
+    if (isAdmin) await resign(id, actorEmail: actorEmail);
 
     await AuditRepo(db).log(
       action: 'user.create',
@@ -172,6 +180,10 @@ class UsersRepo {
       updatedAt: Value(DateTime.now()),
     ));
 
+    // `updatedAt` تغيّر: توقيعات هذا الحساب (إن وُجدت ومفتاح المالك هنا) تُجدَّد، وإلا
+    // سقطت بأول تعديل فلم يقبله جهازٌ جديد بالمزامنة.
+    await resign(id, actorEmail: actorEmail);
+
     await AuditRepo(db).log(
       action: 'user.update',
       entityType: 'مستخدم',
@@ -201,6 +213,164 @@ class UsersRepo {
       lockedUntil: const Value(null),
       updatedAt: Value(DateTime.now()),
     ));
+    await resign(id);
+  }
+
+  /// يجدّد توقيعات المالك على حسابٍ بعد أن تغيّر `updatedAt` (وهو جزءٌ من بصمة كل
+  /// توقيع): توقيع الدور `r` إن كان الحساب مديرًا/مالكًا، وتوقيع الأقسام `s` إن كان
+  /// عليه توقيعٌ سابق. **لا يمسّ `updatedAt`** (تغييره يُبطل ما وُقِّع للتوّ).
+  ///
+  /// لا يفعل شيئًا بلا مفتاح المالك الخاص على هذا الجهاز. يعيد `true` إن وُقِّع شيء.
+  Future<bool> resign(String id, {DeviceActivation? activation, String actorEmail = ''}) async {
+    final act = activation ?? DeviceActivation(db);
+    if (!await act.canIssue()) return false;
+    final row = await (db.select(db.users)..where((t) => t.id.equals(id))).getSingleOrNull();
+    final stamp = row?.updatedAt;
+    if (row == null || stamp == null) return false;
+
+    final sec = OwnerSignature.seconds(stamp);
+    final sigs = OwnerSignature.parse(row.ownerSig);
+    final purposes = <String>[];
+
+    if (OwnerSignature.rank(row.role) > 0) {
+      final r = await OwnerSignature.signRole(act, userId: id, role: row.role, updatedAtSec: sec);
+      if (r != null) {
+        sigs[OwnerSignature.roleKey] = r;
+        purposes.add('role');
+      }
+    }
+    // توقيع الدور `r` لا يُسحب من أي صف أبدًا (حتى لو نزل الدور): السحب يفقد الأثر.
+    if (sigs.containsKey(OwnerSignature.sectionsKey)) {
+      final s = await OwnerSignature.signSections(act, userId: id, blockedJson: row.sectionBlocked, updatedAtSec: sec);
+      if (s != null) {
+        sigs[OwnerSignature.sectionsKey] = s;
+        purposes.add('sections');
+      }
+    }
+    final encoded = OwnerSignature.encode(sigs);
+    if (encoded == row.ownerSig) return false;
+
+    await (db.update(db.users)..where((t) => t.id.equals(id))).write(UsersCompanion(ownerSig: Value(encoded)));
+    if (purposes.isNotEmpty) {
+      await AuditRepo(db).log(
+        action: 'sys.sign.used',
+        entityType: 'مستخدم',
+        summary: 'استُعمل مفتاح المالك الخاص لتجديد توقيع «${row.username}» (${purposes.join('، ')})',
+        details: {'purpose': purposes, 'userId': id},
+        risk: AuditRepo.riskHigh,
+        actorEmail: actorEmail,
+      );
+    }
+    return true;
+  }
+
+  /// يوقّع كل المديرين والمالكين الحاليين بمفتاح المالك (لمرةٍ بعد الترقية إلى v25:
+  /// حساباتهم قبلها بلا توقيع فلا يقبلها جهازٌ جديد بالمزامنة). يعيد عدد من وُقِّع.
+  Future<int> signPrivilegedUsers({String? actorRole, String actorEmail = '', DeviceActivation? activation}) async {
+    _requireActor(actorRole, owner: true, why: 'توقيع المديرين');
+    var n = 0;
+    for (final u in await db.select(db.users).get()) {
+      if (OwnerSignature.rank(u.role) == 0) continue;
+      // `updatedAt` الفارغ (حسابٌ قديم) يُختم الآن: لا توقيع على لا شيء.
+      if (u.updatedAt == null) {
+        await (db.update(db.users)..where((t) => t.id.equals(u.id))).write(UsersCompanion(
+          updatedAt: Value(DateTime.fromMillisecondsSinceEpoch(OwnerSignature.seconds(DateTime.now()) * 1000)),
+        ));
+      }
+      if (await resign(u.id, activation: activation, actorEmail: actorEmail)) n++;
+    }
+    return n;
+  }
+
+  /// يضبط الأقسام المحجوبة عن مستخدم — **للمالك وحده**، ولا يُحجب عن المالك شيء.
+  ///
+  /// • **الإضافة** (حجبُ قسمٍ جديد) بلا توقيع: تضييقٌ لا يضرّ لو أُسيء استعماله.
+  /// • **الإلغاء** (فكُّ قسم) يُوقَّع بمفتاح المالك الخاص إن كان على هذا الجهاز،
+  ///   فتقبله الأجهزة الأخرى بالمزامنة. بلا المفتاح يُفكّ **محليًّا** فقط
+  ///   ([SectionBlockResult.unsignedUnblock]) ولا ينتشر حتى يُوقَّع من جهاز الإدارة.
+  ///   التغيير المحلي على هذا الجهاز نافذٌ في الحالين.
+  ///
+  /// كل تغييرٍ يُسجَّل بخطورة عالية، وكل استخدامٍ للمفتاح الخاص يُسجَّل `sys.sign.used`.
+  Future<SectionBlockResult> setSectionBlocked({
+    required String id,
+    required Set<String> blocked,
+    String? actorRole,
+    String actorEmail = '',
+    DeviceActivation? activation,
+  }) async {
+    _requireActor(actorRole, owner: true, why: 'حجب الأقسام');
+    final target = await (db.select(db.users)..where((t) => t.id.equals(id))).getSingleOrNull();
+    if (target == null) throw ArgumentError('✖ المستخدم غير موجود');
+    if (UserRole.isOwner(target.role)) throw ArgumentError('✖ لا يُحجب عن المالك أي قسم');
+
+    final before = SectionBlock.parse(target.sectionBlocked);
+    final next = {for (final s in blocked) if (SectionBlock.all.contains(s)) s};
+    final added = next.difference(before);
+    final removed = before.difference(next);
+    if (added.isEmpty && removed.isEmpty) return const SectionBlockResult();
+
+    final nextJson = SectionBlock.encode(next);
+    // بثوانٍ كاملة: هي دقة تخزين `updatedAt`، فيتطابق ما وُقِّع عليه مع ما يُقرأ.
+    final stamp = DateTime.fromMillisecondsSinceEpoch(OwnerSignature.seconds(DateTime.now()) * 1000);
+
+    // التوقيع القديم غطّى محتوىً قديمًا: يسقط. توقيع الدور (`r`) لا علاقة له.
+    final sigs = OwnerSignature.parse(target.ownerSig)..remove(OwnerSignature.sectionsKey);
+    var signed = false;
+    if (removed.isNotEmpty) {
+      final sig = await OwnerSignature.signSections(
+        activation ?? DeviceActivation(db),
+        userId: id,
+        blockedJson: nextJson,
+        updatedAtSec: OwnerSignature.seconds(stamp),
+      );
+      if (sig != null) {
+        sigs[OwnerSignature.sectionsKey] = sig;
+        signed = true;
+      }
+    }
+
+    await (db.update(db.users)..where((t) => t.id.equals(id))).write(UsersCompanion(
+      sectionBlocked: Value(nextJson),
+      ownerSig: Value(OwnerSignature.encode(sigs)),
+      updatedAt: Value(stamp),
+    ));
+
+    final audit = AuditRepo(db);
+    if (signed) {
+      await audit.log(
+        action: 'sys.sign.used',
+        entityType: 'مستخدم',
+        summary: 'استُعمل مفتاح المالك الخاص لتوقيع فكّ حجب أقسام «${target.username}»',
+        details: {'purpose': 'sections', 'userId': id, 'removed': removed.toList()..sort()},
+        risk: AuditRepo.riskHigh,
+        actorEmail: actorEmail,
+      );
+    }
+    await audit.log(
+      action: 'user.section_blocked.changed',
+      entityType: 'مستخدم',
+      summary: 'تغيير الأقسام المحجوبة عن «${target.username}»'
+          '${added.isEmpty ? '' : ' — حُجب: ${added.map((s) => SectionBlock.labels[s] ?? s).join('، ')}'}'
+          '${removed.isEmpty ? '' : ' — فُكّ: ${removed.map((s) => SectionBlock.labels[s] ?? s).join('، ')}'}',
+      details: {
+        'userId': id,
+        'added': added.toList()..sort(),
+        'removed': removed.toList()..sort(),
+        'signed': signed,
+        'unsignedUnblock': removed.isNotEmpty && !signed,
+      },
+      risk: AuditRepo.riskHigh,
+      actorEmail: actorEmail,
+    );
+    // الدور تغيّر ختمه الزمني مع هذه الكتابة: يُجدَّد توقيعه (إلا إن وُقِّع للتوّ).
+    if (!signed) await resign(id, activation: activation, actorEmail: actorEmail);
+    return SectionBlockResult(
+      changed: true,
+      added: added,
+      removed: removed,
+      signed: signed,
+      unsignedUnblock: removed.isNotEmpty && !signed,
+    );
   }
 
   /// فك القفل بعد تجاوز محاولات الدخول.
@@ -224,4 +394,25 @@ class UsersRepo {
     await (db.delete(db.users)..where((t) => t.id.equals(id))).go();
     return true;
   }
+}
+
+/// نتيجة [UsersRepo.setSectionBlocked].
+class SectionBlockResult {
+  const SectionBlockResult({
+    this.changed = false,
+    this.added = const {},
+    this.removed = const {},
+    this.signed = false,
+    this.unsignedUnblock = false,
+  });
+
+  final bool changed;
+  final Set<String> added;
+  final Set<String> removed;
+
+  /// وُقِّع فكُّ الحجب بمفتاح المالك (فينتشر بالمزامنة).
+  final bool signed;
+
+  /// فُكّ حجبٌ **محليًّا** بلا توقيع: لن ينتشر للأجهزة الأخرى حتى يُوقَّع من جهاز الإدارة.
+  final bool unsignedUnblock;
 }

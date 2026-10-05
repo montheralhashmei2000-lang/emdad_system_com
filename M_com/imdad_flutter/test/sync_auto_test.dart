@@ -9,6 +9,11 @@ import 'package:drift/drift.dart' show Value;
 import 'package:imdad/data/repos/audit_repo.dart';
 import 'package:imdad/data/repos/catalog_repo.dart';
 import 'package:imdad/core/security/auth_service.dart';
+import 'package:imdad/core/security/device_activation.dart';
+import 'package:imdad/core/security/esign.dart';
+import 'package:imdad/core/security/owner_signature.dart';
+import 'package:imdad/data/repos/users_repo.dart';
+import 'package:imdad/domain/access_control.dart';
 import 'package:imdad/data/migration/data_export.dart';
 import 'package:imdad/data/migration/legacy_import.dart';
 import 'package:imdad/data/sync/lan_sync.dart';
@@ -38,9 +43,14 @@ void main() {
 
   late AppDatabase branch; // الجهاز الذي يطلب
   late AppDatabase master; // الجهاز المستقبِل
+  late String ownerPub; // مفتاح مالكٍ للاختبار: الأدمن لا يُقبل بالمزامنة بلا توقيعه
+  late String ownerPriv;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    final pair = ESign.generateKeyPair();
+    ownerPub = pair.publicB64;
+    ownerPriv = pair.privateHex;
     branch = AppDatabase.forTesting(NativeDatabase.memory());
     master = AppDatabase.forTesting(NativeDatabase.memory());
     await CatalogRepo(master).saveItem(
@@ -56,13 +66,22 @@ void main() {
     await master.close();
   });
 
+  /// أدمن على جهاز الإدارة يوقّعه المالك بمفتاحه الخاص (هكذا تصل حسابات المديرين بالمزامنة).
+  Future<void> signedAdmin() async {
+    await AuthService(master).createAdmin(username: 'admin', password: 'Test@12345');
+    final act = DeviceActivation(master, ownerPublicKey: ownerPub);
+    expect(await act.importPrivateKey(ownerPriv), isTrue);
+    final n = await UsersRepo(master).signPrivilegedUsers(actorRole: UserRole.owner, activation: act);
+    expect(n, 1, reason: 'لم يُوقَّع الأدمن');
+  }
+
   /// اقتران يدوي كامل ينتهي بمنح ثقة دائمة — الخطوة التي يحضرها إنسان مرة.
   Future<({LanSync client, LanSync server, TrustedPeer peer})> bond() async {
-    final server = LanSync(master, port: _port, discoveryPort: _discoveryPort);
+    final server = LanSync(master, port: _port, discoveryPort: _discoveryPort, ownerPublicKey: ownerPub);
     await server.startReceiving();
     addTearDown(server.stopReceiving);
 
-    final client = LanSync(branch, port: _port, discoveryPort: _discoveryPort);
+    final client = LanSync(branch, port: _port, discoveryPort: _discoveryPort, ownerPublicKey: ownerPub);
     final pairing = await client.pair('127.0.0.1', server.session!.code, port: _port);
     expect(pairing.ok, isTrue, reason: pairing.message);
 
@@ -326,7 +345,7 @@ void main() {
       // هذا هو الاختبار الذي كان ناقصًا: كانت الحسابات تصل فعلًا، وتُعدّ
       // المزامنة ناجحة، ثم يستحيل الدخول بأيٍّ منها — لأن الملح والبصمة
       // يخرجان في التصدير ولا يقرؤهما الاستيراد.
-      await AuthService(master).createAdmin(username: 'admin', password: 'Test@12345');
+      await signedAdmin();
 
       final b = await bond();
       await b.server.stopReceiving();
@@ -338,8 +357,35 @@ void main() {
       expect(res.user!.role, 'admin');
     });
 
-    test('كلمة مرور خاطئة تُرفض في الفرع كما تُرفض في الأصل', () async {
+    test('أدمن غير موقَّع يُرفض عند الفرع ويُدقَّق sync.role_rejected', () async {
       await AuthService(master).createAdmin(username: 'admin', password: 'Test@12345');
+      await (master.update(master.users)..where((t) => t.id.equals('local-admin')))
+          .write(UsersCompanion(updatedAt: Value(DateTime.fromMillisecondsSinceEpoch(1700000000 * 1000))));
+      final b = await bond();
+      await b.server.stopReceiving();
+      await b.server.startReceiving(trustedOnly: true);
+      expect((await b.client.autoSync()).ok, isTrue);
+
+      expect(await AuthService(branch, isBranchDevice: () async => true).hasAnyUser(), isFalse,
+          reason: 'وصل أدمن بلا توقيع');
+      final rejected = (await branch.select(branch.auditLogs).get()).where((a) => a.action == 'sync.role_rejected');
+      expect(rejected, isNotEmpty);
+    });
+
+    test('أدمن موقَّع من الإدارة يصل الفرع ويحمل توقيعه', () async {
+      await signedAdmin();
+      final b = await bond();
+      await b.server.stopReceiving();
+      await b.server.startReceiving(trustedOnly: true);
+      expect((await b.client.autoSync()).ok, isTrue);
+
+      final u = await (branch.select(branch.users)..where((t) => t.id.equals('local-admin'))).getSingle();
+      expect(u.role, 'admin');
+      expect(OwnerSignature.parse(u.ownerSig)[OwnerSignature.roleKey], isNotNull);
+    });
+
+    test('كلمة مرور خاطئة تُرفض في الفرع كما تُرفض في الأصل', () async {
+      await signedAdmin();
       final b = await bond();
       await b.server.stopReceiving();
       await b.server.startReceiving(trustedOnly: true);
@@ -368,7 +414,7 @@ void main() {
     test('مسح حسابات الفرع لا يحذف حساب المدير على جهاز الإدارة', () async {
       // السيناريو الذي أوقع النظام: مسؤول فرعٍ نسي كلمة مروره فضغط «إعادة
       // تعيين محلي»، فسافر شاهد الحذف إلى الإدارة وحذف حساب المدير هناك.
-      await AuthService(master).createAdmin(username: 'admin', password: 'Test@12345');
+      await signedAdmin();
       final b = await bond();
       await b.server.stopReceiving();
       await b.server.startReceiving(trustedOnly: true);
@@ -390,7 +436,7 @@ void main() {
     });
 
     test('وتعود الحسابات إلى الفرع في أول مزامنة بعدها', () async {
-      await AuthService(master).createAdmin(username: 'admin', password: 'Test@12345');
+      await signedAdmin();
       final b = await bond();
       await b.server.stopReceiving();
       await b.server.startReceiving(trustedOnly: true);
@@ -442,11 +488,11 @@ void main() {
     });
 
     test('الترحيب يعلن ساعة الجهاز فيُقاس عليها الفرق', () async {
-      final server = LanSync(master, port: _port, discoveryPort: _discoveryPort);
+      final server = LanSync(master, port: _port, discoveryPort: _discoveryPort, ownerPublicKey: ownerPub);
       await server.startReceiving();
       addTearDown(server.stopReceiving);
 
-      final client = LanSync(branch, port: _port, discoveryPort: _discoveryPort);
+      final client = LanSync(branch, port: _port, discoveryPort: _discoveryPort, ownerPublicKey: ownerPub);
       expect(client.clockOffsetFor('127.0.0.1'), 0, reason: 'لم يُسأل بعد');
 
       await client.hello('127.0.0.1');
@@ -463,11 +509,11 @@ void main() {
 
   group('الاكتشاف يحمل المعرّف', () {
     test('الجهاز المستقبِل يعلن معرّفه الثابت لا اسمه وحده', () async {
-      final server = LanSync(master, port: _port, discoveryPort: _discoveryPort);
+      final server = LanSync(master, port: _port, discoveryPort: _discoveryPort, ownerPublicKey: ownerPub);
       await server.startReceiving();
       addTearDown(server.stopReceiving);
 
-      final client = LanSync(branch, port: _port, discoveryPort: _discoveryPort);
+      final client = LanSync(branch, port: _port, discoveryPort: _discoveryPort, ownerPublicKey: ownerPub);
       final card = await client.hello('127.0.0.1');
       expect(card, isNotNull);
       expect(card!.id, await server.deviceId());

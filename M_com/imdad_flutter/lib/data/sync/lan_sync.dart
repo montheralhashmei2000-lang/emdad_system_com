@@ -88,7 +88,7 @@ class SyncPairing {
 }
 
 class LanSync {
-  LanSync(this.db, {this.port = defaultPort, this.discoveryPort = defaultDiscoveryPort});
+  LanSync(this.db, {this.port = defaultPort, this.discoveryPort = defaultDiscoveryPort, this.ownerPublicKey});
 
   final AppDatabase db;
 
@@ -96,6 +96,9 @@ class LanSync {
   /// الاختبارات) يحتاج منفذين مختلفين، وإلا اقتسما الطلبات عشوائيًا.
   final int port;
   final int discoveryPort;
+
+  /// المفتاح العام للتحقق من توقيع المالك عند الاستيراد (للاختبار؛ الافتراضي المضمَّن).
+  final String? ownerPublicKey;
 
   static const int defaultPort = 8787;
 
@@ -300,7 +303,7 @@ class LanSync {
           case 'POST /import':
             // استقبال بيانات جهاز آخر ودمجها هنا.
             final data = await compute(_openTask, (session, body));
-            final result = await LegacyImporter(db).importJson(data);
+            final result = await LegacyImporter(db, ownerPublicKey: ownerPublicKey).importJson(data);
             await AuditRepo(db).log(
               action: 'sync.receive',
               entityType: 'مزامنة',
@@ -764,7 +767,7 @@ class LanSync {
         return const SyncResult(ok: false, message: 'رفض الجهاز الطلب — أعد الاقتران');
       }
       final upTo = ((data['meta'] as Map?)?['maxStamp'] as num?)?.toInt() ?? 0;
-      final result = await LegacyImporter(db).importJson(data);
+      final result = await LegacyImporter(db, ownerPublicKey: ownerPublicKey).importJson(data);
       await AuditRepo(db).log(
         action: 'sync.pull',
         entityType: 'مزامنة',
