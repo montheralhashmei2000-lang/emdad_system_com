@@ -38,7 +38,11 @@ class PreMigrationBackup {
   static const String deletedAction = 'backup.pre_migration.deleted';
 
   /// مجلد ملف القاعدة — يُستبدل في الاختبارات (لا `path_provider` فيها).
-  static Future<Directory> Function() directoryProvider = () => getApplicationSupportDirectory();
+  /// تحت `flutter test` لا مجلد بيانات: قناة المنصّة تعلّق داخل FakeAsync فتتجمّد أول فتحٍ للقاعدة.
+  static Future<Directory> Function() directoryProvider = () {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) throw StateError('no data dir in tests');
+    return getApplicationSupportDirectory();
+  };
 
   /// اسم ملف الوصف المرافق للنسخة.
   static String markerPathOf(String backupPath) => '$backupPath.json';
