@@ -110,7 +110,12 @@ void main() {
   group('التسوية بعد الفتح: التدقيق والحذف بعد 7 أيام', () {
     late AppDatabase appDb;
 
-    setUp(() => appDb = AppDatabase.forTesting(NativeDatabase.memory()));
+    setUp(() async {
+      appDb = AppDatabase.forTesting(NativeDatabase.memory());
+      // يُفتح قبل إنشاء أي نسخة: فتحُ القاعدة ينادي `settle` تلقائيًّا (بمخطط 25)،
+      // ولا يجوز أن يلتقط نسخة الاختبار قبل أن يستدعيها الاختبار بوقته وإصداره.
+      await appDb.customSelect('SELECT 1').get();
+    });
     tearDown(() => appDb.close());
 
     Future<List<String>> audits(String action) async => [

@@ -1,5 +1,8 @@
 import 'package:drift/drift.dart';
 
+import '../../core/error_log.dart';
+import '../../core/security/device_activation.dart';
+import '../../core/security/owner_promotion.dart';
 import '../repos/audit_repo.dart';
 import '../repos/signatures_repo.dart';
 import '../sync/sync_marks.dart';
@@ -40,6 +43,14 @@ class Users extends Table {
   DateTimeColumn get lockedUntil => dateTime().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().nullable()();
+
+  /// الأقسام المحجوبة عن المستخدم: JSON بقائمة من `supply` و`fuel` و`admin.*`.
+  /// فارغ `[]` = لا حجب. (v25)
+  TextColumn get sectionBlocked => text().withDefault(const Constant('[]'))();
+
+  /// توقيع المالك (ECDSA P-256) على منح دور مدير/مالك أو فكّ حجب، يُتحقَّق منه
+  /// بالمفتاح العام المدفون في التطبيق. فارغ = غير موقَّع. (v25)
+  TextColumn get ownerSig => text().withDefault(const Constant(''))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -1086,7 +1097,7 @@ class AppDatabase extends _$AppDatabase {
 
   /// إصدار المخطط الحالي. ثابتٌ ساكن لتقرأه طبقة الاتصال (النسخة الاحتياطية قبل
   /// الترحيل) قبل أن تُنشأ نسخةٌ من القاعدة.
-  static const int kSchemaVersion = 24;
+  static const int kSchemaVersion = 25;
 
   @override
   int get schemaVersion => kSchemaVersion;
@@ -1230,6 +1241,20 @@ class AppDatabase extends _$AppDatabase {
       }
     }
     return added;
+  }
+
+  /// ترقية المالك بعد الانتقال إلى v25: القاعدة نفسها التي تجري عند الدخول
+  /// ([OwnerPromotion.run])، تُستدعى هنا لتحدث عند أول فتحٍ بعد التحديث لا عند
+  /// أول دخول فقط. جهاز الفرع لا يُرقّي (يصله المالك بالمزامنة).
+  ///
+  /// لا تُفشل الفتح أبدًا: تعذّرها يُسجَّل، وتُعاد عند الدخول التالي.
+  Future<void> _promoteOwnerAfterUpgrade() async {
+    try {
+      final branch = await DeviceActivation(this).isBranch();
+      await OwnerPromotion.run(this, isBranchDevice: branch);
+    } catch (err, stack) {
+      ErrorLogger.log('migration.v25.ownerPromotion', err, stack);
+    }
   }
 
   /// ترحيل العهد القديمة إلى النموذج المالي الجديد دون حذف شيء:
@@ -1538,6 +1563,14 @@ class AppDatabase extends _$AppDatabase {
           if (from < 24) {
             await _createIfMissing(m, linkFinanceLedger);
           }
+          // v25: حجب الأقسام وتوقيع المالك على حساب المستخدم. الإضافة مشروطة بغياب
+          // العمود: قاعدةٌ تنقّلت بين نسختين قد تحمله سلفًا، وإضافتُه ثانيةً ترمي
+          // `duplicate column name` أثناء الفتح فلا يفتح التطبيق.
+          if (from < 25) {
+            final userCols = await _columnsOf('users');
+            if (!userCols.contains('section_blocked')) await m.addColumn(users, users.sectionBlocked);
+            if (!userCols.contains('owner_sig')) await m.addColumn(users, users.ownerSig);
+          }
           // v15: إصلاح ما خلّفه تنقّل القاعدة بين نسختين مختلفتي المخطط.
           //
           // يجري بعد كل ترقية لا في هذا الإصدار وحده: الانحراف قد يتكرر كلما
@@ -1565,6 +1598,9 @@ class AppDatabase extends _$AppDatabase {
           await AuditRepo(this).prune();
           // نسخة ما قبل الترحيل: تسجيل إنشائها بعد نجاح الفتح، وحذف المنقضية.
           await PreMigrationBackup.settle(this, schemaVersion: schemaVersion);
+          // ترقية المالك: مرةً واحدةً بعد ترقيةٍ إلى v25 (المدير المحلي الوحيد ← مالك).
+          final before = details.versionBefore;
+          if (details.hadUpgrade && before != null && before < 25) await _promoteOwnerAfterUpgrade();
         },
       );
 }
