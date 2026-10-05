@@ -29,3 +29,5 @@ Thumbs.db
 # مفاتيح توقيع أندرويد — لا تُرفع إلى المستودع
 android/key.properties
 android/*.jks
+
+test_output*.txt
