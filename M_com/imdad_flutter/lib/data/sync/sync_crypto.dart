@@ -3,18 +3,253 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:pointycastle/export.dart';
 
 import '../../core/security/pbkdf2.dart';
+
+/// رمز الاقتران: ٨ أحرف من أبجدية ٣٢ حرفًا (٣٢⁸ ≈ ١٫١ تريليون احتمال).
+///
+/// الأبجدية بلا `I` و`O` و`0` و`1` لأن الرمز يُقرأ من شاشة ويُملى على مشغّل آخر،
+/// والحروف المتشابهة أول مصادر الخطأ في ذلك.
+class PairingCode {
+  const PairingCode._();
+
+  static const String alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  static const int length = 8;
+
+  static String generate() {
+    final rnd = Random.secure();
+    return List.generate(length, (_) => alphabet[rnd.nextInt(alphabet.length)]).join();
+  }
+
+  /// يوحّد ما كتبه المشغّل (حروف صغيرة، شرطة، مسافات) ويعيد الرمز، أو `null`
+  /// إن لم يكن رمزًا صالحًا.
+  static String? normalize(String input) {
+    final code = input.toUpperCase().replaceAll(RegExp(r'[\s\-_]'), '');
+    if (code.length != length) return null;
+    for (final ch in code.split('')) {
+      if (!alphabet.contains(ch)) return null;
+    }
+    return code;
+  }
+
+  /// للعرض: `XXXX-XXXX`.
+  static String format(String code) =>
+      code.length == length ? '${code.substring(0, 4)}-${code.substring(4)}' : code;
+}
+
+/// مفاتيح الاقتران: ECDH (P-256) مؤقت على الجهازين يُمزج برمز الاقتران.
+///
+/// **لماذا ليس الرمز وحده:** كان مفتاح الجلسة مشتقًّا من الرمز فقط، فمن يلتقط
+/// طلبًا موقَّعًا واحدًا على الشبكة يجرّب الرموز دون اتصال حتى يطابق التوقيع.
+/// وهذا المفتاح هو أصل المفتاح الدائم للثقة، فكسره يعني اقترانًا دائمًا.
+/// الآن مفتاح الجلسة = HMAC(مشتق الرمز، سر ECDH ‖ المفتاحان العامان). المتنصّت
+/// السلبي لا يملك أيًّا من المفتاحين الخاصين المؤقتين، فلا شيء يخمّنه دون اتصال.
+/// المهاجم النشط وسط الاقتران يحتاج الرمز نفسه (١٫١ تريليون احتمال × ١٠٠ ألف دورة).
+class PairingKeys {
+  const PairingKeys._();
+
+  /// دورات اشتقاق الرمز. الكلفة تُدفع مرة عند الاقتران لا عند كل طلب.
+  static const int iterations = 100000;
+
+  static final ECDomainParameters _domain = ECCurve_secp256r1();
+
+  // الحقل الأولي لمنحنى P-256.
+  static final BigInt _p = BigInt.parse(
+    'ffffffff00000001000000000000000000000000ffffffffffffffffffffffff',
+    radix: 16,
+  );
+
+  static Uint8List codeKey(String code, List<int> salt) =>
+      Pbkdf2.derive(utf8.encode(code), salt, iterations: iterations, length: 32);
+
+  /// زوج مفاتيح مؤقت: المفتاح الخاص (hex) والعام (٦٥ بايت غير مضغوط).
+  static ({String privHex, Uint8List pub}) newKeyPair() {
+    final rnd = Random.secure();
+    final seed = Uint8List.fromList(List.generate(32, (_) => rnd.nextInt(256)));
+    final gen = ECKeyGenerator()
+      ..init(ParametersWithRandom(
+        ECKeyGeneratorParameters(ECCurve_secp256r1()),
+        FortunaRandom()..seed(KeyParameter(seed)),
+      ));
+    final pair = gen.generateKeyPair();
+    return (
+      privHex: Pbkdf2.toHex(_bytesOf(pair.privateKey.d!)),
+      pub: pair.publicKey.Q!.getEncoded(false),
+    );
+  }
+
+  /// مفتاح الجلسة من طرف أحد الجهازين. ترتيب الإدخال (المستقبِل ثم المرسِل)
+  /// ثابت حتى يبلغ الطرفان القيمة نفسها.
+  static Uint8List sessionKey({
+    required Uint8List codeKey,
+    required String privHex,
+    required Uint8List theirPub,
+    required Uint8List receiverPub,
+    required Uint8List senderPub,
+  }) {
+    final point = _decode(theirPub);
+    final agreement = ECDHBasicAgreement()..init(ECPrivateKey(BigInt.parse(privHex, radix: 16), _domain));
+    final shared = agreement.calculateAgreement(ECPublicKey(point, _domain));
+    final msg = <int>[
+      ...utf8.encode('imdad-pair-v3'),
+      ..._bytesOf(shared),
+      ...receiverPub,
+      ...senderPub,
+    ];
+    return Uint8List.fromList(Hmac(sha256, codeKey).convert(msg).bytes);
+  }
+
+  /// يفكّ نقطة عامة ويرفض ما ليس على المنحنى (هجوم المنحنى غير الصالح).
+  static ECPoint _decode(Uint8List bytes) {
+    if (bytes.length != 65 || bytes[0] != 4) {
+      throw const SyncCryptoError('مفتاح اقتران غير صالح');
+    }
+    final x = BigInt.parse(Pbkdf2.toHex(bytes.sublist(1, 33)), radix: 16);
+    final y = BigInt.parse(Pbkdf2.toHex(bytes.sublist(33)), radix: 16);
+    final a = _domain.curve.a!.toBigInteger()!;
+    final b = _domain.curve.b!.toBigInteger()!;
+    final onCurve = x < _p && y < _p && (y * y - (x * x * x + a * x + b)) % _p == BigInt.zero;
+    if (!onCurve) throw const SyncCryptoError('مفتاح اقتران غير صالح');
+    return _domain.curve.decodePoint(bytes)!;
+  }
+
+  /// تحقق مسبق من مفتاح عام قادم من الشبكة. يعيد `false` بدل الرمي.
+  static bool isValidPublic(Uint8List bytes) {
+    try {
+      _decode(bytes);
+      return true;
+    } on SyncCryptoError {
+      return false;
+    }
+  }
+
+  static Uint8List _bytesOf(BigInt v) {
+    final out = Uint8List(32);
+    var n = v;
+    for (var i = 31; i >= 0; i--) {
+      out[i] = (n & BigInt.from(0xff)).toInt();
+      n >>= 8;
+    }
+    return out;
+  }
+}
+
+/// عرض الاقتران على الجهاز **المستقبِل**: الرمز والملح ومفتاح مؤقت. عمره قصير،
+/// ولا يُستعمل بعد انتهاء مدته أو بعد إغلاق الاستقبال.
+class PairingOffer {
+  PairingOffer._({
+    required this.code,
+    required this.salt,
+    required this.expiresAt,
+    required Uint8List codeKey,
+    required String privHex,
+    required this.pub,
+  })  : _codeKey = codeKey,
+        _privHex = privHex;
+
+  /// الرمز المعروض للمشغّل (٨ أحرف بلا شرطة).
+  final String code;
+  final Uint8List salt;
+  final DateTime expiresAt;
+  final Uint8List pub;
+  final Uint8List _codeKey;
+  final String _privHex;
+
+  /// جلسات من اقترنوا بهذا العرض، بمفتاحهم المؤقت. تُحفظ لأن كل طلب بعد
+  /// الأول يحمل المفتاح نفسه، واشتقاقه كل مرة هدر.
+  final Map<String, SyncSession> _sessions = {};
+
+  /// بصمة مفتاح آخر اقتران ناجح — تُعرض على الجهازين للتأكد من تطابقه.
+  String? pairedFingerprint;
+
+  /// مفاتيح اقتران سبق تسجيل نجاحها في التدقيق (مرة لكل اقتران لا لكل طلب).
+  final Set<String> announced = {};
+
+  bool get isExpired => DateTime.now().isAfter(expiresAt);
+  String get saltB64 => base64Encode(salt);
+  String get pubB64 => base64Encode(pub);
+
+  static const Duration defaultTtl = Duration(minutes: 10);
+
+  /// عرض جديد. الاشتقاق ثقيل (١٠٠ ألف دورة) فيجري في Isolate لئلا تتجمد الواجهة.
+  static Future<PairingOffer> create({Duration ttl = defaultTtl}) async {
+    final r = await compute(_newOfferTask, 0);
+    return PairingOffer._(
+      code: r.code,
+      salt: r.salt,
+      expiresAt: DateTime.now().add(ttl),
+      codeKey: r.codeKey,
+      privHex: r.privHex,
+      pub: r.pub,
+    );
+  }
+
+  /// جلسة الطرف الذي أرسل مفتاحه المؤقت [epkB64]، أو `null` إن لم يكن صالحًا.
+  SyncSession? sessionFor(String epkB64) {
+    final cached = _sessions[epkB64];
+    if (cached != null) return cached;
+    try {
+      final senderPub = Uint8List.fromList(base64Decode(epkB64));
+      final key = PairingKeys.sessionKey(
+        codeKey: _codeKey,
+        privHex: _privHex,
+        theirPub: senderPub,
+        receiverPub: pub,
+        senderPub: senderPub,
+      );
+      if (_sessions.length >= 8) _sessions.clear();
+      return _sessions[epkB64] = SyncSession.fromKey(key, ttl: expiresAt.difference(DateTime.now()));
+    } on SyncCryptoError {
+      return null;
+    } on FormatException {
+      return null;
+    }
+  }
+}
+
+({String code, Uint8List salt, Uint8List codeKey, String privHex, Uint8List pub}) _newOfferTask(int _) {
+  final rnd = Random.secure();
+  final code = PairingCode.generate();
+  final salt = Uint8List.fromList(List.generate(16, (_) => rnd.nextInt(256)));
+  final pair = PairingKeys.newKeyPair();
+  return (
+    code: code,
+    salt: salt,
+    codeKey: PairingKeys.codeKey(code, salt),
+    privHex: pair.privHex,
+    pub: pair.pub,
+  );
+}
+
+({Uint8List key, String epk}) _clientDeriveTask((String, String, String) a) {
+  final code = a.$1;
+  final salt = base64Decode(a.$2);
+  final receiverPub = Uint8List.fromList(base64Decode(a.$3));
+  if (!PairingKeys.isValidPublic(receiverPub)) {
+    throw const SyncCryptoError('مفتاح اقتران غير صالح');
+  }
+  final pair = PairingKeys.newKeyPair();
+  final key = PairingKeys.sessionKey(
+    codeKey: PairingKeys.codeKey(code, salt),
+    privHex: pair.privHex,
+    theirPub: receiverPub,
+    receiverPub: receiverPub,
+    senderPub: pair.pub,
+  );
+  return (key: key, epk: base64Encode(pair.pub));
+}
 
 /// أمن المزامنة عبر الشبكة المحلية.
 ///
 /// قبل هذه الطبقة كان الجهاز المستقبِل يفتح منفذًا مفتوحًا للجميع: أي جهاز على
 /// الشبكة يسحب قاعدة البيانات كاملة من `/export` أو يدمج ما يشاء عبر `/import`.
 ///
-/// الآن: المستقبِل يولّد **رمز اقتران** من ٦ أرقام يُعرض على شاشته، ويُدخله
-/// المشغّل في الجهاز المرسِل. يُشتق من الرمز مفتاح جلسة (PBKDF2) لا يعبر الشبكة
-/// إطلاقًا، ومنه مفتاحان فرعيان: واحد لتوقيع الطلبات وآخر لتشفير الحمولة.
+/// الآن: المستقبِل يولّد **رمز اقتران** من ٨ أحرف ([PairingCode]) يُعرض على شاشته،
+/// ويُدخله المشغّل في الجهاز المرسِل. من الرمز وتبادل مفتاحين مؤقتين (ECDH،
+/// انظر [PairingKeys]) يُشتق مفتاح جلسة لا يعبر الشبكة إطلاقًا، ومنه مفتاحان
+/// فرعيان: واحد لتوقيع الطلبات وآخر لتشفير الحمولة.
 ///
 /// • كل طلب موقَّع بـ HMAC-SHA256 على (الفعل + المسار + الوقت + nonce + بصمة الجسم).
 /// • الوقت يُرفض إن انحرف أكثر من خمس دقائق، والـ nonce لا يُقبل مرتين (منع إعادة الإرسال).
@@ -22,26 +257,21 @@ import '../../core/security/pbkdf2.dart';
 /// • للجلسة عمر محدود ينتهي بإغلاق الخادم تلقائيًا.
 class SyncSession {
   SyncSession._({
-    required this.code,
-    required this.salt,
     required this.key,
     required this.expiresAt,
+    this.pairingEpk,
   });
-
-  /// رمز الاقتران المعروض على الجهاز المستقبِل (٦ أرقام).
-  final String code;
-
-  /// ملح الاشتقاق — يُعلن مع الترحيب لأنه ليس سرًّا، والسر هو الرمز وحده.
-  final Uint8List salt;
 
   /// مفتاح الجلسة — لا يغادر الجهاز أبدًا.
   final Uint8List key;
 
   final DateTime expiresAt;
 
-  bool get isExpired => DateTime.now().isAfter(expiresAt);
+  /// المفتاح العام المؤقت للمرسِل (base64) في جلسة اقتران: يُرسَل مع كل طلب
+  /// ليشتق المستقبِل المفتاح نفسه. `null` في جلسات الثقة الدائمة.
+  final String? pairingEpk;
 
-  String get saltB64 => base64Encode(salt);
+  bool get isExpired => DateTime.now().isAfter(expiresAt);
 
   /// بصمة قصيرة للمفتاح تُعرض على الجهازين للتأكد من تطابق الاقتران.
   String get fingerprint {
@@ -50,46 +280,32 @@ class SyncSession {
   }
 
   /// مدة الجلسة الافتراضية: عشر دقائق تكفي لمزامنة ثم يُغلق المنفذ وحده.
-  static const Duration defaultTtl = Duration(minutes: 10);
+  static const Duration defaultTtl = PairingOffer.defaultTtl;
 
-  /// عدد دورات الاشتقاق. أقل من دورات كلمات المرور لأن الجلسة قصيرة العمر
-  /// والرمز يتبدّل في كل مرة، ولأن الاشتقاق يجري على هاتف عند كل طلب.
-  static const int _iterations = 12000;
-
-  /// جلسة جديدة على الجهاز المستقبِل — يُولَّد لها رمز وملح عشوائيان.
-  factory SyncSession.create({Duration ttl = defaultTtl}) {
-    final rnd = Random.secure();
-    final code = List.generate(6, (_) => rnd.nextInt(10)).join();
-    final salt = Uint8List.fromList(List.generate(16, (_) => rnd.nextInt(256)));
+  /// جلسة على الجهاز المرسِل: الرمز يُدخله المشغّل، والملح والمفتاح العام
+  /// يأتيان من `/hello`. يرمي [SyncCryptoError] إن كان المفتاح العام غير صالح.
+  static Future<SyncSession> fromPairing(
+    String code,
+    String saltB64,
+    String receiverPubB64, {
+    Duration ttl = defaultTtl,
+  }) async {
+    final r = await compute(_clientDeriveTask, (code, saltB64, receiverPubB64));
     return SyncSession._(
-      code: code,
-      salt: salt,
-      key: Pbkdf2.derive(utf8.encode(code), salt, iterations: _iterations, length: 32),
+      key: r.key,
       expiresAt: DateTime.now().add(ttl),
-    );
-  }
-
-  /// جلسة على الجهاز المرسِل: الرمز يُدخله المشغّل، والملح يأتي من `/hello`.
-  factory SyncSession.fromCode(String code, String saltB64, {Duration ttl = defaultTtl}) {
-    final salt = Uint8List.fromList(base64Decode(saltB64));
-    return SyncSession._(
-      code: code,
-      salt: salt,
-      key: Pbkdf2.derive(utf8.encode(code), salt, iterations: _iterations, length: 32),
-      expiresAt: DateTime.now().add(ttl),
+      pairingEpk: r.epk,
     );
   }
 
   /// جلسة من **مفتاح ثقة محفوظ** — اقتران دائم بلا رمز ولا مشغّل.
   ///
-  /// هذه هي ركيزة المزامنة التلقائية: الرمز ذو الأرقام الستة يصلح لمرة واحدة
+  /// هذه هي ركيزة المزامنة التلقائية: الرمز يصلح لمرة واحدة
   /// بحضور إنسان، ولا يصلح لجهاز يزامن وحده كل ربع ساعة. فبعد اقتران يدوي
   /// واحد يُشتقّ من مفتاح الجلسة مفتاحٌ دائم ([trustKeyFor]) يُحفظ على
   /// الجهازين، وتُبنى منه هذه الجلسة عند كل مزامنة لاحقة. لا رمز يُخمَّن هنا:
-  /// السر مفتاح ٢٥٦ بت لا ستة أرقام.
+  /// السر مفتاح ٢٥٦ بت لا رمزًا قصيرًا.
   factory SyncSession.fromKey(Uint8List key, {Duration ttl = trustedTtl}) => SyncSession._(
-        code: '',
-        salt: Uint8List(0),
         key: Uint8List.fromList(key),
         expiresAt: DateTime.now().add(ttl),
       );
@@ -208,6 +424,10 @@ class SyncSession {
   /// معرّف الجهاز الطالب — به يعرف المستقبِل أي مفتاح ثقة يتحقق به.
   /// ليس سرًّا ولا يُصدَّق وحده: التوقيع هو ما يُثبت الهوية.
   static const String headerDevice = 'x-imdad-device';
+
+  /// المفتاح العام المؤقت للمرسِل في جلسة اقتران (base64). غيابه من جهاز غير
+  /// موثوق يعني إصدارًا قديمًا (v2) لا يعرف الاقتران بـ ECDH.
+  static const String headerPairKey = 'x-imdad-epk';
 
   /// أقصى انحراف مقبول بين ساعتي الجهازين.
   static const Duration maxSkew = Duration(minutes: 5);

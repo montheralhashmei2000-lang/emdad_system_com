@@ -159,7 +159,7 @@ void main() {
     });
 
     test('الاتصال بعنوان لا يستجيب يعيد فشلًا واضحًا لا استثناء', () async {
-      final result = await _sync(source).pair('127.0.0.1', '123456', port: _port);
+      final result = await _sync(source).pair('127.0.0.1', 'ABCD2345', port: _port);
       expect(result.ok, isFalse);
       expect(result.message, contains('تعذّر الاتصال'));
     });

@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/security/auth_service.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_layout.dart';
+import '../../core/ui/imd_qr.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
@@ -394,7 +396,7 @@ class _SyncScreenState extends State<SyncScreen> {
   }
 
   /// لوحة «هذا الجهاز مستقبِل» — العنوان وحالة الاستقبال ورمز الاقتران.
-  Widget _receiverPanel(bool editable, SyncSession? session) {
+  Widget _receiverPanel(bool editable, PairingOffer? session) {
     final c = context.imd;
     return ImdPanel(
       title: 'هذا الجهاز مستقبِل',
@@ -473,9 +475,9 @@ class _SyncScreenState extends State<SyncScreen> {
         ],
         const SizedBox(height: 10),
         ImdLabeled(
-          'رمز الاقتران (٦ أرقام)',
+          'رمز الاقتران (٨ أحرف)',
           Row(children: [
-            ImdFit(width: 150, child: ImdFld(controller: _code, number: true)),
+            ImdFit(width: 170, child: ImdFld(controller: _code, hint: 'XXXX-XXXX')),
             const SizedBox(width: 8),
             ImdButton(
               label: 'اقتران',
@@ -543,11 +545,12 @@ class _SyncScreenState extends State<SyncScreen> {
 class _PairingCode extends StatelessWidget {
   const _PairingCode({required this.session});
 
-  final SyncSession session;
+  final PairingOffer session;
 
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
+    final shown = PairingCode.format(session.code);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -559,20 +562,41 @@ class _PairingCode extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('رمز الاقتران', style: TextStyle(fontSize: 12.5, color: c.muted)),
         const SizedBox(height: 2),
-        Text(
-          session.code,
-          style: TextStyle(
-            fontSize: 30,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 8,
-            color: c.accent,
+        Directionality(
+          // الرمز أحرف لاتينية وأرقام: يُعرض من اليسار لليمين مهما كانت الواجهة.
+          textDirection: TextDirection.ltr,
+          child: Text(
+            shown,
+            style: TextStyle(
+              fontSize: 30,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 6,
+              color: c.accent,
+            ),
           ),
         ),
+        const SizedBox(height: 4),
         Text(
-          'بصمة المفتاح ${session.fingerprint} — تنتهي الجلسة '
-          '${TimeOfDay.fromDateTime(session.expiresAt).format(context)}',
+          'تنتهي الجلسة ${TimeOfDay.fromDateTime(session.expiresAt).format(context)}'
+          '${session.pairedFingerprint == null ? '' : ' — بصمة آخر اقتران ${session.pairedFingerprint}'}',
           style: TextStyle(fontSize: 12, height: 1.7, color: c.muted),
         ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: ImdButton.outline(
+            label: 'نسخ الرمز',
+            icon: 'copy',
+            small: true,
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: shown));
+              if (context.mounted) showImdToast(context, '✔ نُسخ الرمز');
+            },
+          ),
+        ),
+        const SizedBox(height: 10),
+        // الـQR يحمل الرمز نفسه: يُمسح بكاميرا أي جهاز فيُنقل بلا إملاء.
+        Center(child: ImdQr(shown, size: 160)),
       ]),
     );
   }

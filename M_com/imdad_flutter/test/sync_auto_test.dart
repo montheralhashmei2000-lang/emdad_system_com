@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -137,7 +138,7 @@ void main() {
       await b.server.stopReceiving();
       await b.server.startReceiving(trustedOnly: true);
 
-      // الإغلاق التلقائي حارسٌ لرمز الأرقام الستة. هنا لا رمز، فلو أُغلق المنفذ
+      // الإغلاق التلقائي حارسٌ لرمز الاقتران. هنا لا رمز، فلو أُغلق المنفذ
       // لصار تعطيل مزامنة الوحدة كلها بخمسة طلبات فارغة.
       final client = HttpClient();
       for (var i = 0; i < LanSync.maxAuthFailures + 2; i++) {
@@ -453,7 +454,7 @@ void main() {
 
   group('انحراف الساعات لا يوقف المزامنة', () {
     test('جهاز ساعته متأخرة ساعة كاملة يُرفض، وبضبط الفرق يُقبل', () async {
-      final session = SyncSession.create();
+      final session = SyncSession.fromKey(Uint8List.fromList(List.generate(32, (i) => i)));
       const hour = 3600 * 1000;
 
       // جهاز ميدانيّ بلا إنترنت تأخّرت ساعته ساعة: يوقّع بساعته فيُرفض.

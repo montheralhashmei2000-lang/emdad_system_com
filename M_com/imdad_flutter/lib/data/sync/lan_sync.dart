@@ -10,82 +10,11 @@ import '../migration/data_export.dart';
 import '../migration/legacy_import.dart';
 import '../repos/audit_repo.dart';
 import 'sync_crypto.dart';
-import 'sync_marks.dart';
 import 'sync_trust.dart';
 
-/// مزامنة الأجهزة عبر الشبكة المحلية — بلا إنترنت ولا خادم خارجي:
-/// جهاز يعمل **مستقبِلًا** فيفتح منفذًا على
-/// الشبكة، وبقية الأجهزة ترسل إليه بياناتها أو تسحب منه.
-///
-/// الأمان (انظر [SyncSession]): المستقبِل يعرض رمز اقتران من ٦ أرقام، ولا يُقبل
-/// أي طلب بيانات بلا توقيع مشتقّ منه، والحمولة كلها مشفَّرة. المنفذ يُغلق وحده
-/// بانتهاء الجلسة، وتُغلق الجلسة فورًا بعد [maxAuthFailures] محاولة فاشلة.
-///
-/// قواعد الدمج (انظر [SyncMarks]):
-/// • كل سجل له معرّف ثابت، والدمج يكتب فوق السجل بمعرّفه (لا تكرار).
-/// • عند اختلاف النسختين **يفوز الأحدث ختمًا**، لا آخر من زامن.
-/// • **الحذف ينتقل**: يرافق الحمولةَ شاهدُ حذف، فلا يعود المحذوف من الجهاز الآخر.
-class SyncInfo {
-  const SyncInfo({
-    required this.deviceName,
-    required this.records,
-    required this.at,
-  });
+export 'sync_models.dart';
+import 'sync_models.dart';
 
-  final String deviceName;
-  final int records;
-  final DateTime at;
-
-  Map<String, dynamic> toMap() => {
-        'device': deviceName,
-        'records': records,
-        'at': at.toIso8601String(),
-      };
-
-  factory SyncInfo.fromMap(Map<String, dynamic> m) => SyncInfo(
-        deviceName: (m['device'] ?? '').toString(),
-        records: (m['records'] as num?)?.toInt() ?? 0,
-        at: DateTime.tryParse((m['at'] ?? '').toString()) ?? DateTime.now(),
-      );
-}
-
-class SyncResult {
-  const SyncResult({required this.ok, this.message = '', this.records = 0, this.upTo = 0});
-
-  final bool ok;
-  final String message;
-  final int records;
-
-  /// أحدث ختم شملته هذه العملية — تُحفظ علامةَ ماءٍ للدورة التالية.
-  final int upTo;
-}
-
-/// جهاز اقترنّا به: عنوانه وجلسته ومعلوماته معًا، حتى لا تُستعمل جلسة جهاز
-/// مع عنوان جهاز آخر.
-class SyncPeer {
-  const SyncPeer({
-    required this.host,
-    required this.port,
-    required this.session,
-    required this.info,
-  });
-
-  final String host;
-  final int port;
-  final SyncSession session;
-  final SyncInfo info;
-
-  bool get isExpired => session.isExpired;
-}
-
-/// ناتج الاقتران بجهاز استقبال: نظير صالح، أو سبب الرفض.
-class SyncPairing {
-  const SyncPairing({required this.ok, this.message = '', this.peer});
-
-  final bool ok;
-  final String message;
-  final SyncPeer? peer;
-}
 
 class LanSync {
   LanSync(this.db, {this.port = defaultPort, this.discoveryPort = defaultDiscoveryPort, this.ownerPublicKey});
@@ -116,7 +45,7 @@ class LanSync {
 
   HttpServer? _server;
   RawDatagramSocket? _beacon;
-  SyncSession? _session;
+  PairingOffer? _offer;
   Timer? _expiry;
 
   /// استقبال بلا رمز اقتران: لا يُقبل إلا جهاز موثوق سلفًا. وضع المزامنة
@@ -144,7 +73,7 @@ class LanSync {
   String? _deviceId;
 
   /// الجلسة الجارية على الجهاز المستقبِل (منها رمز الاقتران المعروض للمشغّل).
-  SyncSession? get session => _session;
+  PairingOffer? get session => _offer;
 
   /// عناوين هذا الجهاز على الشبكة المحلية، لعرضها على الأجهزة الأخرى.
   static Future<List<String>> localAddresses() async {
@@ -170,8 +99,8 @@ class LanSync {
     if (_server != null) return (await localAddresses()).join('، ');
 
     _trustedOnly = trustedOnly;
-    final session = trustedOnly ? null : SyncSession.create(ttl: ttl);
-    _session = session;
+    final session = trustedOnly ? null : await PairingOffer.create(ttl: ttl);
+    _offer = session;
     _seenNonces.clear();
     _authFailures = 0;
 
@@ -194,7 +123,15 @@ class LanSync {
     final addresses = await localAddresses();
     onEvent?.call(session == null
         ? 'استقبال تلقائي على ${addresses.join('، ')}:$port — للأجهزة الموثوقة وحدها'
-        : 'جاهز للاستقبال على ${addresses.join('، ')}:$port — رمز الاقتران ${session.code}');
+        : 'جاهز للاستقبال على ${addresses.join('، ')}:$port — رمز الاقتران ${PairingCode.format(session.code)}');
+    if (session != null) {
+      await AuditRepo(db).log(
+        action: 'sync.pair.started',
+        entityType: 'مزامنة',
+        summary: 'بدء استقبال اقتران — الرمز صالح ${ttl.inMinutes} دقائق',
+        details: {'role': 'receiver', 'port': port},
+      );
+    }
     return addresses.join('، ');
   }
 
@@ -208,13 +145,16 @@ class LanSync {
         // بلا أي بيانات. المعرّف هنا لا لهوية يُوثق بها بل ليعرف الجهاز الآخر
         // أنه بلغ الجهاز الذي يقصده قبل أن يوقّع بمفتاحه الدائم.
         if (method == 'GET' && path == '/hello') {
-          final s = _session;
+          final s = _offer;
           _plainJson(request, {
             'app': 'imdad-sync',
-            'v': 2,
+            // 3: الاقتران بمفتاح ECDH مؤقت مع رمز من ٨ أحرف. الإصدار 2 لا يقترن
+            // بهذا الإصدار (والمقترنون سلفًا بمفاتيح دائمة لا يتأثرون).
+            'v': 3,
             'device': deviceName,
             'id': await deviceId(),
             'salt': s?.saltB64 ?? '',
+            'pub': s?.pubB64 ?? '',
             'needsCode': true,
             // ساعة هذا الجهاز — يضبط عليها الطرف الآخر أختامه فلا يُرفض طلبه
             // لانحراف ساعته. ليست سرًّا ولا تُصدَّق وحدها: التوقيع هو الحاكم.
@@ -225,11 +165,7 @@ class LanSync {
 
         final candidates = await _sessionsFor(request);
         if (candidates.isEmpty) {
-          await _reject(
-            request,
-            _trustedOnly ? 'جهاز غير موثوق' : 'انتهت مدة جلسة المزامنة',
-            HttpStatus.forbidden,
-          );
+          await _rejectNoSession(request, onEvent);
           continue;
         }
 
@@ -241,6 +177,7 @@ class LanSync {
         }
         final session = auth.session!;
         _authFailures = 0;
+        if (auth.paired) await _announcePairing(request, session);
 
         switch ('$method $path') {
           // منح ثقة دائمة لجهاز اقترن الآن برمز صحيح. لا يُقبل إلا على جلسة
@@ -345,9 +282,66 @@ class LanSync {
       final peer = (await SyncTrust(db).accepted())[peerId];
       if (peer != null) out.add((session: SyncSession.fromKey(peer.key), paired: false));
     }
-    final s = _session;
-    if (s != null && !s.isExpired) out.add((session: s, paired: true));
+    // جلسة الاقتران لا تُبنى إلا إن حمل الطلب مفتاح المرسِل المؤقت. طلبٌ بلا
+    // مفتاح من جهاز غير موثوق هو إصدار قديم (v2) يوقّع بالرمز وحده.
+    final offer = _offer;
+    if (offer != null && !offer.isExpired) {
+      final epk = request.headers.value(SyncSession.headerPairKey) ?? '';
+      final s = epk.isEmpty ? null : offer.sessionFor(epk);
+      if (s != null) out.add((session: s, paired: true));
+    }
     return out;
+  }
+
+  /// طلب لا مفتاح مرشَّحًا له. السبب يُسجَّل في التدقيق بدقة: انتهاء المدة،
+  /// أو إصدار قديم، أو مفتاح اقتران معطوب.
+  Future<void> _rejectNoSession(HttpRequest request, void Function(String)? onEvent) async {
+    final offer = _offer;
+    if (_trustedOnly || offer == null) {
+      await _reject(request, 'جهاز غير موثوق', HttpStatus.forbidden);
+      return;
+    }
+    if (offer.isExpired) {
+      final from = request.connectionInfo?.remoteAddress.address ?? 'جهاز';
+      await AuditRepo(db).log(
+        action: 'sync.pair.failed',
+        entityType: 'مزامنة',
+        summary: 'فشل اقتران من $from — انتهت مدة الجلسة',
+        details: {'host': from, 'reason': 'expired', 'role': 'receiver', 'risk': 'sensitive'},
+      );
+      await _reject(request, 'انتهت مدة جلسة المزامنة', HttpStatus.forbidden);
+      return;
+    }
+    final epk = request.headers.value(SyncSession.headerPairKey) ?? '';
+    if (epk.isEmpty) {
+      await _onAuthFailure(
+        request,
+        'جهاز بإصدار قديم (v2) — يجب تحديث التطبيق عليه أولاً',
+        onEvent,
+        reason: 'v2_rejected',
+      );
+    } else {
+      await _onAuthFailure(request, 'مفتاح اقتران غير صالح', onEvent, reason: 'bad_key');
+    }
+  }
+
+  /// نجاح الاقتران يُسجَّل مرة واحدة لكل مفتاح مؤقت لا لكل طلب.
+  Future<void> _announcePairing(HttpRequest request, SyncSession session) async {
+    final offer = _offer;
+    final epk = request.headers.value(SyncSession.headerPairKey) ?? '';
+    if (offer == null || !offer.announced.add(epk)) return;
+    offer.pairedFingerprint = session.fingerprint;
+    final from = request.connectionInfo?.remoteAddress.address ?? 'جهاز';
+    await AuditRepo(db).log(
+      action: 'sync.pair.success',
+      entityType: 'مزامنة',
+      summary: 'اقتران ناجح مع $from',
+      details: {
+        'role': 'receiver',
+        'host': from,
+        'device': request.headers.value(SyncSession.headerDevice) ?? '',
+      },
+    );
   }
 
   /// يجرّب المفاتيح المرشَّحة، ثم يستهلك الـnonce مرة واحدة عند النجاح.
@@ -400,24 +394,35 @@ class LanSync {
   Future<void> _onAuthFailure(
     HttpRequest request,
     String error,
-    void Function(String)? onEvent,
-  ) async {
+    void Function(String)? onEvent, {
+    String reason = 'bad_code',
+  }) async {
     _authFailures++;
     final from = request.connectionInfo?.remoteAddress.address ?? 'جهاز';
     onEvent?.call('رُفض طلب من $from — $error');
+    // في وضع الاقتران بالرمز الفشل محاولة اقتران بسبب مصنَّف؛ وفي وضع الموثوقين
+    // رفضٌ لطلب جهاز عادي.
     await AuditRepo(db).log(
-      action: 'sync.reject',
+      action: _trustedOnly ? 'sync.reject' : 'sync.pair.failed',
       entityType: 'مزامنة',
-      summary: 'رُفض طلب مزامنة من $from — $error',
-      details: {'host': from, 'reason': error, 'risk': 'sensitive'},
+      summary: _trustedOnly ? 'رُفض طلب مزامنة من $from — $error' : 'فشل اقتران من $from — $error',
+      details: _trustedOnly
+          ? {'host': from, 'reason': error, 'risk': 'sensitive'}
+          : {'host': from, 'reason': reason, 'message': error, 'role': 'receiver', 'risk': 'sensitive'},
     );
     await _reject(request, error, HttpStatus.unauthorized);
-    // الإغلاق حارسٌ لرمز الأرقام الستة من التخمين. في استقبال الموثوقين لا
+    // الإغلاق حارسٌ لرمز الاقتران من التخمين. في استقبال الموثوقين لا
     // رمز يُخمَّن — والإغلاق حينها يصير سلاحًا بيد المهاجم: خمس محاولات فاشلة
     // تكفي لتعطيل مزامنة الوحدة كلها.
     if (_trustedOnly) return;
     if (_authFailures >= maxAuthFailures) {
       onEvent?.call('تجاوز عدد المحاولات الفاشلة — أُغلق الاستقبال');
+      await AuditRepo(db).log(
+        action: 'sync.pair.failed',
+        entityType: 'مزامنة',
+        summary: 'أُغلق الاستقبال بعد $maxAuthFailures محاولات اقتران فاشلة',
+        details: {'host': from, 'reason': 'locked', 'role': 'receiver', 'risk': 'sensitive'},
+      );
       // بلا انتظار: النداء يأتي من داخل حلقة الطلبات التي يغلقها الإيقاف نفسه.
       unawaited(stopReceiving());
     }
@@ -488,7 +493,7 @@ class LanSync {
     // الطلبات جارية، فلو انتظرناه قبل التصفير لبقي الجهاز «مستقبِلًا» ظاهريًا.
     final server = _server;
     _server = null;
-    _session = null;
+    _offer = null;
     _seenNonces.clear();
     _beacon?.close();
     _beacon = null;
@@ -551,14 +556,22 @@ class LanSync {
     }
   }
 
-  /// الاقتران بجهاز استقبال: يجلب الملح من `/hello`، ثم يثبت صحة الرمز بطلب
-  /// `/info` موقَّع. رمز خاطئ ⇒ يردّ الخادم بالرفض ولا تُبنى جلسة.
+  /// الاقتران بجهاز استقبال: يجلب من `/hello` الملح والمفتاح العام المؤقت، ثم
+  /// يشتق مفتاح الجلسة من الرمز وECDH، ويثبت صحته بطلب `/info` موقَّع.
+  /// رمز خاطئ ⇒ يردّ الخادم بالرفض ولا تُبنى جلسة.
+  ///
+  /// جهاز استقبال بإصدار قديم (v2) يُرفض بوضوح: لا رجوع إلى الاقتران القديم
+  /// لأن إتاحته تُبطل الحماية (هجوم خفض المستوى).
   Future<SyncPairing> pair(String host, String code, {int? port}) async {
     final peerPort = port ?? this.port;
-    final digits = code.trim();
-    if (digits.length != 6 || int.tryParse(digits) == null) {
-      return const SyncPairing(ok: false, message: 'رمز الاقتران ستة أرقام');
+    final normalized = PairingCode.normalize(code);
+    if (normalized == null) {
+      return const SyncPairing(
+        ok: false,
+        message: 'رمز الاقتران ٨ أحرف: أرقام ٢–٩ وحروف إنجليزية بلا I وO',
+      );
     }
+    await _auditPair('sync.pair.started', 'بدء اقتران مع $host', host, {'port': peerPort});
     try {
       final client = HttpClient()..connectionTimeout = wanTimeout;
       final req = await client.getUrl(Uri.parse('http://$host:$peerPort/hello'));
@@ -566,29 +579,55 @@ class LanSync {
       final body = await utf8.decoder.bind(res).join();
       client.close();
       if (res.statusCode != HttpStatus.ok) {
-        return SyncPairing(ok: false, message: 'الجهاز ردّ بالحالة ${res.statusCode}');
+        return await _pairFailed(host, 'http_${res.statusCode}', 'الجهاز ردّ بالحالة ${res.statusCode}');
       }
       final map = jsonDecode(body) as Map<String, dynamic>;
+      final version = (map['v'] as num?)?.toInt() ?? 0;
+      if (version < 3) {
+        return await _pairFailed(host, 'v2_rejected', 'يجب تحديث التطبيق على الجهاز الآخر أولاً');
+      }
       final salt = (map['salt'] ?? '').toString();
-      if (salt.isEmpty) {
-        return const SyncPairing(ok: false, message: 'الجهاز لا يستقبل الآن');
+      final pub = (map['pub'] ?? '').toString();
+      if (salt.isEmpty || pub.isEmpty) {
+        return await _pairFailed(host, 'not_receiving', 'الجهاز لا يستقبل الآن');
       }
       // يُقرأ قبل أول طلب موقَّع، وإلا رُفض الاقتران نفسه لانحراف الساعة.
       _noteClock(host, map);
-      final session = SyncSession.fromCode(digits, salt);
+      final session = await SyncSession.fromPairing(normalized, salt, pub);
       final info = await probe(host, peerPort, session);
       if (info == null) {
-        return const SyncPairing(ok: false, message: 'رمز الاقتران غير صحيح');
+        return await _pairFailed(host, 'bad_code', 'رمز الاقتران غير صحيح');
       }
+      await _auditPair('sync.pair.success', 'اقتران ناجح مع $host', host, {'device': info.deviceName});
       return SyncPairing(
         ok: true,
         message: 'تم الاقتران',
         peer: SyncPeer(host: host, port: peerPort, session: session, info: info),
       );
+    } on SyncCryptoError catch (e) {
+      return await _pairFailed(host, 'bad_key', e.message);
     } catch (e) {
-      return SyncPairing(ok: false, message: 'تعذّر الاتصال بـ $host — $e');
+      return await _pairFailed(host, 'unreachable', 'تعذّر الاتصال بـ $host — $e');
     }
   }
+
+  Future<SyncPairing> _pairFailed(String host, String reason, String message) async {
+    await _auditPair('sync.pair.failed', 'فشل اقتران مع $host — $message', host, {
+      'reason': reason,
+      'message': message,
+      'risk': 'sensitive',
+    });
+    return SyncPairing(ok: false, message: message);
+  }
+
+  /// سجل تدقيق لاقتران صادر من هذا الجهاز (دور المرسِل).
+  Future<void> _auditPair(String action, String summary, String host, Map<String, dynamic> extra) =>
+      AuditRepo(db).log(
+        action: action,
+        entityType: 'مزامنة',
+        summary: summary,
+        details: {'role': 'sender', 'host': host, ...extra},
+      );
 
   /// يطلب من الجهاز المقترن ثقةً دائمة، ويحفظ طرفَي العلاقة.
   ///
@@ -806,6 +845,7 @@ class LanSync {
       final headers = {
         ...session.signHeaders(method, path, body, skewMs: clockOffsetFor(host)),
         SyncSession.headerDevice: await deviceId(),
+        if (session.pairingEpk != null) SyncSession.headerPairKey: session.pairingEpk!,
       };
       final req = await client.openUrl(method, uri);
       headers.forEach(req.headers.set);
@@ -832,8 +872,10 @@ class LanSync {
   }
 }
 
+
 /// التشفير وفكّه يجريان في خيط منفصل: AES في Dart الخالص يجمّد الواجهة
 /// مع الحمولات الكبيرة (تصدير قاعدة كاملة).
 Uint8List _sealTask((SyncSession, Map<String, dynamic>) arg) => arg.$1.sealJson(arg.$2);
+
 
 Map<String, dynamic> _openTask((SyncSession, List<int>) arg) => arg.$1.openJson(arg.$2);
