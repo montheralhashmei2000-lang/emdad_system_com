@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../../core/ui/imd_format.dart';
 import '../db/app_database.dart';
 import 'catalog_repo.dart';
+import 'movements_repo.dart';
 import 'settings_repo.dart';
 
 /// نتيجة فحص واحد (`IMDAD_SELFCHECK.checks[i]`).
@@ -137,6 +138,22 @@ class SelfCheckRepo {
         orphan > 0
             ? '${nf(orphan)} سطر حركة يشير إلى صنف محذوف — سيختل حساب الرصيد'
             : 'كل سطور الحركات مرتبطة بأصناف قائمة',
+      );
+    });
+
+    // لا تُمنَع هذه الحالة عند الحفظ بل تنشأ بعد دمج جهازين صرف كلٌّ منهما الرصيد
+    // نفسه قبل المزامنة، فالكشف هنا هو الحل: القرار (تسوية جرد أو إلغاء سند) إداري.
+    await run('negativeStock', 'أرصدة مخزون سالبة', () async {
+      final negatives = await MovementsRepo(db).negativeBalances();
+      if (negatives.isEmpty) return (true, 'لا توجد أرصدة سالبة');
+      final names = {for (final i in await db.select(db.items).get()) i.id: i.name};
+      final sample = negatives
+          .take(3)
+          .map((n) => '${names[n.itemId] ?? n.itemId} في ${n.warehouse} (${nf(n.qty)})')
+          .join('، ');
+      return (
+        false,
+        '${nf(negatives.length)} رصيد سالب — راجع سندات الصرف أو سوِّ بالجرد. أشدّها: $sample',
       );
     });
 

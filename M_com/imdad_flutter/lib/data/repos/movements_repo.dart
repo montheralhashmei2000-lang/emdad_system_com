@@ -45,6 +45,18 @@ class DocLineInput {
   static double _round(double v) => (v * 1000).round() / 1000;
 }
 
+/// رصيد صنف في مستودع نزل تحت الصفر.
+class NegativeBalance {
+  const NegativeBalance({required this.warehouse, required this.itemId, required this.qty});
+
+  final String warehouse;
+  final String itemId;
+  final double qty;
+
+  /// مفتاح ثابت للمقارنة بين لقطتين.
+  String get key => '$warehouse|$itemId';
+}
+
 class SaveResult {
   const SaveResult({required this.ok, this.refNo = '', this.error = ''});
 
@@ -157,6 +169,18 @@ class MovementsRepo {
       if (scope != null && !scope.contains(wh)) continue;
       out.putIfAbsent(wh, () => {})[item] = qty;
     }
+    return out;
+  }
+
+  /// الأرصدة السالبة الآن (مستودع × صنف)، مرتَّبة بالأشدّ عجزًا أولًا. [scope] يحصرها
+  /// بمستودعات المستخدم (`null` = الكل). السالب لا ينشأ من حفظ سند (فحص الرصيد يمنعه)
+  /// بل من دمج جهازين صرف كلٌّ منهما الرصيد نفسه قبل أن يتزامنا.
+  Future<List<NegativeBalance>> negativeBalances({List<String>? scope}) async {
+    final out = <NegativeBalance>[
+      for (final (wh, item, qty) in await _balanceRows())
+        if (qty < 0 && wh.isNotEmpty && item.isNotEmpty && (scope == null || scope.contains(wh)))
+          NegativeBalance(warehouse: wh, itemId: item, qty: qty),
+    ]..sort((a, b) => a.qty.compareTo(b.qty));
     return out;
   }
 
