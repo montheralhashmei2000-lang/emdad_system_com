@@ -168,8 +168,23 @@ class CatalogRepo {
     return newId;
   }
 
-  Future<void> deleteItem(String id) =>
-      (db.delete(db.items)..where((t) => t.id.equals(id))).go();
+  /// يحذف الصنف. من له حركات لا يُحذف: السجلات تبقى بلا صنف فتختل الأرصدة.
+  /// (المشغّل `tg_items_delete_guard` يحرس القاعدة نفسها؛ هذا للرسالة الواضحة.)
+  Future<void> deleteItem(String id) async {
+    if (await hasMovements(id)) {
+      throw StateError('لا يمكن حذف صنف له حركات (وارد أو صرف أو تحويل أو مرتجع أو رصيد افتتاحي أو تسوية)');
+    }
+    await (db.delete(db.items)..where((t) => t.id.equals(id))).go();
+  }
+
+  /// هل للصنف أي حركة مسجَّلة؟
+  Future<bool> hasMovements(String id) async {
+    final rows = await db.customSelect(
+      'SELECT 1 AS x WHERE ${AppDatabase.itemHasMovementsSql('?1')}',
+      variables: [Variable.withString(id)],
+    ).get();
+    return rows.isNotEmpty;
+  }
 
   // ───────── التصنيفات ─────────
   Future<List<Category>> categories() async {

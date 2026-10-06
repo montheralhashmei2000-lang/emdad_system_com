@@ -180,7 +180,7 @@ class MovementsRepo {
   Future<List<(String, String, double)>> _balanceRows() async {
     const inactive = "('DRAFT','ORDER','CANCELLED','REJECTED')";
     const sql = """
-      SELECT wh, item, SUM(q) AS total FROM (
+      SELECT wh, item, ROUND(SUM(q), 3) AS total FROM (
         SELECT warehouse AS wh, item_id AS item, qty AS q FROM opening_balances
         UNION ALL
         -- توريد التعبئة لا يزيد عدد الأسطوانات (انظر `MovementRecord.changesCount`).
@@ -375,16 +375,16 @@ class MovementsRepo {
     final frozenMsg = await frozenMessage(warehouse);
     if (frozenMsg != null) return SaveResult(ok: false, error: frozenMsg);
 
-    if (status == 'COMPLETED') {
-      final check = await checkStock(warehouse, _sumByItem(lines));
-      if (!check.ok) {
-        final item = await (db.select(db.items)..where((t) => t.id.equals(check.itemId))).getSingleOrNull();
-        return SaveResult(ok: false, error: stockError(item, warehouse, check.available, check.requested));
-      }
-    }
-
     final ref = refNo.isNotEmpty ? refNo : await nextRef('issues', 'ص-');
-    await db.transaction(() async {
+    // فحص الرصيد داخل المعاملة نفسها: خارجها تفصله عن الإدخال فجوةٌ يمرّ فيها سندٌ آخر.
+    final stockFailure = await db.transaction<SaveResult?>(() async {
+      if (status == 'COMPLETED') {
+        final check = await checkStock(warehouse, _sumByItem(lines));
+        if (!check.ok) {
+          final item = await (db.select(db.items)..where((t) => t.id.equals(check.itemId))).getSingleOrNull();
+          return SaveResult(ok: false, error: stockError(item, warehouse, check.available, check.requested));
+        }
+      }
       await _numbering.claim('issues', 'ص-', ref);
       for (final l in lines) {
         await db.into(db.issues).insert(IssuesCompanion.insert(
@@ -413,7 +413,9 @@ class MovementsRepo {
               cylinderAction: Value(l.cylinderAction),
             ));
       }
+      return null;
     });
+    if (stockFailure != null) return stockFailure;
     await _auditSave(
       action: status == 'COMPLETED'
           ? 'ISSUE_COMPLETED'
@@ -484,20 +486,20 @@ class MovementsRepo {
       if (error != null) return SaveResult(ok: false, error: '✖ $error');
     }
 
-    final check = await checkStock(fromWarehouse, _sumByItem(lines));
-    if (!check.ok) {
-      return SaveResult(
-        ok: false,
-        error: 'رصيد المستودع «$fromWarehouse» لا يكفي (${_fmt(check.available)} متاح)',
-      );
-    }
-
     final frozen = await frozenOrder(fromWarehouse);
     if (frozen != null) {
       return SaveResult(ok: false, error: 'المستودع مجمّد بأمر الجرد $frozen — لا تُقبل أي حركة حتى اعتماده');
     }
     final ref = refNo.isNotEmpty ? refNo : await nextRef('transfers', 'ح-');
-    await db.transaction(() async {
+    // فحص الرصيد داخل المعاملة نفسها (انظر saveIssue).
+    final stockFailure = await db.transaction<SaveResult?>(() async {
+      final check = await checkStock(fromWarehouse, _sumByItem(lines));
+      if (!check.ok) {
+        return SaveResult(
+          ok: false,
+          error: 'رصيد المستودع «$fromWarehouse» لا يكفي (${_fmt(check.available)} متاح)',
+        );
+      }
       await _numbering.claim('transfers', 'ح-', ref);
       for (final l in lines) {
         await db.into(db.transfers).insert(TransfersCompanion.insert(
@@ -523,7 +525,9 @@ class MovementsRepo {
               durationDays: Value(durationDays),
             ));
       }
+      return null;
     });
+    if (stockFailure != null) return stockFailure;
     await _auditSave(
       action: 'TRANSFER_SENT',
       entityType: 'transfer',
@@ -727,20 +731,20 @@ class MovementsRepo {
     final frozenMsg = await frozenMessage(warehouse);
     if (frozenMsg != null) return SaveResult(ok: false, error: frozenMsg);
 
-    if (type == 'TO_SUPPLIER') {
-      final check = await checkStock(warehouse, _sumByItem(lines));
-      if (!check.ok) {
-        final item = await (db.select(db.items)..where((t) => t.id.equals(check.itemId))).getSingleOrNull();
-        return SaveResult(
-          ok: false,
-          error: '✖ الرصيد المتاح من «${item?.name ?? ''}» لا يكفي لإرجاعه للمورّد '
-              '(${_fmt(check.available)} ${item?.baseUnit ?? ''})',
-        );
-      }
-    }
-
     final ref = refNo.isNotEmpty ? refNo : await nextRef('returns', 'رد-');
-    await db.transaction(() async {
+    // فحص الرصيد داخل المعاملة نفسها (انظر saveIssue).
+    final stockFailure = await db.transaction<SaveResult?>(() async {
+      if (type == 'TO_SUPPLIER') {
+        final check = await checkStock(warehouse, _sumByItem(lines));
+        if (!check.ok) {
+          final item = await (db.select(db.items)..where((t) => t.id.equals(check.itemId))).getSingleOrNull();
+          return SaveResult(
+            ok: false,
+            error: '✖ الرصيد المتاح من «${item?.name ?? ''}» لا يكفي لإرجاعه للمورّد '
+                '(${_fmt(check.available)} ${item?.baseUnit ?? ''})',
+          );
+        }
+      }
       await _numbering.claim('returns', 'رد-', ref);
       for (final l in lines) {
         await db.into(db.returns).insert(ReturnsCompanion.insert(
@@ -767,7 +771,9 @@ class MovementsRepo {
               cylinderAction: Value(l.cylinderAction),
             ));
       }
+      return null;
     });
+    if (stockFailure != null) return stockFailure;
     final toSupplier = type == 'TO_SUPPLIER';
     final good = condition != 'تالفة';
     await _auditSave(

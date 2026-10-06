@@ -148,7 +148,15 @@ class LegacyImporter {
       if (!SyncMarks.entities.containsKey(mark.entity)) continue;
       final local = _local[mark.key];
       if (local != null && local.stamp > mark.stamp) continue;
-      await marks.applyTombstone(mark);
+      try {
+        await marks.applyTombstone(mark);
+      } on Exception catch (err, stack) {
+        // صنفٌ حُذف في الجهاز الآخر وله حركات هنا: يمنعه مشغّل القاعدة، ويبقى الصنف
+        // مكانه بدل أن تُجهض المزامنة كلها.
+        ErrorLogger.log('sync.tombstone', err, stack);
+        res.warnings.add('تعذّر تطبيق حذف منقول (${mark.entity}/${mark.rowId}) — له سجلات مرتبطة');
+        continue;
+      }
       removed++;
     }
     if (removed > 0) res.inserted['محذوفات منقولة'] = removed;
@@ -797,6 +805,15 @@ class LegacyImporter {
     return v.toString();
   }
 
+  /// كميات السجل الوارد غير سالبة؟ السالب يُتجاوز مع تحذير: مشغّل القاعدة سيرفضه
+  /// برمي استثناء، والاستيراد كله معاملة واحدة، فسجلٌّ معيب واحد كان سيُجهض الحمولة
+  /// كلها ويتكرر الإجهاض في كل مزامنة.
+  bool _quantitiesOk(Map<String, dynamic> r, String table, LegacyImportResult res, {bool hasFactor = true}) {
+    final bad = _d(r, 'qty') < 0 || _d(r, 'baseQty') < 0 || (hasFactor && _d(r, 'factor', 1) < 0);
+    if (bad) res.warnings.add('تُجوِّز سجل بكمية سالبة في $table (${_id(r)})');
+    return !bad;
+  }
+
   double _d(Map<String, dynamic> m, String k, [double def = 0]) {
     final v = m[k];
     if (v is num) return v.toDouble();
@@ -1098,6 +1115,7 @@ class LegacyImporter {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('receipts', _id(r))) continue;
+      if (!_quantitiesOk(r, 'receipts', res)) continue;
       await db
           .into(db.receipts)
           .insertOnConflictUpdate(ReceiptsCompanion.insert(
@@ -1138,6 +1156,7 @@ class LegacyImporter {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('issues', _id(r))) continue;
+      if (!_quantitiesOk(r, 'issues', res)) continue;
       await db.into(db.issues).insertOnConflictUpdate(IssuesCompanion.insert(
             id: _id(r),
             refNo: Value(_s(r, 'refNo')),
@@ -1182,6 +1201,7 @@ class LegacyImporter {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('transfers', _id(r))) continue;
+      if (!_quantitiesOk(r, 'transfers', res)) continue;
       await db
           .into(db.transfers)
           .insertOnConflictUpdate(TransfersCompanion.insert(
@@ -1222,6 +1242,7 @@ class LegacyImporter {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('returns', _id(r))) continue;
+      if (!_quantitiesOk(r, 'returns', res)) continue;
       await db.into(db.returns).insertOnConflictUpdate(ReturnsCompanion.insert(
             id: _id(r),
             refNo: Value(_s(r, 'refNo')),
@@ -1260,6 +1281,7 @@ class LegacyImporter {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('opening_balances', _id(r))) continue;
+      if (!_quantitiesOk(r, 'opening_balances', res, hasFactor: false)) continue;
       await db
           .into(db.openingBalances)
           .insertOnConflictUpdate(OpeningBalancesCompanion.insert(

@@ -105,6 +105,20 @@ void main() {
       expect((body['id'] as String).length, 8);
     });
 
+    test('جسم أكبر من السقف يُرفض قبل قراءته (413)', () async {
+      await receiver();
+      // مفتاح مؤقت صالح ليصل الطلب إلى مرحلة قراءة الجسم؛ ولا يُرسل منه بايت.
+      final epk = base64Encode(PairingKeys.newKeyPair().pub);
+      final socket = await Socket.connect('127.0.0.1', _port);
+      socket.write('POST /import HTTP/1.1\r\n'
+          'Host: 127.0.0.1\r\n'
+          'Content-Length: ${LanSync.maxBodyBytes + 1}\r\n'
+          '${SyncSession.headerPairKey}: $epk\r\n\r\n');
+      final reply = await utf8.decoder.bind(socket).join().timeout(const Duration(seconds: 5));
+      await socket.close();
+      expect(reply, startsWith('HTTP/1.1 413'));
+    });
+
     test('رمز اقتران خاطئ لا يفتح جلسة', () async {
       final r = await receiver();
       final wrong = r.session!.code == 'AAAAAAAA' ? 'BBBBBBBB' : 'AAAAAAAA';

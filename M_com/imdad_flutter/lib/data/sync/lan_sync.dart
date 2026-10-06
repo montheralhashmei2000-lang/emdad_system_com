@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
@@ -170,6 +171,10 @@ class LanSync {
         }
 
         final body = await _readBody(request);
+        if (body == null) {
+          await _rejectTooLarge(request);
+          continue;
+        }
         final auth = _authenticate(request, method, path, body, candidates);
         if (auth.session == null) {
           await _onAuthFailure(request, auth.error, onEvent);
@@ -382,12 +387,27 @@ class LanSync {
     return (session: null, paired: false, error: error);
   }
 
-  Future<List<int>> _readBody(HttpRequest request) async {
-    final chunks = <int>[];
-    await for (final chunk in request) {
-      chunks.addAll(chunk);
+  /// أقصى حجم لجسم طلب وارد. القراءة تسبق التحقق من التوقيع (لأن التوقيع يشمل
+  /// بصمة الجسم)، فبلا سقفٍ يستنزف أي جهاز على الشبكة ذاكرة الجهاز بجسمٍ ضخم.
+  static const int maxBodyBytes = 128 * 1024 * 1024;
+
+  /// مهلة قراءة الجسم كله: الخادم يعالج طلبًا واحدًا في كل مرة، فاتصالٌ بطيء
+  /// يوقف المزامنة للجميع.
+  static const Duration bodyTimeout = Duration(seconds: 60);
+
+  /// يقرأ الجسم بسقف حجم ومهلة، ويعيد `null` إن تجاوزهما (أو أعلن حجمًا أكبر).
+  Future<Uint8List?> _readBody(HttpRequest request) async {
+    if (request.contentLength > maxBodyBytes) return null;
+    final builder = BytesBuilder(copy: false);
+    try {
+      await for (final chunk in request.timeout(bodyTimeout)) {
+        builder.add(chunk);
+        if (builder.length > maxBodyBytes) return null;
+      }
+    } on TimeoutException {
+      return null;
     }
-    return chunks;
+    return builder.takeBytes();
   }
 
   /// محاولة فاشلة: تُسجَّل، وبعد [maxAuthFailures] تُغلق الجلسة كلها.
@@ -425,6 +445,19 @@ class LanSync {
       );
       // بلا انتظار: النداء يأتي من داخل حلقة الطلبات التي يغلقها الإيقاف نفسه.
       unawaited(stopReceiving());
+    }
+  }
+
+  /// ردّ 413 ثم قطع الاتصال. الردّ العادي ينتظر استهلاك الجسم المتبقي، وهو ما
+  /// نرفض قراءته أصلًا؛ فيُفصل المقبس ليُحرَّر الخادم (يعالج طلبًا واحدًا في كل مرة).
+  Future<void> _rejectTooLarge(HttpRequest request) async {
+    try {
+      final socket = await request.response.detachSocket(writeHeaders: false);
+      socket.write('HTTP/1.1 413 Payload Too Large\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+      await socket.flush();
+      socket.destroy();
+    } catch (_) {
+      // متوقع: العميل قطع الاتصال قبل وصول الرفض: لا أحد ليُبلَّغ.
     }
   }
 

@@ -187,6 +187,90 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
+  /// الجداول التي تحمل كميات الأصناف، وأعمدة الكمية في كل منها.
+  static const Map<String, List<String>> _quantityColumns = {
+    'receipts': ['qty', 'base_qty'],
+    'issues': ['qty', 'base_qty'],
+    'transfers': ['qty', 'base_qty'],
+    'returns': ['qty', 'base_qty'],
+    'adjustments': ['qty', 'base_qty'],
+    'opening_balances': ['qty'],
+  };
+
+  /// جداول الحركات التي يُمنع فيها السالب (التسويات مستثناة: فرق الجرد سالب بطبيعته).
+  static const List<String> _nonNegativeTables = ['receipts', 'issues', 'transfers', 'returns', 'opening_balances'];
+
+  /// شرط SQL: للصنف [itemIdSql] أي حركة مسجَّلة (يصلح بعد `WHERE`).
+  static String itemHasMovementsSql(String itemIdSql) => [
+        for (final t in _quantityColumns.keys) 'EXISTS (SELECT 1 FROM "$t" WHERE item_id = $itemIdSql)',
+      ].join(' OR ');
+
+  /// الكميات تُخزَّن بثلاث خانات عشرية بالضبط.
+  static const int quantityScale = 3;
+
+  /// حواجز سلامة الكميات في القاعدة نفسها، أيًّا كان المسار الذي كتب (واجهة أو
+  /// مزامنة أو استيراد):
+  ///
+  /// 1. **لا سالب**: كمية أو معامل تحويل سالب في الوارد والصرف والتحويل والمرتجع
+  ///    والرصيد الافتتاحي يُرفض.
+  /// 2. **تقريب إلى [quantityScale] خانات**: الأعمدة `REAL` فيراكم جمعها كسورًا
+  ///    عائمة (٠٫١+٠٫٢). أي قيمة تُكتب بأكثر من ثلاث خانات تُقرَّب فور كتابتها،
+  ///    فلا يدخل القاعدة إلا ما يمثّله الرقم العشري بدقة.
+  /// 3. **لا حذف لصنف له حركات**: تبقى سطور الحركات يتيمةً فتضيع أرصدتها.
+  ///
+  /// مشغّلات لا `CHECK` ولا `FOREIGN KEY`: إضافتهما لجدول قائم في SQLite تعني
+  /// إعادة بنائه، وهي تُسقط مشغّلات المزامنة والتوقيع المعلّقة عليه. والمشغّل يُنشأ
+  /// بـ `IF NOT EXISTS` عند كل فتح فيشمل القواعد القديمة بلا ترقية مخطط.
+  ///
+  /// ولا مفتاح أجنبي على `item_id` في الحركات عمدًا: الاستعادة من نسخة قديمة قد
+  /// تحمل حركاتٍ بأصناف سبق حذفها، ومنعها يفقد بياناتٍ لا تُستعاد. اليتامى القائمة
+  /// يكشفها فحص السلامة (`orphanMoves`) لا المنع.
+  Future<void> _createQuantityGuards() async {
+    for (final t in _nonNegativeTables) {
+      final cols = _quantityColumns[t]!;
+      final negative = [
+        for (final c in cols) 'NEW.$c < 0',
+        if (t != 'opening_balances') 'NEW.factor < 0',
+      ].join(' OR ');
+      for (final event in const ['INSERT', 'UPDATE']) {
+        await customStatement('''
+          CREATE TRIGGER IF NOT EXISTS tg_${t}_${event.toLowerCase()}_qty_guard
+          BEFORE $event ON "$t"
+          WHEN $negative
+          BEGIN
+            SELECT RAISE(ABORT, 'كمية أو معامل تحويل سالب في $t');
+          END
+        ''');
+      }
+    }
+
+    for (final entry in _quantityColumns.entries) {
+      final t = entry.key;
+      final needs = [for (final c in entry.value) 'NEW.$c <> ROUND(NEW.$c, $quantityScale)'].join(' OR ');
+      final set = [for (final c in entry.value) '$c = ROUND($c, $quantityScale)'].join(', ');
+      for (final event in const ['INSERT', 'UPDATE']) {
+        // الشرط يمنع التكرار: بعد التقريب لا يصدق، فلا يُعاد تنفيذ المشغّل.
+        await customStatement('''
+          CREATE TRIGGER IF NOT EXISTS tg_${t}_${event.toLowerCase()}_qty_round
+          AFTER $event ON "$t"
+          WHEN $needs
+          BEGIN
+            UPDATE "$t" SET $set WHERE rowid = NEW.rowid;
+          END
+        ''');
+      }
+    }
+
+    await customStatement('''
+      CREATE TRIGGER IF NOT EXISTS tg_items_delete_guard
+      BEFORE DELETE ON items
+      WHEN ${itemHasMovementsSql('OLD.id')}
+      BEGIN
+        SELECT RAISE(ABORT, 'لا يُحذف صنف له حركات');
+      END
+    ''');
+  }
+
   /// أسماء أعمدة جدول قائم.
   Future<Set<String>> _columnsOf(String table) async {
     final rows = await customSelect('PRAGMA table_info("$table")').get();
@@ -593,6 +677,7 @@ class AppDatabase extends _$AppDatabase {
           if (needFinanceBackfill) await backfillFinance();
           if (healed > 0) await _repairNulls();
           await _createIndexes();
+          await _createQuantityGuards();
           await SyncMarks.install(this);
           await SignaturesRepo.install(this);
           // شواهد الحذف تنمو بلا حد لو تُركت: تُنظَّف القديمة عند كل تشغيل.
