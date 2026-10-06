@@ -11,6 +11,7 @@ import '../db/app_database.dart';
 import 'assets_repo.dart';
 import 'camp_ledger_repo.dart';
 import 'meal_plan_repo.dart';
+import 'movements_repo.dart';
 import 'fuel_repo.dart';
 import 'linkage_repo.dart';
 import 'ration_repo.dart';
@@ -34,9 +35,13 @@ class NotificationsRepo {
   ///
   /// و[space] القسم الذي يقف فيه: **الجرس يخصّ ما بين يديه.** تنبيهُ وقودٍ
   /// في شريط الإمداد يفتح شاشةً ليست في قائمته، وقد فُصل القسمان.
+  ///
+  /// و[warehouseScope] مستودعات المستخدم (`null` = كلها): تنبيهُ رصيدٍ سالب في مستودعٍ
+  /// ليس في نطاقه يكشف له ما لا يملك رؤيته.
   Future<List<AppNotification>> scan({
     Set<String>? allowed,
     String space = '',
+    List<String>? warehouseScope,
   }) async {
     final found = <AppNotification>[];
     final inSpace = space.isEmpty
@@ -48,6 +53,7 @@ class NotificationsRepo {
 
     if (can(NotifyKind.campStockLow)) found.addAll(await _campStock());
     if (can(NotifyKind.stockNegative)) found.addAll(await _negativeStock());
+    if (can(NotifyKind.warehouseNegative)) found.addAll(await _warehouseNegative(warehouseScope));
     if (can(NotifyKind.assetExpiring)) found.addAll(await _assets());
     if (can(NotifyKind.rationPending)) found.addAll(await _ration());
     if (can(NotifyKind.mealPlanEnding)) found.addAll(await _mealPlans());
@@ -105,6 +111,25 @@ class NotificationsRepo {
             body: 'المستهلك أكثر من المستلم بـ${_n(-r.amounts.stockBalance)} '
                 '${r.ledger.unitName} — راجع سندات الاستلام أو سجل الطهي',
           ),
+    ];
+  }
+
+  /// رصيد مستودعٍ سالب (بعد الدمج بين الأجهزة). مقيَّد بنطاق المستودعات؛ والمعرّف
+  /// ثابت لكل (مستودع، صنف) فيُقرأ ويُطفأ مرة، ويختفي وحده حين يُسوّى الرصيد.
+  Future<List<AppNotification>> _warehouseNegative(List<String>? scope) async {
+    final negatives = await MovementsRepo(db).negativeBalances(scope: scope);
+    if (negatives.isEmpty) return const [];
+    final items = {for (final i in await db.select(db.items).get()) i.id: i};
+    return [
+      for (final n in negatives)
+        AppNotification(
+          id: 'wh.negative.${n.warehouse}.${n.itemId}',
+          kind: NotifyKind.warehouseNegative,
+          severity: NotifySeverity.danger,
+          title: 'رصيد سالب: ${items[n.itemId]?.name ?? n.itemId} — ${n.warehouse}',
+          body: 'العجز ${_n(-n.qty)} ${items[n.itemId]?.baseUnit ?? ''} — غالبًا صرفٌ من جهازين '
+              'لرصيدٍ واحد قبل المزامنة. راجع سندات الصرف أو سوِّ بالجرد',
+        ),
     ];
   }
 

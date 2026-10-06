@@ -45,6 +45,10 @@ enum NotifyKind {
   settlementDue,
   stockNegative,
 
+  /// رصيدُ صنفٍ في مستودعٍ تحت الصفر — يظهر بعد دمج جهازين صرف كلٌّ منهما الرصيد نفسه
+  /// قبل أن يتزامنا. (غير `stockNegative` الخاصّ بسجل المعسكر.)
+  warehouseNegative,
+
   /// نفادُ وقودٍ في خزّان أو انخفاضُه عن حدّ التنبيه.
   fuelLow,
 
@@ -62,7 +66,7 @@ extension NotifyKindX on NotifyKind {
         NotifyKind.rationPending => 'clipboard',
         NotifyKind.mealPlanEnding => 'utensils',
         NotifyKind.settlementDue => 'lock',
-        NotifyKind.stockNegative => 'alert',
+        NotifyKind.stockNegative || NotifyKind.warehouseNegative => 'alert',
         NotifyKind.fuelLow => 'zap',
         NotifyKind.linkPerson => 'users',
         NotifyKind.linkFinance => 'dollar',
@@ -76,6 +80,8 @@ extension NotifyKindX on NotifyKind {
         NotifyKind.mealPlanEnding => 'mealPlans',
         NotifyKind.settlementDue => 'campSettlement',
         NotifyKind.stockNegative => 'campLedger',
+        // يفتح الأرصدة الحالية: فيها يظهر السالب بحالته «سالب ⛔».
+        NotifyKind.warehouseNegative => 'balances',
         // يفتح لوحة المحروقات: منها يُرى الخزّان وإشغاله ويُورَّد.
         NotifyKind.fuelLow => 'fuelDashboard',
         NotifyKind.linkPerson => 'personnel',

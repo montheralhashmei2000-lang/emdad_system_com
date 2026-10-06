@@ -5,6 +5,7 @@ import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/repos/assets_repo.dart';
 import 'package:imdad/data/repos/camp_ledger_repo.dart';
 import 'package:imdad/data/repos/catalog_repo.dart';
+import 'package:imdad/core/ids.dart';
 import 'package:imdad/data/repos/fuel_repo.dart';
 import 'package:imdad/data/repos/notifications_repo.dart';
 import 'package:imdad/domain/app_space.dart';
@@ -285,6 +286,70 @@ void main() {
       final titles =
           items.where((n) => n.kind == NotifyKind.fuelLow).map((n) => n.title);
       expect(titles.any((t) => t.contains('ديزل')), isFalse);
+    });
+  });
+
+  group('رصيد المستودع السالب بعد الدمج', () {
+    Future<void> seedNegative(String warehouse) async {
+      final id = await CatalogRepo(db).saveItem(
+        code: 'S1',
+        name: 'سكر',
+        baseUnit: 'كجم',
+        units: const [ItemUnit(name: 'كجم', factor: 1, isBase: true)],
+      );
+      // صرفٌ بلا استلام يكافئ ما يصل بالدمج متجاوزًا فحص الرصيد.
+      await db.into(db.issues).insert(IssuesCompanion.insert(
+            id: Ids.next('is'),
+            warehouse: Value(warehouse),
+            itemId: Value(id),
+            qty: const Value(4),
+            baseQty: const Value(4),
+          ));
+    }
+
+    test('ينبّه صاحب صفحة الأرصدة بمعرّف ثابت ويفتح الأرصدة', () async {
+      await seedNegative('الرئيسي');
+      final repo = NotificationsRepo(db);
+
+      final a = await repo.scan(allowed: {'balances'});
+      final b = await repo.scan(allowed: {'balances'});
+      final n = a.singleWhere((x) => x.kind == NotifyKind.warehouseNegative);
+
+      expect(n.title, contains('سكر'));
+      expect(n.title, contains('الرئيسي'));
+      expect(n.kind.route, 'balances');
+      expect(b.singleWhere((x) => x.kind == NotifyKind.warehouseNegative).id, n.id,
+          reason: 'المعرّف لا يتغير فلا يعود المقروء غير مقروء');
+    });
+
+    test('من لا يملك صفحة الأرصدة لا يُنبَّه', () async {
+      await seedNegative('الرئيسي');
+      final out = await NotificationsRepo(db).scan(allowed: {'items'});
+      expect(out.where((x) => x.kind == NotifyKind.warehouseNegative), isEmpty);
+    });
+
+    test('نطاق المستودعات يحجب مستودعًا ليس لصاحبه', () async {
+      await seedNegative('الرئيسي');
+      final repo = NotificationsRepo(db);
+
+      final other = await repo.scan(allowed: {'balances'}, warehouseScope: ['الفرعي']);
+      expect(other.where((x) => x.kind == NotifyKind.warehouseNegative), isEmpty);
+
+      final own = await repo.scan(allowed: {'balances'}, warehouseScope: ['الرئيسي']);
+      expect(own.where((x) => x.kind == NotifyKind.warehouseNegative), hasLength(1));
+    });
+
+    test('يختفي حين يُسوّى الرصيد', () async {
+      await seedNegative('الرئيسي');
+      final item = (await CatalogRepo(db).items()).single;
+      await db.into(db.openingBalances).insert(OpeningBalancesCompanion.insert(
+            id: Ids.next('ob'),
+            itemId: item.id,
+            warehouse: const Value('الرئيسي'),
+            qty: const Value(4),
+          ));
+      final out = await NotificationsRepo(db).scan(allowed: {'balances'});
+      expect(out.where((x) => x.kind == NotifyKind.warehouseNegative), isEmpty);
     });
   });
 }

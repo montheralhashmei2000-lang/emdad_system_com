@@ -62,7 +62,7 @@ class _NotificationBellState extends State<NotificationBell> {
       final allowed = perm.admin
           ? null
           : {for (final p in Perm.labels.keys) if (perm.has(p)) p};
-      final items = await _repo.scan(allowed: allowed, space: widget.space);
+      final items = await _repo.scan(allowed: allowed, space: widget.space, warehouseScope: perm.scope);
       await _repo.prune(items.map((n) => n.id));
       if (!mounted) return;
       setState(() => _items = items);
