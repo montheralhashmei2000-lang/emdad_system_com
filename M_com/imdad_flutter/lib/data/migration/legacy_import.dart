@@ -949,8 +949,10 @@ class LegacyImporter {
     // القيم الواردة نفسها. وإلا استبدل جهازٌ مقترن هاش المدير بهاشٍ يعرفه فدخل
     // بالإدارة بلا رفع دورٍ يُرفض. خفضُ الدور لا يلزمه (لا يمنح شيئًا).
     if (local != null && OwnerSignature.rank(local.role) > 0 && OwnerSignature.rank(role) > 0) {
-      final inSalt = u.containsKey('saltHex') ? _s(u, 'saltHex') : local.saltHex;
-      final inHash = u.containsKey('hashHex') ? _s(u, 'hashHex') : local.hashHex;
+      // بصمةٌ غائبة أو فارغة لا تُكتب (انظر `_importUsers`): تبقى القائمة محليًّا.
+      final hasSecret = _s(u, 'saltHex').isNotEmpty && _s(u, 'hashHex').isNotEmpty;
+      final inSalt = hasSecret ? _s(u, 'saltHex') : local.saltHex;
+      final inHash = hasSecret ? _s(u, 'hashHex') : local.hashHex;
       final inPerms = u.containsKey('permissions') ? _json(u['permissions'], '{}') : local.permissions;
       final inScope = u.containsKey('warehouseScope')
           ? (u['warehouseScope'] is List ? _json(u['warehouseScope']) : _s(u, 'warehouseScope', 'ALL'))

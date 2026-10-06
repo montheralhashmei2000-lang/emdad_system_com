@@ -27,6 +27,7 @@ class AutoSyncService with ChangeNotifier {
   bool _enabled = false;
   bool _paused = false;
   String _status = '';
+  bool _failed = false;
   DateTime? _lastAt;
 
   /// هل المزامنة التلقائية مشتغلة على هذا الجهاز؟
@@ -37,6 +38,10 @@ class AutoSyncService with ChangeNotifier {
 
   /// آخر سطر حالة — يُعرض في الواجهة عند الحاجة.
   String get status => _status;
+
+  /// هل فشلت آخر محاولة (أو تعذّر فتح المنفذ)؟ حالةٌ صريحة — الواجهة لا تستنتجها
+  /// من نصّ [status] العربي.
+  bool get failed => _failed;
 
   DateTime? get lastAt => _lastAt;
 
@@ -55,6 +60,7 @@ class AutoSyncService with ChangeNotifier {
     if (!_enabled) {
       if (_sync.isTrustedOnly) await _sync.stopReceiving();
       _status = '';
+      _failed = false;
       notifyListeners();
       return;
     }
@@ -67,6 +73,7 @@ class AutoSyncService with ChangeNotifier {
         await _sync.startReceiving(trustedOnly: true);
       } catch (e) {
         _status = 'تعذّر فتح منفذ المزامنة: $e';
+        _failed = true;
       }
     }
 
@@ -103,9 +110,11 @@ class AutoSyncService with ChangeNotifier {
     try {
       final res = await _sync.autoSync();
       _status = res.message;
+      _failed = res.failed;
       if (res.ok) _lastAt = DateTime.now();
     } catch (e) {
       _status = 'تعثّرت المزامنة التلقائية: $e';
+      _failed = true;
     } finally {
       _running = false;
       notifyListeners();

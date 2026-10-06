@@ -39,9 +39,14 @@ class SyncInfo {
 
 
 class SyncResult {
-  const SyncResult({required this.ok, this.message = '', this.records = 0, this.upTo = 0});
+  const SyncResult({required this.ok, this.message = '', this.records = 0, this.upTo = 0, bool? failed})
+      : failed = failed ?? !ok;
 
   final bool ok;
+
+  /// هل هو **فشل** يُنبَّه إليه؟ غير [ok] لا يعني فشلًا دائمًا (مثل: لا جهاز موثوق
+  /// بعد). الواجهة تقرأ هذا الحقل لا نصَّ [message].
+  final bool failed;
   final String message;
   final int records;
 

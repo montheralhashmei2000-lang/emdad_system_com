@@ -78,11 +78,11 @@ Layers (dependency flows downward only): `core/` (security, theme, UI kit, print
 - Any bug fix gets a regression test. Do not weaken `design_rules_test`/`mobile_layout_test` to pass.
 
 ## 8. Known Issues (verified 2026-10-06; fix, don't paper over)
-1. (Fixed 2026-10-06) Sync credential guard, global error hooks (`ErrorLogger.installGlobalHandlers`, called in `main`), and encrypted issue draft. Still open: password hashes of all users replicate to every branch device (`data_export.dart:74`).
+1. (Fixed 2026-10-06) Sync credential guard, global error hooks (`ErrorLogger.installGlobalHandlers`, called in `main`), and encrypted issue draft. Owner salt/hash no longer leave the device by sync (`DataExporter.toMap(includeOwnerSecrets: false)`; file backups keep them). Residual: admin hashes still replicate because branch admins and fresh branch devices need them to log in — protected only by PBKDF2 310k and the `c` guard.
 2. `ImdTable` builds every row of the page eagerly in a `Table` (no virtualization); the frozen first column builds the table twice. Safe only because screens page at 50/100; `pageSize: null` on big data is a perf trap (`imd_table.dart:1024-1113`).
-5. LAN server reads up to 128 MB body before verifying the HMAC (`lan_sync.dart:397-410`); `_seenNonces` is never pruned while receiving; 500 replies echo `$e`.
+5. (Fixed 2026-10-07) LAN sync: nonce cache is time-pruned (`NonceCache`, 11 min, 100k cap); `POST /import` requires the signed body digest header (`x-imdad-body`) and is verified BEFORE the body is read; other paths cap bodies at 1 MB (`LanSync.maxSmallBodyBytes`); 500 replies no longer echo `$e`. Devices on an older build cannot push to this one until updated (they get a clear 401 message). Pulls from older devices still work.
 6. Docs drift: `ImdSizes.mainPaddingTablet/Mobile` comments say ≤920/≤680 (real: 900); `ROADMAP.md` says 87 feature files (real 119); `ImdTable.values` coverage is 3 screens, not "all large tables".
-7. Layering: ~15 screens query Drift directly (`items_screen`, `dashboard_screen`, `issue_screen`, insights…). Sync health shown by string-matching Arabic status text (`home_shell.dart:761`).
+7. Layering: ~15 screens query Drift directly (`items_screen`, `dashboard_screen`, `issue_screen`, insights…). Sync failure state is explicit (`AutoSyncService.failed`, `SyncResult.failed`) — never infer it from Arabic status text.
 8. 13 files >1000 lines (`legacy_import` 1518, `issue_screen` 1462, `fuel_moves_screen` 1325, `linkage_repo` 1310 …) — split when touching.
 9. `ImdInputGroup` used once; Fuel moves screen uses `ImdTable` rather than `ImdEntryTable`; `showImdToast` has `width: 420` (`imd_dialogs.dart:19`).
 10. Login skips PBKDF2 for unknown usernames (timing enumeration; minor).

@@ -758,8 +758,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       children: [for (final e in _spaces.entries) sectionStack(e.key, e.value)],
     );
     final sync = context.watch<AutoSyncService>();
-    final syncFailed = !sync.isRunning &&
-        (sync.status.contains('تعذّر') || sync.status.contains('تعثّرت') || sync.status.contains('فشل'));
+    final syncFailed = !sync.isRunning && sync.failed;
 
     final side = _Sidebar(
       page: _menuPageOf(_page),

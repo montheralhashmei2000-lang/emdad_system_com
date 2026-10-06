@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/error_log.dart';
 import '../../core/security/device_activation.dart';
 import '../db/app_database.dart';
 import '../migration/data_export.dart';
@@ -60,7 +61,7 @@ class LanSync {
 
   /// الفرق المعروف لهذا العنوان — صفر إن لم نسأله بعد.
   int clockOffsetFor(String host) => _clockOffset[host] ?? 0;
-  final Set<String> _seenNonces = {};
+  final NonceCache _seenNonces = NonceCache();
   int _authFailures = 0;
 
   bool get isReceiving => _server != null;
@@ -170,14 +171,41 @@ class LanSync {
           continue;
         }
 
-        final body = await _readBody(request);
+        // سقف الجسم حسب المسار: الاستيراد وحده يحمل حمولةً كبيرة، وما سواه (ثقة،
+        // معلومات، تصدير) لا جسم له يُذكر. فلا يُفتح 128 م.ب لمن لم يُثبت هويته.
+        final cap = path == '/import' && method == 'POST' ? maxBodyBytes : maxSmallBodyBytes;
+        if (request.contentLength > cap) {
+          await _rejectTooLarge(request);
+          continue;
+        }
+
+        // التوقيع قبل الجسم: بصمة الجسم معلنةٌ وداخلةٌ في التوقيع، فيُتحقَّق منه ثم
+        // يُقرأ الجسم. الاستيراد يشترطها (الجسم الكبير لا يُقرأ لغير موقِّعٍ)؛ وما
+        // سواه يقبل الطلب القديم بلا بصمة لأن سقفه صغير.
+        final claimed = request.headers.value(SyncSession.headerBodyDigest);
+        if (claimed == null && cap == maxBodyBytes) {
+          await _onAuthFailure(request, 'جهاز بإصدار قديم — حدّث التطبيق عليه لإرسال بيانات', onEvent,
+              reason: 'no_body_digest');
+          continue;
+        }
+        var auth = claimed == null ? null : _authenticate(request, method, path, null, claimed, candidates);
+        if (auth != null && auth.session == null) {
+          await _onAuthFailure(request, auth.error, onEvent);
+          continue;
+        }
+        final body = await _readBody(request, cap);
         if (body == null) {
           await _rejectTooLarge(request);
           continue;
         }
-        final auth = _authenticate(request, method, path, body, candidates);
-        if (auth.session == null) {
-          await _onAuthFailure(request, auth.error, onEvent);
+        if (auth == null) {
+          auth = _authenticate(request, method, path, body, null, candidates);
+          if (auth.session == null) {
+            await _onAuthFailure(request, auth.error, onEvent);
+            continue;
+          }
+        } else if (!SyncSession.digestMatches(body, claimed!)) {
+          await _onAuthFailure(request, 'الجسم لا يطابق البصمة الموقَّعة', onEvent);
           continue;
         }
         final session = auth.session!;
@@ -236,6 +264,7 @@ class LanSync {
             final since = int.tryParse(request.uri.queryParameters['since'] ?? '');
             final map = await DataExporter(db).toMap(
               includeUsers: includeUsers,
+              includeOwnerSecrets: false,
               since: (since ?? 0) > 0 ? since : null,
             );
             await _sealed(request, session, map);
@@ -270,11 +299,13 @@ class LanSync {
       } catch (e) {
         try {
           request.response.statusCode = HttpStatus.internalServerError;
-          request.response.write(jsonEncode({'ok': false, 'error': '$e'}));
+          // لا يُرسل نصُّ الاستثناء إلى الطرف الآخر (مسارات وأسماء داخلية)؛ يبقى في السجل المحلي.
+          request.response.write(jsonEncode({'ok': false, 'error': 'خطأ داخلي في الجهاز المستقبِل'}));
           await request.response.close();
         } catch (_) {
           // متوقع: الطرف الآخر أغلق الاتصال قبل أن نرد عليه بالخطأ: لا مستمع للردّ، والخطأ الأصلي معروض أعلاه.
         }
+        ErrorLogger.log('sync.request', e);
         onEvent?.call('خطأ في طلب وارد: $e');
       }
     }
@@ -363,7 +394,8 @@ class LanSync {
     HttpRequest request,
     String method,
     String path,
-    List<int> body,
+    List<int>? body,
+    String? claimedDigest,
     List<({SyncSession session, bool paired})> candidates,
   ) {
     final ts = request.headers.value(SyncSession.headerTs);
@@ -372,15 +404,26 @@ class LanSync {
 
     var error = 'توقيع غير مطابق';
     for (final c in candidates) {
-      final e = c.session.verify(
-        method: method,
-        path: path,
-        ts: ts,
-        nonce: nonce,
-        mac: mac,
-        body: body,
-        seenNonces: <String>{},
-      );
+      // [claimedDigest] ⇒ تحققٌ قبل قراءة الجسم؛ وإلا على الجسم المقروء.
+      final e = claimedDigest != null
+          ? c.session.verifyPreBody(
+              method: method,
+              path: path,
+              ts: ts,
+              nonce: nonce,
+              mac: mac,
+              claimedDigest: claimedDigest,
+              seenNonces: <String>{},
+            )
+          : c.session.verify(
+              method: method,
+              path: path,
+              ts: ts,
+              nonce: nonce,
+              mac: mac,
+              body: body!,
+              seenNonces: <String>{},
+            );
       if (e == null) {
         if (!_seenNonces.add(nonce!)) {
           return (session: null, paired: false, error: 'طلب مكرر (إعادة إرسال)');
@@ -392,22 +435,25 @@ class LanSync {
     return (session: null, paired: false, error: error);
   }
 
-  /// أقصى حجم لجسم طلب وارد. القراءة تسبق التحقق من التوقيع (لأن التوقيع يشمل
-  /// بصمة الجسم)، فبلا سقفٍ يستنزف أي جهاز على الشبكة ذاكرة الجهاز بجسمٍ ضخم.
+  /// أقصى حجم لجسم طلب استيراد. يُقرأ بعد التحقق من التوقيع على بصمته المعلنة
+  /// (انظر [SyncSession.verifyPreBody])، وبسقفٍ يمنع جسمًا يتجاوز ما أُعلن.
   static const int maxBodyBytes = 128 * 1024 * 1024;
+
+  /// سقف جسم كل مسارٍ غير الاستيراد (طلب ثقة مشفَّر أو طلب بلا جسم).
+  static const int maxSmallBodyBytes = 1024 * 1024;
 
   /// مهلة قراءة الجسم كله: الخادم يعالج طلبًا واحدًا في كل مرة، فاتصالٌ بطيء
   /// يوقف المزامنة للجميع.
   static const Duration bodyTimeout = Duration(seconds: 60);
 
   /// يقرأ الجسم بسقف حجم ومهلة، ويعيد `null` إن تجاوزهما (أو أعلن حجمًا أكبر).
-  Future<Uint8List?> _readBody(HttpRequest request) async {
-    if (request.contentLength > maxBodyBytes) return null;
+  Future<Uint8List?> _readBody(HttpRequest request, [int cap = maxBodyBytes]) async {
+    if (request.contentLength > cap) return null;
     final builder = BytesBuilder(copy: false);
     try {
       await for (final chunk in request.timeout(bodyTimeout)) {
         builder.add(chunk);
-        if (builder.length > maxBodyBytes) return null;
+        if (builder.length > cap) return null;
       }
     } on TimeoutException {
       return null;
@@ -467,6 +513,24 @@ class LanSync {
   }
 
   Future<void> _reject(HttpRequest request, String error, int status) async {
+    // ردٌّ عادي ينتظر استهلاك جسمٍ لم نقرأه (ولن نقرأه): فيُفصل المقبس بعد الردّ.
+    if (request.contentLength != 0) {
+      try {
+        final payload = utf8.encode(jsonEncode({'ok': false, 'error': error}));
+        final socket = await request.response.detachSocket(writeHeaders: false);
+        final phrase = const {400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden'}[status] ?? 'Error';
+        socket.add(utf8.encode('HTTP/1.1 $status $phrase\r\n'
+            'Content-Type: application/json; charset=utf-8\r\n'
+            'Connection: close\r\n'
+            'Content-Length: ${payload.length}\r\n\r\n'));
+        socket.add(payload);
+        await socket.flush();
+        socket.destroy();
+      } catch (_) {
+        // متوقع: العميل قطع الاتصال قبل وصول الرفض.
+      }
+      return;
+    }
     try {
       request.response
         ..statusCode = status
@@ -699,7 +763,7 @@ class LanSync {
     final store = SyncTrust(db);
     final peers = await store.peers();
     if (peers.isEmpty) {
-      return const SyncResult(ok: false, message: 'لا يوجد جهاز موثوق — اقترن مرة واحدة يدويًا');
+      return const SyncResult(ok: false, failed: false, message: 'لا يوجد جهاز موثوق — اقترن مرة واحدة يدويًا');
     }
 
     var records = 0;
@@ -796,6 +860,7 @@ class LanSync {
     try {
       final map = await DataExporter(db).toMap(
         includeUsers: includeUsers,
+        includeOwnerSecrets: false,
         since: since > 0 ? since : null,
       );
       final upTo = ((map['meta'] as Map)['maxStamp'] as num?)?.toInt() ?? 0;

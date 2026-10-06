@@ -5,6 +5,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart' show compute;
 
 import '../../core/security/device_activation.dart';
+import '../../domain/access_control.dart';
 import '../db/app_database.dart';
 import '../repos/settings_repo.dart';
 import 'backup_crypto.dart';
@@ -26,8 +27,17 @@ class DataExporter {
   /// والدمج في الطرف الآخر إضافيّ لا استبداليّ ([LegacyImporter]): ما غاب عن
   /// الحمولة يبقى كما هو، والحذف ينتقل بشاهده في `syncMarks` لا بغياب السجل.
   /// فالحمولة الجزئية آمنة تمامًا — ولولا ذلك لاستحال هذا كله.
+  /// [includeOwnerSecrets] = `false` يُسقط الملح والبصمة لحساب **المالك** من الحمولة
+  /// (المزامنة): بصمة المالك على كل جهاز فرعٍ تتيح كسرها دون اتصال بسرقة جهازٍ
+  /// واحد، والمالك يعمل من جهاز الإدارة الذي يحمل مفتاحه. المفتاحان يغيبان ولا
+  /// يُفرَّغان، فيُبقي المستقبِل بصمته القائمة (انظر `_importUsers`).
+  ///
+  /// **المديرون يبقون**: مدير الفرع يدخل بكلمة مروره على جهاز فرعه، وجهاز فرعٍ جديد
+  /// لا يملك حسابًا يدخل به غير الحسابات الواصلة بالمزامنة. بصماتهم تتبع حكمَ
+  /// PBKDF2 (310 ألف دورة) وحارس المزامنة (`c`) يمنع استبدالها. النسخة الاحتياطية
+  /// لملفٍّ مشفَّر تُبقي الكل (الافتراضي).
   Future<Map<String, dynamic>> toMap(
-      {bool includeUsers = false, int? since}) async {
+      {bool includeUsers = false, int? since, bool includeOwnerSecrets = true}) async {
     final marks = SyncMarks(db);
     // **الترتيب هنا ليس اعتباطًا.** علامة الماء تُقرأ **قبل** مسح التغييرات:
     // سجلٌ يُكتب بين القراءتين ختمُه أكبر من العلامة المُعلنة، فيُلتقط في
@@ -71,9 +81,11 @@ class DataExporter {
                   'roles': u.roles,
                   'permissions': u.permissions,
                   'warehouseScope': u.warehouseScope,
-                  'saltHex': u.saltHex,
-                  'hashHex': u.hashHex,
-                  'iterations': u.iterations,
+                  if (includeOwnerSecrets || !UserRole.isOwner(u.role)) ...{
+                    'saltHex': u.saltHex,
+                    'hashHex': u.hashHex,
+                    'iterations': u.iterations,
+                  },
                   'active': u.active,
                   'approved': u.approved,
                   // بثوانٍ (دقة التخزين): بصمة توقيع المالك تضمّها، فيتحقق المستقبِل منها.

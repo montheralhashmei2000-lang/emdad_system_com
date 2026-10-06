@@ -353,6 +353,8 @@ class SyncSession {
       headerTs: ts,
       headerNonce: nonce,
       headerMac: _mac(method, path, ts, nonce, body),
+      // بصمة الجسم معلنةً: تتيح للمستقبِل التحقق من التوقيع قبل قراءة الجسم.
+      headerBodyDigest: sha256.convert(body).toString(),
     };
   }
 
@@ -365,6 +367,52 @@ class SyncSession {
     required String? mac,
     required List<int> body,
     required Set<String> seenNonces,
+  }) =>
+      _verify(
+        method: method,
+        path: path,
+        ts: ts,
+        nonce: nonce,
+        mac: mac,
+        digest: sha256.convert(body).toString(),
+        seenNonces: seenNonces,
+      );
+
+  /// التحقق **قبل قراءة الجسم**: التوقيع يشمل بصمة الجسم، والمرسِل يعلنها في
+  /// [headerBodyDigest]. فيُتحقَّق من التوقيع على البصمة المعلنة أولًا (رخيصٌ ولا
+  /// يُقرأ به بايت)، ثم يُقرأ الجسم بسقفه ويُطابَق بالبصمة ([digestMatches]).
+  /// طلبٌ لا يملك صاحبه المفتاح يسقط هنا فلا يستنزف ذاكرة الجهاز بجسمٍ ضخم.
+  String? verifyPreBody({
+    required String method,
+    required String path,
+    required String? ts,
+    required String? nonce,
+    required String? mac,
+    required String claimedDigest,
+    required Set<String> seenNonces,
+  }) =>
+      _verify(
+        method: method,
+        path: path,
+        ts: ts,
+        nonce: nonce,
+        mac: mac,
+        digest: claimedDigest,
+        seenNonces: seenNonces,
+      );
+
+  /// هل بصمة الجسم المقروء هي المعلنة (والموقَّعة)؟
+  static bool digestMatches(List<int> body, String claimedDigest) =>
+      Pbkdf2.constantTimeEquals(sha256.convert(body).toString(), claimedDigest);
+
+  String? _verify({
+    required String method,
+    required String path,
+    required String? ts,
+    required String? nonce,
+    required String? mac,
+    required String digest,
+    required Set<String> seenNonces,
   }) {
     if (ts == null || nonce == null || mac == null) return 'طلب بلا توقيع';
     final at = int.tryParse(ts);
@@ -372,19 +420,19 @@ class SyncSession {
     final skew = (DateTime.now().millisecondsSinceEpoch - at).abs();
     if (skew > maxSkew.inMilliseconds) return 'فارق التوقيت كبير — اضبط ساعة الجهازين';
     if (!seenNonces.add(nonce)) return 'طلب مكرر (إعادة إرسال)';
-    if (!Pbkdf2.constantTimeEquals(mac, _mac(method, path, ts, nonce, body))) {
+    if (!Pbkdf2.constantTimeEquals(mac, _macOfDigest(method, path, ts, nonce, digest))) {
       return 'توقيع غير مطابق';
     }
     return null;
   }
 
-  String _mac(String method, String path, String ts, String nonce, List<int> body) {
-    final digest = sha256.convert(body).toString();
+  String _mac(String method, String path, String ts, String nonce, List<int> body) =>
+      _macOfDigest(method, path, ts, nonce, sha256.convert(body).toString());
+
+  String _macOfDigest(String method, String path, String ts, String nonce, String digest) {
     final msg = '$method\n$path\n$ts\n$nonce\n$digest';
     return base64Encode(Hmac(sha256, _macKey).convert(utf8.encode(msg)).bytes);
   }
-
-  // ───────────────────────── تشفير الحمولة
 
   /// AES-256-GCM. الناتج: متجه التهيئة (١٢ بايت) ثم النص المشفَّر ثم بصمة السلامة.
   Uint8List encrypt(List<int> plain) {
@@ -421,6 +469,9 @@ class SyncSession {
   static const String headerNonce = 'x-imdad-nonce';
   static const String headerMac = 'x-imdad-mac';
 
+  /// SHA-256 (hex) لجسم الطلب — داخلٌ في التوقيع، ومعلنٌ ليُتحقَّق منه قبل قراءة الجسم.
+  static const String headerBodyDigest = 'x-imdad-body';
+
   /// معرّف الجهاز الطالب — به يعرف المستقبِل أي مفتاح ثقة يتحقق به.
   /// ليس سرًّا ولا يُصدَّق وحده: التوقيع هو ما يُثبت الهوية.
   static const String headerDevice = 'x-imdad-device';
@@ -438,4 +489,45 @@ class SyncCryptoError implements Exception {
   final String message;
   @override
   String toString() => message;
+}
+
+/// سجلّ الـnonce المستهلكة لمنع إعادة الإرسال — **مقلَّمٌ بالزمن**.
+///
+/// الطلب لا يُقبل إلا في نافذة [SyncSession.maxSkew] حول ساعة المستقبِل، فنonce
+/// أقدم من ضعف النافذة لا يمكن أن يعود صالحًا ولا حاجة لحفظه. بلا تقليم كان
+/// المجموعُ ينمو مع كل طلب ما دام الاستقبال مفتوحًا. [maxEntries] سقفٌ صلب:
+/// عند بلوغه يُرفض الجديد (مغلقٌ لا مفتوح) بدل أن ينمو بلا حد.
+class NonceCache {
+  NonceCache({
+    this.ttl = const Duration(minutes: 11),
+    this.maxEntries = 100000,
+    DateTime Function()? clock,
+  }) : _now = clock ?? DateTime.now;
+
+  final Duration ttl;
+  final int maxEntries;
+  final DateTime Function() _now;
+
+  // خريطة مرتَّبة بالإدخال = مرتَّبة بالزمن، فالتقليم يقرأ من رأسها وحده.
+  final Map<String, int> _seen = {};
+
+  int get length => _seen.length;
+
+  /// يسجّل [nonce]؛ `false` إن سبق (إعادة إرسال) أو امتلأ السجل.
+  bool add(String nonce) {
+    final t = _now().millisecondsSinceEpoch;
+    _prune(t);
+    if (_seen.containsKey(nonce) || _seen.length >= maxEntries) return false;
+    _seen[nonce] = t;
+    return true;
+  }
+
+  void _prune(int nowMs) {
+    final cutoff = nowMs - ttl.inMilliseconds;
+    while (_seen.isNotEmpty && _seen.values.first < cutoff) {
+      _seen.remove(_seen.keys.first);
+    }
+  }
+
+  void clear() => _seen.clear();
 }
