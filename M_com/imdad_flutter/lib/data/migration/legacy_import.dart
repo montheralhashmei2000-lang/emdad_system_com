@@ -9,6 +9,7 @@ import '../../core/security/owner_key.dart';
 import '../../core/security/owner_signature.dart';
 import '../../domain/section_block.dart';
 import '../repos/audit_repo.dart';
+import '../repos/movements_repo.dart';
 import '../db/app_database.dart';
 import '../repos/settings_repo.dart';
 import 'backup_crypto.dart';
@@ -45,7 +46,7 @@ class LegacyImporter {
     } else {
       data = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
     }
-    final result = await importJson(data, trusted: true);
+    final result = await importJson(data, trusted: true, source: 'ملف: ${file.uri.pathSegments.last}');
     await AuditRepo(db).log(
       action: 'backup.restore',
       entityType: 'نسخة احتياطية',
@@ -87,9 +88,16 @@ class LegacyImporter {
 
   /// [trusted] = الاستعادة من ملف يقرّرها المالك (`sys.backup`): لا يُشترط توقيع
   /// المالك على رفع الأدوار وفكّ الحجب. المزامنة (الافتراضي) تشترطه.
-  Future<LegacyImportResult> importJson(Map<String, dynamic> data, {bool trusted = false}) async {
+  ///
+  /// [source] مصدر الحمولة لسجل التدقيق (جهاز مزامنة أو ملف)؛ فارغ إن لم يُعرف.
+  Future<LegacyImportResult> importJson(
+    Map<String, dynamic> data, {
+    bool trusted = false,
+    String source = '',
+  }) async {
     final res = LegacyImportResult();
     final marks = SyncMarks(db);
+    final negativesBefore = await _negativeKeys();
 
     await db.transaction(() async {
       _local = await marks.snapshot();
@@ -137,7 +145,57 @@ class LegacyImporter {
       await _settleMarks(marks);
     });
 
+    await _auditNewNegatives(negativesBefore, source);
     return res;
+  }
+
+  /// مفاتيح الأرصدة السالبة الآن (مستودع|صنف)، أو `null` إن تعذّر الحساب.
+  Future<Set<String>?> _negativeKeys() async {
+    try {
+      return {for (final n in await MovementsRepo(db).negativeBalances()) n.key};
+    } catch (err, stack) {
+      ErrorLogger.log('import.negativeSnapshot', err, stack);
+      return null;
+    }
+  }
+
+  /// بعد الدمج: كل رصيدٍ **انتقل** من غير سالب إلى سالب يُسجَّل حدثًا عالي الخطورة.
+  ///
+  /// المقارنة بلقطة ما قبل الدمج هي ما يمنع التكرار: مزامنة لم تغيّر شيئًا، أو رصيدٌ
+  /// سالب قائم من قبل، لا يكتبان سطرًا جديدًا. كشفٌ فقط — لا يمنع الدمج ولا يُسوّي
+  /// شيئًا (التسوية قرار إداري)، وإخفاقه لا يُفشل الاستيراد.
+  Future<void> _auditNewNegatives(Set<String>? before, String source) async {
+    if (before == null) return;
+    try {
+      final fresh = [
+        for (final n in await MovementsRepo(db).negativeBalances())
+          if (!before.contains(n.key)) n,
+      ];
+      if (fresh.isEmpty) return;
+      final items = {for (final i in await db.select(db.items).get()) i.id: i};
+      final audit = AuditRepo(db);
+      final at = DateTime.now().toIso8601String();
+      for (final n in fresh) {
+        final item = items[n.itemId];
+        await audit.log(
+          action: 'sync.negative_stock',
+          entityType: 'مزامنة',
+          summary: 'رصيد سالب بعد الدمج: ${item?.name ?? n.itemId} في ${n.warehouse} (${n.qty})',
+          risk: AuditRepo.riskHigh,
+          details: {
+            'warehouse': n.warehouse,
+            'itemId': n.itemId,
+            'itemCode': item?.code ?? '',
+            'itemName': item?.name ?? '',
+            'balance': n.qty,
+            'source': source,
+            'at': at,
+          },
+        );
+      }
+    } catch (err, stack) {
+      ErrorLogger.log('import.negativeAudit', err, stack);
+    }
   }
 
   /// ما حُذف في الجهاز الآخر يُحذف هنا أيضًا — ما لم يُعدَّل عندنا بعد حذفه.

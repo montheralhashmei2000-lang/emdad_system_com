@@ -245,7 +245,12 @@ class LanSync {
           case 'POST /import':
             // استقبال بيانات جهاز آخر ودمجها هنا.
             final data = await compute(_openTask, (session, body));
-            final result = await LegacyImporter(db, ownerPublicKey: ownerPublicKey).importJson(data);
+            final result = await LegacyImporter(db, ownerPublicKey: ownerPublicKey).importJson(
+              data,
+              // لسجل التدقيق فقط: مصدر الحمولة.
+              source: 'جهاز ${request.headers.value(SyncSession.headerDevice) ?? '؟'} '
+                  '(${request.connectionInfo?.remoteAddress.address ?? '؟'})',
+            );
             await AuditRepo(db).log(
               action: 'sync.receive',
               entityType: 'مزامنة',
@@ -839,7 +844,10 @@ class LanSync {
         return const SyncResult(ok: false, message: 'رفض الجهاز الطلب — أعد الاقتران');
       }
       final upTo = ((data['meta'] as Map?)?['maxStamp'] as num?)?.toInt() ?? 0;
-      final result = await LegacyImporter(db, ownerPublicKey: ownerPublicKey).importJson(data);
+      final result = await LegacyImporter(db, ownerPublicKey: ownerPublicKey).importJson(
+        data,
+        source: 'جهاز $host',
+      );
       await AuditRepo(db).log(
         action: 'sync.pull',
         entityType: 'مزامنة',
