@@ -117,7 +117,30 @@ class SettingsRepo {
     'backupSchedule',
     // تنبيه «انتقلت الصلاحيات الخاصة للمالك»: هل رآه كلُّ مدير على هذا الجهاز؟
     'sysNotice',
+    // مسودة الصرف المستعادة تلقائيًا لكل مستخدم: بيانات سند غير مُعتمد، تبقى في
+    // القاعدة المشفّرة لا في SharedPreferences (ملفٌّ نصيٌّ مقروء).
+    'issueRecovery',
   };
+
+  static const String issueRecoveryKey = 'issueRecovery';
+
+  /// مسودة الصرف المحفوظة تلقائيًا للمستخدم [userId]، أو `null`.
+  Future<Map<String, dynamic>?> readIssueRecovery(String userId) async {
+    final v = (await read(issueRecoveryKey))[userId];
+    return v is Map ? Map<String, dynamic>.from(v) : null;
+  }
+
+  Future<void> writeIssueRecovery(String userId, Map<String, dynamic> snapshot) async {
+    final all = await read(issueRecoveryKey);
+    all[userId] = snapshot;
+    await write(issueRecoveryKey, all);
+  }
+
+  Future<void> clearIssueRecovery(String userId) async {
+    final all = await read(issueRecoveryKey);
+    if (all.remove(userId) == null) return;
+    await write(issueRecoveryKey, all);
+  }
 
   static const String printLayoutKey = 'printLayout';
   static const String orgKey = 'org';

@@ -54,6 +54,25 @@ void main() {
   String sectionsSig(String id, String json, int sec) =>
       sign(OwnerSignature.sectionsDigest(userId: id, blockedJson: json, updatedAtSec: sec));
 
+  String credsSig(String id, String role, int sec,
+          {String salt = 'aa',
+          String hash = 'bb',
+          String perms = '{}',
+          String scope = 'ALL',
+          bool active = true,
+          bool approved = true}) =>
+      sign(OwnerSignature.credsDigest(
+        userId: id,
+        role: role,
+        saltHex: salt,
+        hashHex: hash,
+        permissions: perms,
+        warehouseScope: scope,
+        active: active,
+        approved: approved,
+        updatedAtSec: sec,
+      ));
+
   const sec = 1790000000;
 
   Map<String, dynamic> row(
@@ -153,8 +172,9 @@ void main() {
       expect(r2.rejectedUsers, hasLength(1), reason: 'مفتاحٌ عامٌّ آخر');
     });
 
-    test('مديرٌ قائم محليًّا يصله صفُّه بلا توقيع ⇒ يُقبل (لا رفع)', () async {
-      await db.into(db.users).insert(UsersCompanion.insert(id: 'a1', username: 'a1', role: const Value('admin')));
+    test('مديرٌ قائم محليًّا يصله صفُّه بلا توقيع ⇒ يُقبل (لا رفع ولا تغيير في بياناته)', () async {
+      await db.into(db.users).insert(UsersCompanion.insert(
+          id: 'a1', username: 'a1', role: const Value('admin'), saltHex: const Value('aa'), hashHex: const Value('bb')));
       final r = await importer().importJson({'users': [row('a1', 'admin')], 'syncMarks': marks(['a1'])});
       expect(r.rejectedUsers, isEmpty);
     });
@@ -345,6 +365,80 @@ void main() {
       expect(auth.userVersion.value, v1);
 
       await auth.logout();
+    });
+  });
+  group('بيانات دخول وصلاحيات الحساب المميَّز (c)', () {
+    Future<void> seedAdmin({String role = 'admin'}) => db.into(db.users).insert(UsersCompanion.insert(
+        id: 'a1', username: 'a1', role: Value(role), saltHex: const Value('aa'), hashHex: const Value('bb')));
+
+    Map<String, dynamic> incoming({Map<String, String>? sigs, String hash = 'bb', Object? perms, bool? active}) => {
+          ...row('a1', 'admin', sigs: sigs),
+          'hashHex': hash,
+          if (perms != null) 'permissions': perms,
+          if (active != null) 'active': active,
+        };
+
+    test('استبدال هاش مدير قائم بلا توقيع ⇒ يُرفض ويبقى الهاش', () async {
+      await seedAdmin();
+      final r = await importer().importJson({'users': [incoming(hash: 'evil')], 'syncMarks': marks(['a1'])});
+      expect(r.rejectedUsers.single.kind, 'credentials');
+      expect((await user('a1'))!.hashHex, 'bb');
+      expect(await audits('sync.role_rejected'), hasLength(1));
+    });
+
+    test('استبدال الهاش بتوقيع c صحيح على القيم الواردة ⇒ يُقبل', () async {
+      await seedAdmin();
+      final r = await importer().importJson({
+        'users': [incoming(hash: 'new', sigs: {'c': credsSig('a1', 'admin', sec, hash: 'new')})],
+        'syncMarks': marks(['a1']),
+      });
+      expect(r.rejectedUsers, isEmpty);
+      expect((await user('a1'))!.hashHex, 'new');
+    });
+
+    test('توقيع c لهاشٍ آخر أو حسابٍ آخر ⇒ يُرفض', () async {
+      await seedAdmin();
+      final r = await importer().importJson({
+        'users': [incoming(hash: 'new', sigs: {'c': credsSig('a1', 'admin', sec, hash: 'other')})],
+        'syncMarks': marks(['a1']),
+      });
+      expect(r.rejectedUsers, hasLength(1));
+      final r2 = await importer().importJson({
+        'users': [incoming(hash: 'new', sigs: {'c': credsSig('zzz', 'admin', sec, hash: 'new')})],
+        'syncMarks': marks(['a1']),
+      });
+      expect(r2.rejectedUsers, hasLength(1));
+      expect((await user('a1'))!.hashHex, 'bb');
+    });
+
+    test('تعديل الصلاحيات أو التعطيل بلا توقيع ⇒ يُرفض', () async {
+      await seedAdmin();
+      final r = await importer().importJson({
+        'users': [incoming(perms: {'items': {'view': true}})],
+        'syncMarks': marks(['a1']),
+      });
+      expect(r.rejectedUsers.single.kind, 'credentials');
+      final r2 = await importer().importJson({'users': [incoming(active: false)], 'syncMarks': marks(['a1'])});
+      expect(r2.rejectedUsers, hasLength(1));
+      expect((await user('a1'))!.active, isTrue);
+    });
+
+    test('مستخدمٌ عادي: تغيير هاشه بلا توقيع يبقى مقبولًا (الحارس للمميَّزين)', () async {
+      await db.into(db.users).insert(UsersCompanion.insert(
+          id: 'u1', username: 'u1', saltHex: const Value('aa'), hashHex: const Value('bb')));
+      final r = await importer().importJson({
+        'users': [{...row('u1', 'user'), 'hashHex': 'changed'}],
+        'syncMarks': marks(['u1']),
+      });
+      expect(r.rejectedUsers, isEmpty);
+      expect((await user('u1'))!.hashHex, 'changed');
+    });
+
+    test('الاستعادة من ملف موثوقة: لا يُشترط c', () async {
+      await seedAdmin();
+      final r = await importer().importJson({'users': [incoming(hash: 'restored')], 'syncMarks': marks(['a1'])}, trusted: true);
+      expect(r.rejectedUsers, isEmpty);
+      expect((await user('a1'))!.hashHex, 'restored');
     });
   });
 }

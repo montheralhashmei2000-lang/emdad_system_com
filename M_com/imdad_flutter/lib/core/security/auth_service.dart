@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/db/app_database.dart';
 import '../../data/repos/settings_repo.dart';
+import '../../data/repos/users_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/section_block.dart';
 import 'owner_promotion.dart';
@@ -304,6 +305,9 @@ class AuthService {
           updatedAt: Value(DateTime.now()),
         ),
       );
+      // الهاش وختم `updatedAt` تغيّرا: توقيعات المالك على حسابٍ مميَّز تُجدَّد إن كان
+      // مفتاحه هنا، وإلا رُفض الهاش الجديد عند بقية الأجهزة (يبقى القديم صالحًا).
+      await UsersRepo(db).resign(user.id);
       return await (db.select(db.users)..where((t) => t.id.equals(user.id))).getSingleOrNull() ?? user;
     } catch (_) {
       return user;

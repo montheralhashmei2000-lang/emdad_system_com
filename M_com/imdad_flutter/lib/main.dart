@@ -49,6 +49,7 @@ Future<void> main() async {
 
   final db = AppDatabase();
   _wireErrorLogger(db);
+  ErrorLogger.installGlobalHandlers();
   final auth = AuthService(db, isBranchDevice: () => DeviceActivation(db).isBranch());
   final restored = await auth.restoreSession();
   await _cleanupPlainBackups(db);

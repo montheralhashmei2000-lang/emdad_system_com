@@ -114,8 +114,19 @@ class _IssueScreenState extends State<IssueScreen> {
 
   ImdScreenActions? _screenActions;
 
-  String get _autosaveKey =>
-      'imdad.issue.recovery.${context.read<AuthService>().currentUser?.id ?? 'local'}';
+  String get _autosaveUser => context.read<AuthService>().currentUser?.id ?? 'local';
+
+  /// مفتاح التخزين القديم في SharedPreferences (ملفٌّ نصيٌّ مقروء) — للترحيل
+  /// والمسح فقط. المسودة الآن في القاعدة المشفّرة ([SettingsRepo.readIssueRecovery]).
+  String get _legacyAutosaveKey => 'imdad.issue.recovery.$_autosaveUser';
+
+  late final SettingsRepo _settingsRepo = SettingsRepo(_db);
+
+  Future<void> _clearAutosave() async {
+    await _settingsRepo.clearIssueRecovery(_autosaveUser);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_legacyAutosaveKey);
+  }
 
   _Row _newRow({String itemId = '', String unit = '', double? qty, String notes = '', String benUnit = '', bool noAuto = false}) =>
       _Row(itemId: itemId, unit: unit, qty: qty, notes: notes, benUnit: benUnit, noAuto: noAuto, onEdit: _scheduleAutosave);
@@ -217,9 +228,8 @@ class _IssueScreenState extends State<IssueScreen> {
 
   Future<void> _saveAutosave() async {
     if (!_ready || _restoringAutosave || _busy || _tab != 'form') return;
-    final prefs = await SharedPreferences.getInstance();
     final snapshot = {..._captureDocSnapshot(), 'savedAt': DateTime.now().toIso8601String()};
-    await prefs.setString(_autosaveKey, jsonEncode(snapshot));
+    await _settingsRepo.writeIssueRecovery(_autosaveUser, snapshot);
     if (mounted) setState(() => _autosavedAt = DateTime.now());
   }
 
@@ -345,16 +355,23 @@ class _IssueScreenState extends State<IssueScreen> {
   }
 
   Future<void> _restoreAutosave() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_autosaveKey);
-    if (raw == null || !mounted) return;
-    Map<String, dynamic> data;
-    try {
-      data = (jsonDecode(raw) as Map).cast<String, dynamic>();
-    } catch (_) {
-      await prefs.remove(_autosaveKey);
-      return;
+    Map<String, dynamic>? data = await _settingsRepo.readIssueRecovery(_autosaveUser);
+    if (data == null) {
+      // ترحيل مرةٍ واحدة: مسودةٌ قديمة في SharedPreferences تُنقل إلى القاعدة
+      // المشفّرة ثم تُمسح من الملف النصي.
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_legacyAutosaveKey);
+      if (raw != null) {
+        await prefs.remove(_legacyAutosaveKey);
+        try {
+          data = (jsonDecode(raw) as Map).cast<String, dynamic>();
+          await _settingsRepo.writeIssueRecovery(_autosaveUser, data);
+        } catch (_) {
+          data = null;
+        }
+      }
     }
+    if (data == null || !mounted) return;
     // هذه القراءة غير متزامنة (SharedPreferences ثم فكّ JSON)، فقد يبدأ
     // المستخدم العمل — يختار صنفًا في الصفّ الافتراضي مثلًا — قبل اكتمالها.
     // استبدال الصفوف حينئذٍ كان يُسقط عمله بلا تنبيه، ويهدم عنصر الصفّ الذي
@@ -789,8 +806,7 @@ class _IssueScreenState extends State<IssueScreen> {
       );
       if (!mounted) return;
       if (!res.ok) return showImdToast(context, res.error);
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_autosaveKey);
+      await _clearAutosave();
       _autosavedAt = null;
       if (!mounted) return;
       showImdToast(

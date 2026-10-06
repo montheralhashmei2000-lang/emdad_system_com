@@ -944,6 +944,44 @@ class LegacyImporter {
       if (!ok) return (kind: 'role', reason: 'رفع الدور إلى «$role» بلا توقيع مالكٍ صحيح');
     }
 
+    // **حسابٌ مميَّز قائم** (مدير/مالك محليًّا ومديرٌ/مالك واردًا): أي تغيير في
+    // بصمة كلمة المرور أو الصلاحيات أو النطاق أو التفعيل يلزمه توقيع المالك `c` على
+    // القيم الواردة نفسها. وإلا استبدل جهازٌ مقترن هاش المدير بهاشٍ يعرفه فدخل
+    // بالإدارة بلا رفع دورٍ يُرفض. خفضُ الدور لا يلزمه (لا يمنح شيئًا).
+    if (local != null && OwnerSignature.rank(local.role) > 0 && OwnerSignature.rank(role) > 0) {
+      final inSalt = u.containsKey('saltHex') ? _s(u, 'saltHex') : local.saltHex;
+      final inHash = u.containsKey('hashHex') ? _s(u, 'hashHex') : local.hashHex;
+      final inPerms = u.containsKey('permissions') ? _json(u['permissions'], '{}') : local.permissions;
+      final inScope = u.containsKey('warehouseScope')
+          ? (u['warehouseScope'] is List ? _json(u['warehouseScope']) : _s(u, 'warehouseScope', 'ALL'))
+          : local.warehouseScope;
+      final inActive = u.containsKey('active') ? _b(u, 'active', true) : local.active;
+      final inApproved = u.containsKey('approved') ? _b(u, 'approved', true) : local.approved;
+      final changed = inSalt != local.saltHex ||
+          inHash != local.hashHex ||
+          inPerms != local.permissions ||
+          inScope != local.warehouseScope ||
+          inActive != local.active ||
+          inApproved != local.approved;
+      if (changed) {
+        final ok = updatedSec != null &&
+            OwnerSignature.verifyCreds(
+              sigB64: sigs[OwnerSignature.credsKey] ?? '',
+              userId: id,
+              role: role,
+              saltHex: inSalt,
+              hashHex: inHash,
+              permissions: inPerms,
+              warehouseScope: inScope,
+              active: inActive,
+              approved: inApproved,
+              updatedAtSec: updatedSec,
+              publicKey: _ownerKey,
+            );
+        if (!ok) return (kind: 'credentials', reason: 'تغيير بيانات دخول أو صلاحيات حساب مدير/مالك بلا توقيع مالكٍ صحيح');
+      }
+    }
+
     // غياب الحقل (نظيرٌ أقدم) ليس فكًّا: لا يمسّ حجبًا قائمًا أصلًا (يُترك الحقل).
     if (u['sectionBlocked'] is String) {
       final incomingJson = u['sectionBlocked'] as String;

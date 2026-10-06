@@ -65,6 +65,21 @@ class ErrorLogger {
   /// يُبلغ المستخدم برسالة عربية (SnackBar). يُحقن من `main`.
   static void Function(String message)? userNotifier;
 
+  /// يربط مصائد الأخطاء العامة: أخطاء الإطار (`FlutterError.onError`) والاستثناءات
+  /// غير المعالَجة في المهام غير المتزامنة (`PlatformDispatcher.onError`). بدونهما
+  /// يمرّ أي استثناء لم يلتقطه كود بلا أثر في سجل التدقيق. تُعاد [FlutterError.presentError]
+  /// ليبقى العرض في وحدة التحكم كما كان.
+  static void installGlobalHandlers() {
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details);
+      critical('flutter.framework', details.exception, stack: details.stack);
+    };
+    PlatformDispatcher.instance.onError = (error, stack) {
+      critical('platform.uncaught', error, stack: stack);
+      return true; // مُعالَج: لا يُنهي العملية.
+    };
+  }
+
   /// خطأ ثانوي: سجل المنصة والذاكرة.
   static void log(String source, Object error, [StackTrace? stack]) =>
       _record(source, error, stack, critical: false, userMessage: null);

@@ -239,6 +239,24 @@ class UsersRepo {
         purposes.add('role');
       }
     }
+    if (OwnerSignature.rank(row.role) > 0) {
+      final c = await OwnerSignature.signCreds(
+        act,
+        userId: id,
+        role: row.role,
+        saltHex: row.saltHex,
+        hashHex: row.hashHex,
+        permissions: row.permissions,
+        warehouseScope: row.warehouseScope,
+        active: row.active,
+        approved: row.approved,
+        updatedAtSec: sec,
+      );
+      if (c != null) {
+        sigs[OwnerSignature.credsKey] = c;
+        purposes.add('creds');
+      }
+    }
     // توقيع الدور `r` لا يُسحب من أي صف أبدًا (حتى لو نزل الدور): السحب يفقد الأثر.
     if (sigs.containsKey(OwnerSignature.sectionsKey)) {
       final s = await OwnerSignature.signSections(act, userId: id, blockedJson: row.sectionBlocked, updatedAtSec: sec);

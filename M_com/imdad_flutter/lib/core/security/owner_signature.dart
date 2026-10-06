@@ -17,11 +17,14 @@ import 'owner_key.dart';
 /// **ما يغطّيه كل توقيع** (يمنع نسخه إلى حسابٍ آخر أو قيمةٍ أخرى أو وقتٍ آخر):
 ///  • `s` — الأقسام: `userId | section_blocked | updatedAt` (ثوانٍ).
 ///  • `r` — الدور: `userId | role | updatedAt` (ثوانٍ).
+///  • `c` — بيانات الدخول والصلاحيات لحساب مدير/مالك: البصمة والملح والصلاحيات
+///    ونطاق المستودعات و`active` و`approved` و`role` و`updatedAt`.
 class OwnerSignature {
   const OwnerSignature._();
 
   static const String sectionsKey = 's';
   static const String roleKey = 'r';
+  static const String credsKey = 'c';
 
   /// رتبة الدور: رفعُها هو ما يستلزم توقيع المالك عند الاستقبال.
   static int rank(String? role) => switch (role) {
@@ -132,6 +135,96 @@ class OwnerSignature {
       return ESign.verifyRawWithKey(
         publicKeyB64: key,
         digest: sectionsDigest(userId: userId, blockedJson: blockedJson, updatedAtSec: updatedAtSec),
+        rawSignature: Uint8List.fromList(base64Url.decode(sigB64)),
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+  /// بصمة بيانات دخول حسابٍ مميَّز وصلاحياته. تُرمَّز الحقول كقائمة JSON حتى لا
+  /// يلتبس فاصلٌ داخل `permissions` بحدٍّ بين الحقول.
+  static Uint8List credsDigest({
+    required String userId,
+    required String role,
+    required String saltHex,
+    required String hashHex,
+    required String permissions,
+    required String warehouseScope,
+    required bool active,
+    required bool approved,
+    required int updatedAtSec,
+  }) =>
+      Uint8List.fromList(sha256
+          .convert(utf8.encode('imdad.creds.v1|${jsonEncode([
+                userId,
+                role,
+                saltHex,
+                hashHex,
+                permissions,
+                warehouseScope,
+                active,
+                approved,
+                updatedAtSec,
+              ])}'))
+          .bytes);
+
+  /// يوقّع بيانات حسابٍ مميَّز بمفتاح المالك الخاص على هذا الجهاز؛ `null` إن لم يوجد.
+  static Future<String?> signCreds(
+    DeviceActivation activation, {
+    required String userId,
+    required String role,
+    required String saltHex,
+    required String hashHex,
+    required String permissions,
+    required String warehouseScope,
+    required bool active,
+    required bool approved,
+    required int updatedAtSec,
+  }) async {
+    final raw = await activation.signDigest(credsDigest(
+      userId: userId,
+      role: role,
+      saltHex: saltHex,
+      hashHex: hashHex,
+      permissions: permissions,
+      warehouseScope: warehouseScope,
+      active: active,
+      approved: approved,
+      updatedAtSec: updatedAtSec,
+    ));
+    return raw == null ? null : base64Url.encode(raw);
+  }
+
+  /// هل [sigB64] توقيعٌ صحيح من المالك على هذه البيانات بعينها؟
+  static bool verifyCreds({
+    required String sigB64,
+    required String userId,
+    required String role,
+    required String saltHex,
+    required String hashHex,
+    required String permissions,
+    required String warehouseScope,
+    required bool active,
+    required bool approved,
+    required int updatedAtSec,
+    String? publicKey,
+  }) {
+    final key = publicKey ?? OwnerKey.publicKey;
+    if (key.isEmpty || sigB64.isEmpty) return false;
+    try {
+      return ESign.verifyRawWithKey(
+        publicKeyB64: key,
+        digest: credsDigest(
+          userId: userId,
+          role: role,
+          saltHex: saltHex,
+          hashHex: hashHex,
+          permissions: permissions,
+          warehouseScope: warehouseScope,
+          active: active,
+          approved: approved,
+          updatedAtSec: updatedAtSec,
+        ),
         rawSignature: Uint8List.fromList(base64Url.decode(sigB64)),
       );
     } catch (_) {
