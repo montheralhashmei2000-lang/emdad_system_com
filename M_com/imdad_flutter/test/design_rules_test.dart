@@ -36,9 +36,11 @@ void main() {
       'lib/features/fuel/fuel_consumption_screen.dart',
       'lib/features/fuel/fuel_directories_screen.dart',
       'lib/features/fuel/fuel_ledger_screen.dart',
+      'lib/features/fuel/fuel_plan_vs_issued_screen.dart', // كان داخل fuel_ledger_screen
       'lib/features/fuel/fuel_stocktake_screen.dart',
       'lib/features/inventory/issue_screen.dart',
       'lib/features/inventory/ration_order_screen.dart',
+      'lib/features/inventory/ration_order/ration_approve_sheet.dart', // كان داخل ration_order_screen
       'lib/features/inventory/receive_screen.dart',
       'lib/features/inventory/returns_screen.dart',
       'lib/features/inventory/transfer_screen.dart',
