@@ -1,5 +1,8 @@
 # التكامل المستمر لتطبيق Flutter (M_com/imdad_flutter):
-# pub get ← توليد كود Drift ← التحليل الساكن ← الاختبارات.
+#   check          : pub get ← توليد كود Drift ← التحليل الساكن ← الاختبارات (Ubuntu).
+#   build-android  : APK إصدار موقَّع بمفتاح مؤقت يُولَّد داخل المهمة (Ubuntu).
+#   build-windows  : بناء إصدار Windows (Windows).
+# الثلاث متوازية. لا artifacts تُرفع، ولا أسرار: البناء للتحقق من أن ما يُشحن يُترجَم فقط.
 # يعمل عند الدفع إلى main وعند أي طلب دمج إليه، ويمسّ هذا المجلد وحده.
 name: CI
 
@@ -23,14 +26,19 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # مثبَّت ليطابق إصدار المطوّر المحلي؛ ارفعه عمدًا لا تلقائيًا.
+  FLUTTER_VERSION: "3.47.4"
+
+defaults:
+  run:
+    working-directory: M_com/imdad_flutter
+
 jobs:
   check:
     runs-on: ubuntu-latest
     # الاختبارات تشمل اشتقاق PBKDF2 بـ 310 ألف دورة في وضع debug فتطول.
     timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: M_com/imdad_flutter
     steps:
       - uses: actions/checkout@v4
 
@@ -40,6 +48,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
@@ -55,3 +64,68 @@ jobs:
 
       - name: flutter test
         run: flutter test
+
+  build-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      # AGP 9 يتطلب JDK 17 فأعلى؛ نثبّته بدل الاعتماد على ما في الصورة.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: build_runner (Drift)
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      # مفتاح توقيع مؤقت صالح يومًا واحدًا، يعيش في هذه المهمة وحدها. غرضه اختبار مسار
+      # التوقيع كاملًا (الحارس في build.gradle.kts يرفض بناء الإصدار بلا key.properties).
+      # storeFile نسبةً إلى android/ لا android/app/، والصيغة PKCS12 مصرَّح بها
+      # لأن Gradle هنا يفترض JKS ما لم يُحدَّد storeType.
+      - name: Generate throwaway signing key
+        run: |
+          keytool -genkeypair -keystore android/ci-key.jks -storetype PKCS12 \
+            -storepass cipass -keypass cipass \
+            -alias cikey -keyalg RSA -keysize 2048 -validity 1 \
+            -dname "CN=CI, OU=CI, O=CI, L=CI, ST=CI, C=CI"
+          printf '%s\n' \
+            'storePassword=cipass' \
+            'keyPassword=cipass' \
+            'keyAlias=cikey' \
+            'storeFile=ci-key.jks' \
+            'storeType=PKCS12' > android/key.properties
+
+      - name: flutter build apk --release
+        run: flutter build apk --release --obfuscate --split-debug-info=build/symbols/android
+
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: build_runner (Drift)
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: flutter build windows --release
+        run: flutter build windows --release --obfuscate --split-debug-info=build/symbols/windows
