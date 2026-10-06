@@ -95,7 +95,10 @@ class _BalancesScreenState extends State<BalancesScreen> {
   /// حالة الصنف كما في `balPaint()`.
   (String, ImdTone) _state(Item x) {
     final bal = _bal(x);
-    if (bal <= 0) return ('فارغ ❌', ImdTone.off);
+    // السالب غير الفارغ: رصيدٌ هبط تحت الصفر بصرفٍ لم يُغطَّ (غالبًا بعد دمج جهازين)،
+    // فلا يجوز أن يُرى كالصفر.
+    if (bal < 0) return ('سالب ⛔', ImdTone.err);
+    if (bal == 0) return ('فارغ ❌', ImdTone.off);
     if (StockAlerts.isLow(bal, x.minQty)) return ('تحت الحد ⚠️', ImdTone.pend);
     return ('جيد ✅', ImdTone.ok);
   }
@@ -113,7 +116,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
           x.categoryName.isEmpty ? '—' : x.categoryName,
           nf(displayBalance(x, _bal(x)).qty),
           displayBalance(x, _bal(x)).unit,
-          _state(x).$1.replaceAll(RegExp(r'[❌⚠️✅]'), '').trim(),
+          _state(x).$1.replaceAll(RegExp(r'[❌⚠️✅⛔]'), '').trim(),
         ],
     ];
   }
@@ -161,7 +164,8 @@ class _BalancesScreenState extends State<BalancesScreen> {
   Widget build(BuildContext context) {
     final rows = _rows();
     final low = _items.where((x) => StockAlerts.isLow(_bal(x), x.minQty)).length;
-    final zero = _items.where((x) => _bal(x) <= 0).length;
+    final zero = _items.where((x) => _bal(x) == 0).length;
+    final negative = _items.where((x) => _bal(x) < 0).length;
 
     return ImdPage(children: [
       const ImdPageTitle(
@@ -210,6 +214,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
             ImdChip('الأصناف: ${nf(_items.length)}', tone: ImdTone.ok),
             ImdChip('تحت الحد: ${nf(low)}', tone: ImdTone.pend),
             ImdChip('فارغة: ${nf(zero)}', tone: ImdTone.err),
+            if (negative > 0) ImdChip('سالبة: ${nf(negative)}', tone: ImdTone.err),
           ]),
         ]),
       ),

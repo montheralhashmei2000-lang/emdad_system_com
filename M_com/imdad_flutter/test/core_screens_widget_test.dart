@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/core/ids.dart';
 import 'package:imdad/core/security/auth_service.dart';
 import 'package:imdad/core/theme/app_theme.dart';
+import 'package:imdad/core/ui/widgets/imd_chips.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/repos/catalog_repo.dart';
 import 'package:imdad/features/catalog/items_screen.dart';
@@ -271,5 +272,35 @@ void main() {
     await show(tester, const BalancesScreen());
     expect(tester.takeException(), isNull);
     expect(find.textContaining('رز'), findsWidgets);
+  });
+
+  testWidgets('الرصيد السالب يظهر «سالب» لا «فارغ»، والصفر يبقى «فارغ»', (tester) async {
+    final catalog = CatalogRepo(db);
+    for (final (code, name) in [('N1', 'سكر'), ('Z1', 'ملح')]) {
+      await catalog.saveItem(
+        code: code,
+        name: name,
+        baseUnit: 'كجم',
+        units: const [ItemUnit(name: 'كجم', factor: 1, isBase: true)],
+      );
+    }
+    final items = {for (final i in await catalog.items()) i.code: i};
+    // سكر: صرفٌ بلا استلام ⇒ −5. ملح: لا حركة ⇒ 0.
+    await db.into(db.issues).insert(IssuesCompanion.insert(
+          id: Ids.next('is'),
+          warehouse: const Value('الرئيسي'),
+          itemId: Value(items['N1']!.id),
+          itemName: const Value('سكر'),
+          qty: const Value(5),
+          baseQty: const Value(5),
+        ));
+
+    await show(tester, const BalancesScreen());
+
+    expect(tester.takeException(), isNull);
+    final labels = [for (final c in tester.widgetList<ImdChip>(find.byType(ImdChip))) c.label];
+    expect(labels.where((l) => l == 'سالب ⛔'), hasLength(1));
+    expect(labels.where((l) => l == 'فارغ ❌'), hasLength(1));
+    expect(labels.where((l) => l.startsWith('سالبة:')), hasLength(1), reason: 'شريحة العدّاد');
   });
 }
