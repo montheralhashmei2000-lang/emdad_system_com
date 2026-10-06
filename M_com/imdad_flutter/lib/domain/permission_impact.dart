@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../core/error_log.dart';
 import '../data/db/app_database.dart';
 import 'access_control.dart';
 
@@ -26,7 +27,10 @@ class PermissionImpact {
     try {
       final v = jsonDecode(u.permissions);
       if (v is Map) return v.cast<String, dynamic>();
-    } catch (_) {}
+    } catch (e, st) {
+      // مصفوفةُ صلاحياتٍ تالفة تُعامل «بلا صلاحيات» في التقرير؛ يُسجَّل العطب لا يُبتلع.
+      ErrorLogger.log('permission_impact', e, st);
+    }
     return const {};
   }
 

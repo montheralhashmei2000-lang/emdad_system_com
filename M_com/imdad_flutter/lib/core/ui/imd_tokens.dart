@@ -449,9 +449,11 @@ class ImdSizes {
   static const double sideWidth = 290; // .side
   static const double topbarHeight = 59; // .topbar
   static const EdgeInsets mainPadding = EdgeInsets.symmetric(horizontal: 36, vertical: 28); // ≥1200px
-  static const EdgeInsets mainPaddingMid = EdgeInsets.symmetric(horizontal: 28, vertical: 24);
-  static const EdgeInsets mainPaddingTablet = EdgeInsets.symmetric(horizontal: 14, vertical: 16); // ≤920
-  static const EdgeInsets mainPaddingMobile = EdgeInsets.symmetric(horizontal: 10, vertical: 12); // ≤680
+  static const EdgeInsets mainPaddingMid = EdgeInsets.symmetric(horizontal: 28, vertical: 24); // 901–1199px
+  // `ImdBp.tablet` اسمٌ بديل لـ`mobile` (≤900)، والمنطق يفحص `mobile` أولًا
+  // (`imd_page_chrome.dart`)، فلا يبلغ فرع `tablet` أبدًا: هذه القيمة محفوظةٌ للتوافق.
+  static const EdgeInsets mainPaddingTablet = EdgeInsets.symmetric(horizontal: 14, vertical: 16); // لا تُستعمل فعليًّا
+  static const EdgeInsets mainPaddingMobile = EdgeInsets.symmetric(horizontal: 10, vertical: 12); // ≤900px
   static double get touchMin => ImdBp.touch ? 46 : 44; // --touch-min
 
   /// سقفٌ مريح لجدولٍ طويل يُمرَّر تحت رأسٍ ثابت ([ImdTable.maxHeight]).

@@ -10,13 +10,16 @@ void showImdToast(BuildContext context, String message, {bool error = false}) {
   final c = context.imd;
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (messenger == null) return;
+  // أقصى عرض 420 يتقلّص على الشاشة الضيقة: الهامش الجانبي يُحسب من العرض المتاح
+  // (`SnackBar` لا يقبل `width` و`margin` معًا، ولا يقبل قيدًا أقصى مباشرًا).
+  final side = ((MediaQuery.sizeOf(context).width - 420) / 2).clamp(16.0, double.infinity);
   messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(
       behavior: SnackBarBehavior.floating,
+      margin: EdgeInsets.fromLTRB(side, 0, side, 12),
       backgroundColor: c.inverse,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      width: 420,
       duration: const Duration(milliseconds: 3200),
       content: ImdEmojiText(
         error && !message.startsWith('✖') ? '✖ $message' : message,

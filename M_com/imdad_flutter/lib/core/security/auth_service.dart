@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart' show ValueNotifier;
+import 'package:flutter/foundation.dart' show ValueNotifier, visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/db/app_database.dart';
@@ -12,6 +12,7 @@ import '../../domain/access_control.dart';
 import '../../domain/section_block.dart';
 import 'owner_promotion.dart';
 import 'password_hash.dart';
+import 'pbkdf2.dart';
 import 'warehouse_scope.dart';
 import '../../data/sync/sync_marks.dart';
 import '../../data/sync/sync_trust.dart';
@@ -111,6 +112,14 @@ class AuthService {
   /// الحالي ([minPasswordLength]) وليس مديرًا (المدراء لا يُزعَجون بالتنبيه).
   static bool shouldSuggestPasswordChange({required String role, required String password}) =>
       !UserRole.isAdmin(role) && password.length < minPasswordLength;
+
+  /// بصمة وهمية لمسار «اسم غير موجود» (انظر [login]) — قيمٌ ثابتة لا سرّ فيها.
+  static const String _dummySaltHex = '5b1f0c6e9a2d47e38c0b7f14d6a92e53';
+  static const String _dummyHashHex = '3e7a91c4d05b28f6a1c9e4073bd852f6c0a7e19d4b63f58a2d0e91c7b4a6f385';
+
+  /// عدد مرّات الاشتقاق الوهمي — يقرؤه الاختبار ليثبت أن المسارين يشغّلان PBKDF2.
+  @visibleForTesting
+  static int dummyVerifications = 0;
 
   static const int maxAttempts = 5;
   static const Duration lockDuration = Duration(minutes: 3); // AUTHCORE.LOCK_MS = 180000
@@ -225,8 +234,17 @@ class AuthService {
           .toList();
     }
     final found = matches.isEmpty ? null : matches.first;
-    final ok = found != null &&
-        await PasswordHash.verify(password, found.saltHex, found.hashHex, found.iterations);
+    final bool ok;
+    if (found != null) {
+      ok = await PasswordHash.verify(password, found.saltHex, found.hashHex, found.iterations);
+    } else {
+      // اسمٌ غير موجود يمرّ بالاشتقاق نفسه (ملحٌ ثابت وعدد الدورات الحالي) فيتساوى
+      // زمن الرد تقريبًا مع كلمة مرورٍ خاطئة لحسابٍ موجود، ولا يُكشف الموجود بالتوقيت.
+      // النتيجة تُهمل: البصمة الوهمية لا تطابق شيئًا.
+      dummyVerifications++;
+      await PasswordHash.verify(password, _dummySaltHex, _dummyHashHex, Pbkdf2.iterations);
+      ok = false;
+    }
 
     if (!ok) {
       final ns = st.fails + 1 >= maxAttempts
@@ -247,6 +265,8 @@ class AuthService {
       );
     }
 
+    // `ok` لا يكون صحيحًا بلا حسابٍ فعلي؛ الفحص يُرسّخ ذلك للمحلل.
+    if (found == null) return const AuthResult(status: AuthStatus.badCredentials);
     if (!found.active) {
       return const AuthResult(
         status: AuthStatus.inactive,

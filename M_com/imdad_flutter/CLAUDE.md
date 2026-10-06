@@ -81,11 +81,18 @@ Layers (dependency flows downward only): `core/` (security, theme, UI kit, print
 1. (Fixed 2026-10-06) Sync credential guard, global error hooks (`ErrorLogger.installGlobalHandlers`, called in `main`), and encrypted issue draft. Owner salt/hash no longer leave the device by sync (`DataExporter.toMap(includeOwnerSecrets: false)`; file backups keep them). Residual: admin hashes still replicate because branch admins and fresh branch devices need them to log in — protected only by PBKDF2 310k and the `c` guard.
 2. `ImdTable` builds every row of the page eagerly in a `Table` (no virtualization); the frozen first column builds the table twice. Safe only because screens page at 50/100; `pageSize: null` on big data is a perf trap (`imd_table.dart:1024-1113`).
 5. (Fixed 2026-10-07) LAN sync: nonce cache is time-pruned (`NonceCache`, 11 min, 100k cap); `POST /import` requires the signed body digest header (`x-imdad-body`) and is verified BEFORE the body is read; other paths cap bodies at 1 MB (`LanSync.maxSmallBodyBytes`); 500 replies no longer echo `$e`. Devices on an older build cannot push to this one until updated (they get a clear 401 message). Pulls from older devices still work.
-6. Docs drift: `ImdSizes.mainPaddingTablet/Mobile` comments say ≤920/≤680 (real: 900); `ROADMAP.md` says 87 feature files (real 119); `ImdTable.values` coverage is 3 screens, not "all large tables".
+6. (Fixed 2026-10-07) `ImdSizes` padding comments and `ROADMAP.md` totals corrected. `ROADMAP.md` per-folder file tables still list only the original 87 files. `ImdTable.values` coverage is 3 screens, not "all large tables".
 7. Layering: ~15 screens query Drift directly (`items_screen`, `dashboard_screen`, `issue_screen`, insights…). Sync failure state is explicit (`AutoSyncService.failed`, `SyncResult.failed`) — never infer it from Arabic status text.
 8. 13 files >1000 lines (`legacy_import` 1518, `issue_screen` 1462, `fuel_moves_screen` 1325, `linkage_repo` 1310 …) — split when touching.
-9. `ImdInputGroup` used once; Fuel moves screen uses `ImdTable` rather than `ImdEntryTable`; `showImdToast` has `width: 420` (`imd_dialogs.dart:19`).
-10. Login skips PBKDF2 for unknown usernames (timing enumeration; minor).
+9. `ImdInputGroup` has one use (`receive_screen.dart:636`) but is the mandated component for dropdown + quick-add, so it stays. Fuel moves screen uses `ImdTable` rather than `ImdEntryTable`. (`showImdToast` now caps at 420 via responsive margin.)
+10. (Fixed 2026-10-07) Unknown usernames now run a dummy PBKDF2 (`AuthService.dummyVerifications`). Lockout counters still exist per name regardless of account existence.
 
 ## 9. Version & Rating Indicators (honest, 2026-10-06)
 v8.0.0+800 · schema 25 · analyze clean · 1293/1294 tests. Ratings /10: security 8, permissions 8, stock integrity 8.5, code quality 7, UI Windows 8, UI Android 7, tests 8.5, production readiness 7.5, overall 7.7.
+
+## 10. كسر التوافق الخلفي (Breaking Changes)
+- **v8 / 2026-10-07 — مزامنة LAN:** `POST /import` يشترط ترويسة `x-imdad-body` (SHA-256 hex لجسم الطلب، داخلة في التوقيع) ويتحقق من التوقيع **قبل** قراءة الجسم. جهاز بإصدار أقدم يدفع بياناته (`push`) إلى جهاز محدَّث يُرفض بـ 401 «جهاز بإصدار قديم — حدّث التطبيق». السحب (`GET /export`, `/info`) من الأجهزة القديمة وإليها يعمل كما كان؛ فقط **دفع** القديم نحو المحدَّث يتعطل حتى يُحدَّث. لا يوجد مسار احتياطي قديم عمدًا (كان سيُبطل الإصلاح)؛ إن لزم اجعله مؤقتًا بسقف وتاريخ انتهاء وتدقيق `sync.legacy_push`. ملاحظة نشر: حدّث جهاز الإدارة بعد الفروع أو مع آخر دفعة منها.
+- **المسارات غير `/import`:** سقف الجسم 1 م.ب (`LanSync.maxSmallBodyBytes`) بدل 128 م.ب.
+- **حارس الحسابات:** تغيير ملح/بصمة/صلاحيات/نطاق/تفعيل حساب مدير أو مالك قائم يتطلب توقيع المالك `c`. شغّل `UsersRepo.signPrivilegedUsers` مرة واحدة بعد الترقية؛ وتغيير كلمة مرور مدير على جهاز بلا مفتاح المالك لا ينتقل لبقية الأجهزة.
+- **بصمة المالك** لا تُرسل بالمزامنة (تُرسل في النسخ الاحتياطي الملفي): فلا يدخل المالك بكلمة مروره على جهاز فرع جديد حتى يُنشأ له حساب هناك أو يُستعاد من نسخة.
+- **مسودة الصرف** انتقلت من SharedPreferences إلى القاعدة المشفّرة (`issueRecovery`)؛ تُرحَّل القديمة تلقائيًا عند أول استعادة.
