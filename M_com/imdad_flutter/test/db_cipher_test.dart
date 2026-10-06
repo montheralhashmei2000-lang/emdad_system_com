@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:drift/native.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/db/db_cipher.dart';
@@ -50,17 +49,45 @@ void main() {
     expect(file.existsSync(), isTrue);
   });
 
-  test('مفتاح القاعدة يُولَّد بطول ٣٢ بايت وثابت بين القراءتين', () async {
-    // مخزن الاعتمادات غير متاح في بيئة الاختبار، فيُتحقق من شكل المفتاح فقط
-    // عبر الدالة نفسها إن عملت، وإلا فالاختبار يوثّق سبب التخطي.
-    try {
-      final first = await DbCipher.loadKey();
-      final second = await DbCipher.loadKey();
-      expect(first.length, 64, reason: 'المفتاح ٣٢ بايت بصيغة hex');
+  group('مفتاح القاعدة', () {
+    // مخزن في الذاكرة بدل إضافة النظام (غير متاحة خارج التطبيق) فيعمل الاختبار في كل بيئة.
+    test('يُولَّد بطول ٣٢ بايت hex ويُحفظ، وثابت بين القراءتين', () async {
+      final store = _MemoryKeyStore();
+      final first = await DbCipher.loadKey(store: store);
+      final second = await DbCipher.loadKey(store: store);
+
+      expect(first, matches(RegExp(r'^[0-9a-f]{64}$')), reason: 'المفتاح ٣٢ بايت بصيغة hex');
       expect(second, first, reason: 'لا يُعاد توليد المفتاح فتضيع القاعدة');
-    } on MissingPluginException {
-      markTestSkipped('مخزن اعتمادات النظام غير متاح خارج التطبيق');
-    }
+      expect(store.writes, 1, reason: 'يُكتب مرة واحدة فقط');
+    });
+
+    test('مفتاح محفوظ سلفًا يُعاد كما هو ولا يُكتب فوقه', () async {
+      final existing = 'ab' * 32;
+      final store = _MemoryKeyStore({'imdad.db.key': existing});
+
+      expect(await DbCipher.loadKey(store: store), existing);
+      expect(store.writes, 0);
+    });
+
+    test('قيمة تالفة لا يُكتب فوقها: خطأ صريح بدل توليد صامت', () async {
+      for (final bad in ['abc', 'z' * 64, 'a' * 63, 'a' * 65]) {
+        final store = _MemoryKeyStore({'imdad.db.key': bad});
+        await expectLater(DbCipher.loadKey(store: store), throwsA(isA<StateError>()), reason: bad);
+        expect(store.writes, 0, reason: 'المفتاح التالف يبقى كما هو: $bad');
+      }
+    });
+
+    test('قيمة فارغة تُعامل كغياب فيُولَّد مفتاح', () async {
+      final store = _MemoryKeyStore({'imdad.db.key': ''});
+      expect(await DbCipher.loadKey(store: store), matches(RegExp(r'^[0-9a-f]{64}$')));
+      expect(store.writes, 1);
+    });
+
+    test('جهازان يولّدان مفتاحين مختلفين', () async {
+      final a = await DbCipher.loadKey(store: _MemoryKeyStore());
+      final b = await DbCipher.loadKey(store: _MemoryKeyStore());
+      expect(a, isNot(b));
+    });
   });
 
   group('ترحيل قاعدة غير مشفّرة', () {
@@ -136,4 +163,20 @@ void main() {
       expect(DbCipher.removeStalePlainBackups(file, 'e' * 64), isEmpty);
     });
   });
+}
+
+class _MemoryKeyStore implements KeyStore {
+  _MemoryKeyStore([Map<String, String>? initial]) : _data = {...?initial};
+
+  final Map<String, String> _data;
+  int writes = 0;
+
+  @override
+  Future<String?> read(String key) async => _data[key];
+
+  @override
+  Future<void> write(String key, String value) async {
+    writes++;
+    _data[key] = value;
+  }
 }

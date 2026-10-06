@@ -9,6 +9,26 @@ import 'package:sqlite3/common.dart';
 import 'package:sqlite3/sqlite3.dart';
 import '../../core/error_log.dart';
 
+/// مخزن سرّ المفتاح — واجهة ضيقة تُحقن في الاختبارات بنسخة في الذاكرة، لأن إضافة
+/// مخزن اعتمادات النظام لا تعمل خارج التطبيق.
+abstract class KeyStore {
+  Future<String?> read(String key);
+  Future<void> write(String key, String value);
+}
+
+/// المخزن الحقيقي: Keystore على أندرويد، وخزانة الاعتمادات على ويندوز.
+class SecureKeyStore implements KeyStore {
+  const SecureKeyStore();
+
+  static const _storage = FlutterSecureStorage();
+
+  @override
+  Future<String?> read(String key) => _storage.read(key: key);
+
+  @override
+  Future<void> write(String key, String value) => _storage.write(key: key, value: value);
+}
+
 /// تشفير قاعدة البيانات على الجهاز (SQLCipher — AES-256).
 ///
 /// الملف كان SQLite عاديًا: من ينسخه من جهاز ضائع أو من نسخة احتياطية يقرأ كل
@@ -21,7 +41,6 @@ import '../../core/error_log.dart';
 class DbCipher {
   const DbCipher._();
 
-  static const _storage = FlutterSecureStorage();
   static const String _keyName = 'imdad.db.key';
 
   /// اسم ملف القاعدة في مجلد بيانات التطبيق.
@@ -30,18 +49,32 @@ class DbCipher {
   /// لاحقة النسخة غير المشفّرة التي يتركها الترحيل القديم.
   static const String plainBackupSuffix = '.plain.bak';
 
-  /// يقرأ مفتاح القاعدة، ويولّده عند أول تشغيل.
-  static Future<String> loadKey() async {
-    final existing = await _storage.read(key: _keyName);
-    if (existing != null && existing.length == 64) return existing;
+  /// يقرأ مفتاح القاعدة، ويولّده **عند غيابه تمامًا** فقط. [store] للاختبارات فقط.
+  ///
+  /// قيمة محفوظة غير سليمة (طولها ليس ٦٤ أو فيها غير hex) لا يُكتب فوقها: المفتاح
+  /// القديم قد يكون ما يفتح القاعدة، ومسحه بصمت يحوّلها إلى ملف لا يُفتح ويبدو
+  /// للمستخدم فاسدًا. يُرمى [StateError] بدل ذلك ليُعالَج الأمر عن علم.
+  static Future<String> loadKey({KeyStore store = const SecureKeyStore()}) async {
+    final existing = await store.read(_keyName);
+    if (existing != null && existing.isNotEmpty) {
+      if (!_validKey.hasMatch(existing)) {
+        throw StateError(
+          'مفتاح تشفير قاعدة البيانات المحفوظ على هذا الجهاز تالف. لم يُستبدل بمفتاح جديد '
+          'حتى لا تضيع القاعدة نهائيًا؛ استعد نسخةً احتياطية أو تواصل مع الدعم.',
+        );
+      }
+      return existing;
+    }
 
     final rnd = Random.secure();
     final key = List.generate(32, (_) => rnd.nextInt(256))
         .map((b) => b.toRadixString(16).padLeft(2, '0'))
         .join();
-    await _storage.write(key: _keyName, value: key);
+    await store.write(_keyName, key);
     return key;
   }
+
+  static final RegExp _validKey = RegExp(r'^[0-9a-fA-F]{64}$');
 
   /// يُنفَّذ داخل خيط قاعدة البيانات قبل فتحها: أندرويد يفتح `sqlite3` العادية
   /// افتراضيًا، فيجب توجيهه إلى مكتبة SQLCipher.
