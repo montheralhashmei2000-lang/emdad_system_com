@@ -16,9 +16,14 @@ class AuditRepo {
   static const String riskNormal = 'normal';
   static const String riskHigh = 'high';
 
+  /// كل ما سوى [riskNormal] أثرُ مساءلة لا يُقلَّم. التطبيق يكتب `sensitive` (اعتماد
+  /// صرف، تحويل…) و`critical` إلى جانب `high`؛ والشرط القديم `!= high` كان يقلّم
+  /// الاثنين بعد سنتين فتضيع سندات الصرف المعتمدة.
+  static const List<String> protectedRisks = ['high', 'sensitive', 'critical'];
+
   /// المدة التي تُحفَظ بها الأحداث **العادية** قبل التقليم.
   ///
-  /// عالية الخطورة لا تُحذف أبدًا مهما طال العمر: تغييرُ صلاحية وإلغاءُ سند
+  /// عالية الخطورة (high/sensitive/critical) لا تُحذف أبدًا مهما طال العمر: تغييرُ صلاحية وإلغاءُ سند
   /// واعتمادُ جرد هي أثرُ المساءلة وسببُ وجود الجدول أصلًا. أما العادية فتُكتب
   /// بمعدّل مئاتٍ في اليوم، وتُزامَن إلى كل جهاز، فتصير بعد سنوات أكبرَ جداول
   /// النظام وأثقلَ ما يُنقل — بلا من يقرؤها. وسنتان أطولُ من أي مراجعة دورية.
@@ -35,7 +40,7 @@ class AuditRepo {
     final cutoff = (now ?? DateTime.now()).subtract(normalTtl);
     final stale = await (db.select(db.auditLogs)
           ..where((t) =>
-              t.risk.equals(riskHigh).not() &
+              t.risk.isIn(protectedRisks).not() &
               t.createdAt.isSmallerThanValue(cutoff))
           ..orderBy([(t) => OrderingTerm.asc(t.createdAt)])
           ..limit(pruneBatch))

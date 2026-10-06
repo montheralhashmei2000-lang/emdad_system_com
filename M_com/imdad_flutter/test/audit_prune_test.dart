@@ -48,6 +48,13 @@ void main() {
     expect(await count(), 1);
   });
 
+  test('sensitive و critical لا يُقلَّمان كذلك (سندات الصرف المعتمدة)', () async {
+    await entry('sensitive', ago(5000));
+    await entry('critical', ago(5000));
+    expect(await AuditRepo(db).prune(now: now), 0);
+    expect(await count(), 2);
+  });
+
   test('التقليم يقف عند حدّ الدفعة فيتوزّع على إقلاعات', () async {
     await db.batch((b) {
       for (var i = 0; i < AuditRepo.pruneBatch + 50; i++) {
