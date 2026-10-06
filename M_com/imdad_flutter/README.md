@@ -92,6 +92,8 @@ storeFile=../../../imdad_keystore/imdad-release.p12
 flutter build apk --release        # ⇐ build/app/outputs/flutter-apk/app-release.apk
 ```
 
+R8 يقلّص ويعتّم Java/Kotlin تلقائيًا في الإصدار (القواعد في `android/app/proguard-rules.pro`). وللتعتيم الكامل أضف `--obfuscate --split-debug-info=build/symbols/<الإصدار>` — السكربت أدناه يفعل ذلك لك، **واحتفظ بمجلد الرموز لكل إصدار** (بدونه لا تُقرأ تتبعات الأخطاء).
+
 ### ويندوز
 
 ```bash
@@ -103,7 +105,7 @@ flutter build windows --release    # ⇐ build/windows/x64/runner/Release/
 ### بناء الإصدارين معًا (مُوصى به)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tooluild_release.ps1
+powershell -ExecutionPolicy Bypass -File tool\build_release.ps1
 ```
 
 يشغّل أولًا `dart run tool/check_release.dart` ويتوقف إن كان مفتاح المالك فارغًا أو

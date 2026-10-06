@@ -57,6 +57,14 @@ android {
             // يوقَّع دائمًا بمفتاح الإصدار — لا رجوع إلى مفتاح التصحيح أبدًا.
             // غياب key.properties يوقف البناء في الحارس أدناه قبل أي تنفيذ.
             signingConfig = signingConfigs.getByName("release")
+            // تقليص الشيفرة والموارد وإعادة تسمية أصناف Java/Kotlin (R8). صريح هنا
+            // لئلا يتغيّر بتغيّر الإعداد الافتراضي في إضافة Flutter.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }
