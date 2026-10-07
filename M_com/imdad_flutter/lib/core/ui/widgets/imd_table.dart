@@ -242,6 +242,12 @@ class ImdTable extends StatefulWidget {
   /// النسخة الثانية مستبعَدةٌ من شجرة الإتاحة. عرض العمود المثبَّت [ImdCol.width] أو 120.
   final bool? freezeFirst;
 
+  /// عدد الصفوف الذي يُفعَّل بعده الترقيم التلقائي حين لا يُمرَّر [pageSize].
+  static const int autoPageThreshold = 300;
+
+  /// حجم الصفحة في الترقيم التلقائي.
+  static const int autoPageSize = 100;
+
   @override
   State<ImdTable> createState() => _ImdTableState();
 }
@@ -856,7 +862,11 @@ class _ImdTableState extends State<ImdTable> {
     final c = context.imd;
     final cols = widget.columns;
     final rows = widget.rows;
-    final pageSize = widget.pageSize;
+    // جدولٌ طويل بلا ترقيم يبني كل صفوفه دفعةً واحدة (`Table` ليس كسولًا)، فبعد
+    // [ImdTable.autoPageThreshold] صفًّا يُرقَّم تلقائيًّا بـ[ImdTable.autoPageSize].
+    // جداول الإدخال ([flushCells]) مستثناة: حقولها بحالةٍ مرتبطةٍ بمفاتيح صفوفها.
+    final pageSize = widget.pageSize ??
+        (!widget.flushCells && widget.rows.length > ImdTable.autoPageThreshold ? ImdTable.autoPageSize : null);
     final visible = _visibleRows();
     final items = _items(visible);
     _report(visible.length);
@@ -1096,7 +1106,9 @@ class _ImdTableState extends State<ImdTable> {
         );
         if (!frozen) return scroller;
         // العمود الأول: نسخةٌ من الجدول بعرضه الكامل مقصوصةٌ على العمود وحده، لا
-        // تتحرك مع التمرير الأفقي فيبقى ظاهرًا فوق الأصل.
+        // تتحرك مع التمرير الأفقي فيبقى ظاهرًا فوق الأصل. **لا تُبنى إلا بعد أن
+        // يُمرَّر الجدول أفقيًّا**: عند الإزاحة صفر العمود الأول ظاهرٌ في الأصل، فبناء
+        // النسخة كان يضاعف كلفة كل جدولٍ عريضٍ بلا فائدة.
         return Stack(children: [
           scroller,
           PositionedDirectional(
@@ -1104,15 +1116,23 @@ class _ImdTableState extends State<ImdTable> {
             top: 0,
             bottom: 10,
             width: fw,
-            child: ExcludeSemantics(
-              child: ClipRect(
-              child: OverflowBox(
-                alignment: AlignmentDirectional.topStart,
-                minWidth: minWidth,
-                maxWidth: minWidth,
-                child: buildTable(_vScroll2, frozenWidth: fw, bar: false),
-              ),
-            ),
+            child: ListenableBuilder(
+              listenable: _hScroll,
+              builder: (context, _) {
+                if (!_hScroll.hasClients || _hScroll.offset.abs() < .5) return const SizedBox.shrink();
+                // النسخة وُلدت الآن بإزاحةٍ رأسيةٍ صفر: تُطابَق بالأصل بعد هذا الإطار.
+                WidgetsBinding.instance.addPostFrameCallback((_) => _syncV(_vScroll, _vScroll2));
+                return ExcludeSemantics(
+                  child: ClipRect(
+                    child: OverflowBox(
+                      alignment: AlignmentDirectional.topStart,
+                      minWidth: minWidth,
+                      maxWidth: minWidth,
+                      child: buildTable(_vScroll2, frozenWidth: fw, bar: false),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ]);

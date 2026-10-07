@@ -235,16 +235,52 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull, reason: 'فيض على عرض 400');
-    // نسختان من الجدول (الأصل + العمود المثبَّت) لا بطاقات.
-    expect(find.byType(Table), findsNWidgets(2));
+    // عند الإزاحة صفر العمود الأول ظاهرٌ في الأصل: جدولٌ واحد بلا نسخة مثبَّتة (لا بطاقات).
+    expect(find.byType(Table), findsNWidgets(1));
 
     final before = tester.getTopLeft(find.text('ك0').first).dx;
-    await tester.drag(find.byType(SingleChildScrollView).first, const Offset(-150, 0));
+    await tester.drag(find.byType(SingleChildScrollView).first, const Offset(150, 0));
     await tester.pumpAndSettle();
+    // بعد التمرير تُبنى النسخة المثبَّتة (الأصل + العمود الأول).
+    expect(find.byType(Table), findsNWidgets(2));
     // عمود الكود المثبَّت ما زال ظاهرًا في موضعه.
     final visibleCodes = find.text('ك0').evaluate().length;
     expect(visibleCodes, greaterThanOrEqualTo(1));
     expect(tester.getTopLeft(find.text('ك0').last).dx, closeTo(before, 1.0), reason: 'العمود الأول تحرّك مع التمرير');
+  });
+
+  testWidgets('ترقيم تلقائي بعد 300 صفٍّ حين لا يُمرَّر pageSize', (tester) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(host(
+      ImdTable(
+        columns: const [ImdCol('م')],
+        rows: [for (var i = 0; i < 350; i++) [Text('صف$i')]],
+      ),
+      size: const Size(1200, 900),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('صف0'), findsOneWidget);
+    expect(find.text('صف99'), findsOneWidget);
+    expect(find.text('صف100'), findsNothing, reason: 'الصفحة الأولى 100 صف فقط');
+    expect(find.textContaining('من ٣٥٠'), findsWidgets, reason: 'شريط الترقيم يعرض الإجمالي');
+  });
+
+  testWidgets('جدولٌ بـ300 صفٍّ فأقل لا يُرقَّم تلقائيًّا', (tester) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(host(
+      ImdTable(
+        columns: const [ImdCol('م')],
+        rows: [for (var i = 0; i < 300; i++) [Text('صف$i')]],
+      ),
+      size: const Size(1200, 900),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('صف299'), findsOneWidget);
+    expect(find.textContaining('الصفحة التالية'), findsNothing);
   });
 
   testWidgets('ImdSelect يفتح نافذةً كبيرة ببحثٍ ويختار منها', (tester) async {
