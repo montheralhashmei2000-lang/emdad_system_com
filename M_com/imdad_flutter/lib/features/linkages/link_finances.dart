@@ -100,8 +100,8 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
     final usage = await widget.repo.custodyUsage();
     final balances = await widget.repo.partyBalances();
     final dups = await widget.repo.duplicateClearances();
-    final persons = await widget.repo.db.select(widget.repo.db.linkPersons).get();
-    final allRows = await widget.repo.db.select(widget.repo.db.linkCustodySheetRows).get();
+    final persons = await widget.repo.persons();
+    final allRows = await widget.repo.allSheetRows();
     final byId = <String, List<CustodyRowValues>>{};
     for (final r in allRows) {
       (byId[r.sheetId] ??= []).add(CustodyRowValues(
