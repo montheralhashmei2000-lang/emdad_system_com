@@ -107,6 +107,14 @@ class ImdBulkGrid extends StatelessWidget {
     );
   }
 
+  /// عرض عمود الترقيم: الرقم وحده 34، ومعه شارةٌ (كود الصنف مثلًا) 34 + فاصل + 72.
+  /// كان العرض 34 ثابتًا فتفيض الشارة عنه (`OVERFLOWED BY 23 PIXELS`) — فالعرض يتبع
+  /// وجود الشارات في أي سطر، والترويسة والصفوف تقرأ القيمة نفسها فتتحاذى الأعمدة.
+  double get _leadWidth => rows.any((r) => r.badge != null) ? 34 + 6 + 72 : 34;
+
+  /// عرض عمود الإجراءات: زرّان (تكرار + حذف) أو زرٌّ واحد، كلٌّ بنحو 40.
+  double get _actionsWidth => onDuplicate != null ? 92 : 48;
+
   Widget _header(BuildContext context) {
     final c = context.imd;
     return Container(
@@ -117,9 +125,9 @@ class ImdBulkGrid extends StatelessWidget {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
       ),
       child: Row(children: [
-        const SizedBox(width: 34),
+        SizedBox(width: _leadWidth),
         for (final col in columns) Expanded(flex: col.flex, child: _headCell(context, col)),
-        const SizedBox(width: 76),
+        SizedBox(width: _actionsWidth),
       ]),
     );
   }
@@ -157,9 +165,9 @@ class ImdBulkGrid extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
       decoration: BoxDecoration(
         // شريطٌ أحمر على حافة السطر الخاطئ: يُرى قبل قراءة أي نص.
-        border: Border(
+        border: BorderDirectional(
           bottom: BorderSide(color: c.line),
-          right: BorderSide(color: bad ? c.danger : Colors.transparent, width: 3),
+          start: BorderSide(color: bad ? c.danger : Colors.transparent, width: 3),
         ),
         color: bad ? c.dangerSoft.withValues(alpha: .35) : (i.isOdd ? c.subtle : null),
       ),
@@ -167,7 +175,7 @@ class ImdBulkGrid extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-            SizedBox(width: 34, child: _index(context, i, row.badge)),
+            SizedBox(width: _leadWidth, child: _index(context, i, row.badge, fit: true)),
             for (var k = 0; k < columns.length; k++)
               Expanded(
                 flex: columns[k].flex,
@@ -176,11 +184,11 @@ class ImdBulkGrid extends StatelessWidget {
                   child: k < row.cells.length ? row.cells[k] : const SizedBox.shrink(),
                 ),
               ),
-            SizedBox(width: 76, child: _rowActions(context, i)),
+            SizedBox(width: _actionsWidth, child: _rowActions(context, i, fit: true)),
           ]),
           if (bad)
             Padding(
-              padding: const EdgeInsets.only(top: 6, right: 38),
+              padding: EdgeInsetsDirectional.only(top: 6, start: _leadWidth + 4),
               child: Text('✖ ${row.error}',
                   style: TextStyle(
                       fontSize: 11.5, color: c.danger, fontWeight: FontWeight.w600)),
@@ -223,9 +231,9 @@ class ImdBulkGrid extends StatelessWidget {
     );
   }
 
-  Widget _index(BuildContext context, int i, Widget? badge) {
+  Widget _index(BuildContext context, int i, Widget? badge, {bool fit = false}) {
     final c = context.imd;
-    return Row(mainAxisSize: MainAxisSize.min, children: [
+    final row = Row(mainAxisSize: MainAxisSize.min, children: [
       Container(
         width: 24,
         height: 24,
@@ -241,19 +249,24 @@ class ImdBulkGrid extends StatelessWidget {
       ),
       if (badge != null) ...[const SizedBox(width: 6), badge],
     ]);
+    // داخل عمودٍ بعرضٍ ثابت: ما زاد عن العرض يُصغَّر لا يفيض.
+    return fit
+        ? FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: row)
+        : row;
   }
 
-  Widget _rowActions(BuildContext context, int i) => Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (onDuplicate != null)
-            ImdIconButton(
-                icon: 'plus',
-                tooltip: 'تكرار السطر',
-                onPressed: () => onDuplicate!(i)),
-          ImdIconButton(
-              icon: 'trash', tooltip: 'حذف السطر', onPressed: () => onRemove(i)),
-        ],
-      );
+  Widget _rowActions(BuildContext context, int i, {bool fit = false}) {
+    final actions = Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (onDuplicate != null)
+          ImdIconButton(icon: 'plus', tooltip: 'تكرار السطر', onPressed: () => onDuplicate!(i)),
+        ImdIconButton(icon: 'trash', tooltip: 'حذف السطر', onPressed: () => onRemove(i)),
+      ],
+    );
+    return fit
+        ? FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerEnd, child: actions)
+        : actions;
+  }
 }

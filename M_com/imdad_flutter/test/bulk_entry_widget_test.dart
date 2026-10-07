@@ -91,7 +91,40 @@ void main() {
   }
 
   group('شاشة الأصول — إدخال جماعي', () {
-    testWidgets('التبويب يفتح شبكة الدفعة', (tester) async {
+    testWidgets('ImdBulkGrid: شارة طويلة وزرّا إجراء لا يفيضان من أعمدتهما', (tester) async {
+    tester.view.physicalSize = const Size(1500, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('ar'),
+      theme: AppTheme.light(),
+      home: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          body: SingleChildScrollView(
+            child: ImdBulkGrid(
+              columns: const [ImdBulkCol('الصنف'), ImdBulkCol('الحد', width: 80)],
+              rows: const [
+                ImdBulkRow(
+                  cells: [Text('أرز'), Text('500')],
+                  badge: Chip(label: Text('RICE-2026-0042')),
+                ),
+                ImdBulkRow(cells: [Text('سكر'), Text('200')]),
+              ],
+              onAdd: () {},
+              onRemove: (_) {},
+              onDuplicate: (_) {},
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    // `OVERFLOWED BY …` يُسجَّل استثناءً في الاختبار: غيابه هو المطلوب.
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('التبويب يفتح شبكة الدفعة', (tester) async {
       await show(tester, const AssetsScreen());
       expect(tester.takeException(), isNull);
 
