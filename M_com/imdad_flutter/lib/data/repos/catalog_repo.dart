@@ -387,6 +387,38 @@ class CatalogRepo {
         minQty: Value(minQty),
       ));
 
+  /// آخر تاريخ رصيدٍ افتتاحي لكل صنف في مستودع.
+  Future<Map<String, String>> openingDates(String warehouse) async {
+    final rows = await (db.select(db.openingBalances)..where((t) => t.warehouse.equals(warehouse))).get();
+    final dates = <String, String>{};
+    for (final r in rows) {
+      final prev = dates[r.itemId] ?? '';
+      if (r.date.compareTo(prev) > 0) dates[r.itemId] = r.date;
+    }
+    return dates;
+  }
+
+  /// تثبيت عدة أرصدة افتتاحية بمعاملةٍ واحدة وتاريخٍ واحد (كل صنفٍ يستبدل سابقه في المستودع).
+  Future<void> setOpeningBalances(String warehouse, String actor, List<({Item item, double qty})> entries,
+          {required String date}) =>
+      db.transaction(() async {
+        for (final e in entries) {
+          await (db.delete(db.openingBalances)
+                ..where((t) => t.itemId.equals(e.item.id) & t.warehouse.equals(warehouse)))
+              .go();
+          await db.into(db.openingBalances).insert(OpeningBalancesCompanion.insert(
+                id: Ids.next('opb'),
+                itemId: e.item.id,
+                itemCode: Value(e.item.code),
+                itemName: Value(e.item.name),
+                warehouse: Value(warehouse),
+                qty: Value(e.qty),
+                date: Value(date),
+                setBy: Value(actor),
+              ));
+        }
+      });
+
   /// رصيدٌ افتتاحي للصنف في مستودع — تثبيتٌ يستبدل السابق (كشاشة الأرصدة الافتتاحية).
   Future<void> setOpeningBalance(Item item, String warehouse, double qty, String actor) =>
       db.transaction(() async {

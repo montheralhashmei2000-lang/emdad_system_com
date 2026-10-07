@@ -1,8 +1,6 @@
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/ids.dart';
 import '../../core/print/document_pdf.dart';
 import '../../core/security/perm.dart';
 import '../../core/ui/imd_form.dart';
@@ -81,14 +79,7 @@ class _OpeningScreenState extends State<OpeningScreen> {
   Future<void> _refresh() async {
     if (_warehouse.isEmpty) return;
     final bal = await _moves.balances(warehouse: _warehouse);
-    final rows = await (_db.select(_db.openingBalances)
-          ..where((t) => t.warehouse.equals(_warehouse)))
-        .get();
-    final dates = <String, String>{};
-    for (final r in rows) {
-      final prev = dates[r.itemId] ?? '';
-      if (r.date.compareTo(prev) > 0) dates[r.itemId] = r.date;
-    }
+    final dates = await _catalog.openingDates(_warehouse);
     if (mounted) {
       setState(() {
         _balances = bal;
@@ -205,24 +196,13 @@ class _OpeningScreenState extends State<OpeningScreen> {
     if (!ok) return;
 
     final date = isoDay(DateTime.now());
-    await _db.transaction(() async {
-      for (final e in edits) {
-        // تثبيت لا إضافة: يُستبدل الرصيد الافتتاحي السابق لنفس الصنف في نفس المستودع.
-        await (_db.delete(_db.openingBalances)
-              ..where((t) => t.itemId.equals(e.item.id) & t.warehouse.equals(_warehouse)))
-            .go();
-        await _db.into(_db.openingBalances).insert(OpeningBalancesCompanion.insert(
-              id: Ids.next('opb'),
-              itemId: e.item.id,
-              itemCode: Value(e.item.code),
-              itemName: Value(e.item.name),
-              warehouse: Value(_warehouse),
-              qty: Value(e.base),
-              date: Value(date),
-              setBy: Value(_perm.email),
-            ));
-      }
-    });
+    // تثبيت لا إضافة: يُستبدل الرصيد الافتتاحي السابق لنفس الصنف في نفس المستودع.
+    await _catalog.setOpeningBalances(
+      _warehouse,
+      _perm.email,
+      [for (final e in edits) (item: e.item, qty: e.base)],
+      date: date,
+    );
     for (final e in edits) {
       await AuditRepo(_db).write(
         'OPENING_BALANCE_SET',

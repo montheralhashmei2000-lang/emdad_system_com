@@ -8,7 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 /// **اخفض رقمه** (أو احذف سطره عند الصفر) — الاختبار يفشل إن بقي السقف أعلى من الواقع
 /// حتى لا يتحوّل التحسُّن إلى مساحة لتراجعٍ لاحق.
 const Map<String, int> _allowed = {
-  'inventory/opening_screen.dart': 4,
   'settings/settings_screen.dart': 3,
   'linkages/custody_sheet_editor.dart': 3,
   'inventory/pending_screen.dart': 3,
