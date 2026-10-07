@@ -43,7 +43,7 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     final scope = Perm.of(context).scope;
-    final items = {for (final i in await _db.select(_db.items).get()) i.id: i};
+    final items = {for (final i in await CatalogRepo(_db).items()) i.id: i};
     final low = await _repo.lowStock(scope: scope);
     final expiry = await _repo.expiring(scope: scope, withinDays: _days);
     final forecast = await _repo.forecast(scope: scope);
@@ -113,6 +113,17 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
         ],
         pageSize: 50,
         empty: 'لا أصناف تحت حدها الأدنى 👌 (يُضبط الحد من بطاقة الصنف)',
+        values: [
+          for (final a in _low)
+            [
+              _items[a.itemId]?.code ?? '',
+              _items[a.itemId]?.name ?? a.itemId,
+              _qty(a.itemId, a.balance),
+              _qty(a.itemId, a.minQty),
+              _qty(a.itemId, a.shortfall),
+              a.outOfStock ? 'نافد' : 'تحت الحد',
+            ],
+        ],
         rows: [
           for (final a in _low)
             [
@@ -154,6 +165,19 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
           ],
           pageSize: 50,
           empty: 'لا دفعات تنتهي صلاحيتها في هذه المدة 👌 (يُسجَّل تاريخ الانتهاء في سند الاستلام)',
+          values: [
+            for (final e in _expiry)
+              [
+                _items[e.lot.itemId]?.name ?? e.lot.itemId,
+                e.lot.warehouse,
+                e.lot.refNo.isEmpty ? '—' : e.lot.refNo,
+                e.lot.expiryDate,
+                _qty(e.lot.itemId, e.remainingQty),
+                e.expired
+                    ? 'منتهية منذ ${nf(-e.daysLeft)} يوم'
+                    : (e.daysLeft == 0 ? 'تنتهي اليوم' : 'بعد ${nf(e.daysLeft)} يوم'),
+              ],
+          ],
           rows: [
             for (final e in _expiry)
               [
@@ -192,6 +216,17 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
           ],
           pageSize: 50,
           empty: 'لا صرف معتمد في آخر 30 يومًا ولا مقررات مع قوة محصورة — لا توقّع بعد',
+          values: [
+            for (final f in _forecast)
+              [
+                _items[f.itemId]?.name ?? f.itemId,
+                _qty(f.itemId, f.balance),
+                _qty(f.itemId, f.actualDaily),
+                f.plannedDaily == null ? '—' : _qty(f.itemId, f.plannedDaily!),
+                f.daysLeft <= 0 ? 'نافد' : '${nf(f.daysLeft)} يوم',
+                f.daysLeft <= 0 ? 'نافد الآن' : isoDay(f.stockoutDate),
+              ],
+          ],
           rows: [
             for (final f in _forecast)
               [

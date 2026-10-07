@@ -66,51 +66,47 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
   Future<void> _render() async {
     final moves = MovementsRepo(_db);
     final whs = await _repo.warehouses();
-    final receipts = await moves.allReceipts();
-    final issues = await moves.allIssues();
-    final transfers = await moves.allTransfers();
-    final returns = await moves.allReturns();
+    final receipts = await moves.usageOf('receipts', 'warehouse');
+    final issues = await moves.usageOf('issues', 'warehouse');
+    final transfers = await moves.usageOf('transfers', 'warehouse');
+    final transfersIn = await moves.usageOf('transfers', 'dest_warehouse');
+    final returns = await moves.usageOf('returns', 'warehouse');
     final facs = await _repo.facilities();
     final units = await _repo.units();
     whs.sort((a, b) => a.name.compareTo(b.name));
     final camps = units.where((u) => u.type == 'camp' || u.parentId.isEmpty).toList()
       ..sort((a, b) => a.code.compareTo(b.code));
     final usage = <String, _Usage>{};
-    void add(String name, String kind, String date) {
+    void add(String name, String kind, int n, String date) {
       final k = name.trim();
       if (k.isEmpty) return;
       final u = usage.putIfAbsent(k, _Usage.new);
-      u.count++;
+      u.count += n;
       switch (kind) {
         case 'receipts':
-          u.receipts++;
+          u.receipts += n;
         case 'issues':
-          u.issues++;
+          u.issues += n;
         case 'transfers':
-          u.transfers++;
+          u.transfers += n;
         case 'returns':
-          u.returns++;
+          u.returns += n;
         case 'facs':
-          u.facs++;
+          u.facs += n;
       }
       if (date.isNotEmpty && (u.lastDate.isEmpty || date.compareTo(u.lastDate) > 0)) u.lastDate = date;
     }
 
-    for (final r in receipts) {
-      add(r.warehouse, 'receipts', r.date);
-    }
-    for (final r in issues) {
-      add(r.warehouse, 'issues', r.date);
-    }
-    for (final r in transfers) {
-      add(r.warehouse, 'transfers', r.date);
-      add(r.destWarehouse, 'transfers', r.date);
-    }
-    for (final r in returns) {
-      add(r.warehouse, 'returns', r.date);
-    }
+    void addAll(Map<String, ({int count, String lastDate})> src, String kind) =>
+        src.forEach((k, v) => add(k, kind, v.count, v.lastDate));
+
+    addAll(receipts, 'receipts');
+    addAll(issues, 'issues');
+    addAll(transfers, 'transfers');
+    addAll(transfersIn, 'transfers');
+    addAll(returns, 'returns');
     for (final f in facs) {
-      add(f.warehouse, 'facs', '');
+      add(f.warehouse, 'facs', 1, '');
     }
     if (!mounted) return;
     final cur = whs.where((x) => x.id == _editId).firstOrNull;

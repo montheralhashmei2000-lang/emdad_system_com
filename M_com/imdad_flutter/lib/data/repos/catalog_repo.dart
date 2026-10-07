@@ -202,6 +202,12 @@ class CatalogRepo {
   }
 
   // ───────── المستودعات ─────────
+  /// إضافة سريعة من شاشة الاستلام (➕ بجانب المستودع/المورد).
+  Future<void> quickAddWarehouse(String name) =>
+      db.into(db.warehouses).insert(WarehousesCompanion.insert(id: Ids.next('wh'), name: name.trim()));
+  Future<void> quickAddSupplier(String name) =>
+      db.into(db.suppliers).insert(SuppliersCompanion.insert(id: Ids.next('sup'), name: name.trim()));
+
   Future<List<Warehouse>> warehouses({List<String>? scope}) async {
     final rows = await db.select(db.warehouses).get();
     final list = scope == null ? rows : rows.where((w) => scope.contains(w.name)).toList();

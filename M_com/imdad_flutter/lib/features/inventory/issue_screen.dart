@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -178,11 +177,11 @@ class _IssueScreenState extends State<IssueScreen> {
     final perm = Perm.of(context);
     final items = await _catalog.items();
     final units = await _catalog.units();
-    final whs = (await _db.select(_db.warehouses).get()..sort((a, b) => a.name.compareTo(b.name)))
+    final whs = (await _catalog.warehouses())
         .where((w) => perm.canWh(w.name))
         .toList();
-    final facs = await _db.select(_db.facilities).get();
-    final ents = {for (final e in await _db.select(_db.entitlements).get()) e.itemId: e};
+    final facs = await _catalog.facilities();
+    final ents = {for (final e in await DailyRepo(_db).entitlements()) e.itemId: e};
     final calc = await DailyRepo(_db).calculator();
     final ref = await _moves.nextRef('issues', 'ص-');
     if (!mounted) return;
@@ -474,10 +473,7 @@ class _IssueScreenState extends State<IssueScreen> {
 
   /// `issCheckNextDue(unitId)` — الحساب في [IssueRules.nextDue].
   Future<void> _checkNextDue(String unitId) async {
-    final rows = await (_db.select(_db.issues)
-          ..where((t) => t.unitId.equals(unitId))
-          ..where((t) => t.status.equals('COMPLETED')))
-        .get();
+    final rows = await _moves.completedIssuesOfUnit(unitId);
     rows.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     if (!mounted) return;
     final due = IssueRules.nextDue([
@@ -1388,9 +1384,7 @@ class _IssueScreenState extends State<IssueScreen> {
   /// بعد أن صار السجل مكوّنًا مشتركًا لا يملك هذه الشاشة حالته.
   Future<List<Issue>> _issuedLines() async {
     final perm = Perm.of(context);
-    final rows = await (_db.select(_db.issues)
-          ..where((t) => t.status.equals('COMPLETED')))
-        .get();
+    final rows = await _moves.completedIssues();
     return rows.where((r) => perm.canWh(r.warehouse)).toList();
   }
 
@@ -1398,7 +1392,7 @@ class _IssueScreenState extends State<IssueScreen> {
   /// زر «تعديل القوة» داخل سجل الصادرات — قدرة لا يغطيها نموذج التعديل العام
   /// (يحافظ على القوة والأيام ولا يسمح بتغييرهما).
   Future<void> _editEntByRef(String refNo, Future<void> Function() reload) async {
-    final group = await (_db.select(_db.issues)..where((t) => t.refNo.equals(refNo))).get();
+    final group = await _moves.issueRowsByRef(refNo);
     if (group.isEmpty) return;
     await _editEnt(group);
     await reload();
@@ -1432,15 +1426,7 @@ class _IssueScreenState extends State<IssueScreen> {
     days.dispose();
     if (ok != true) return;
     try {
-      await _db.transaction(() async {
-        for (final d in group) {
-          await (_db.update(_db.issues)..where((t) => t.id.equals(d.id))).write(IssuesCompanion(
-            soldierCount: Value(s),
-            officerCount: Value(o),
-            durationDays: Value(dd <= 0 ? 1 : dd),
-          ));
-        }
-      });
+      await _moves.updateIssueStrength(group, soldiers: s, officers: o, days: dd);
       if (!mounted) return;
       showImdToast(context, '✔ تم تحديث بيانات السند والقوة بنجاح');
     } catch (e) {

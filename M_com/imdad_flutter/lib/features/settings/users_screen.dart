@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -118,8 +117,7 @@ class _UsersScreenState extends State<UsersScreen> {
     if (!ok) return;
     await _repo.updateUser(id: u.id, active: enable, actorEmail: _perm.email, actorRole: _auth.currentUser?.role);
     if (!u.approved) {
-      await (_db.update(_db.users)..where((t) => t.id.equals(u.id)))
-          .write(const UsersCompanion(approved: Value(true)));
+      await UsersRepo(_db).markApproved(u.id);
     }
     await AuditRepo(_db).write(
       enable ? (st == 'PENDING' ? 'USER_APPROVED' : 'USER_REACTIVATED') : 'USER_DISABLED',

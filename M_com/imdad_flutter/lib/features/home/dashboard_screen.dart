@@ -227,10 +227,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final db = _db;
     final items = await CatalogRepo(db).items();
     final units = await CatalogRepo(db).unitsUnsorted();
-    final receipts = await MovementsRepo(db).allReceipts();
-    final issues = await MovementsRepo(db).allIssues();
-    final transfers = await MovementsRepo(db).allTransfers();
-    final returns = await MovementsRepo(db).allReturns();
+    // نافذة لا كل الجداول: ما ينتظر إجراءً بأي تاريخ + حركة اليوم فقط.
+    final nowD = DateTime.now();
+    final dayStart = DateTime(nowD.year, nowD.month, nowD.day);
+    final todayIso =
+        '${dayStart.year.toString().padLeft(4, '0')}-${dayStart.month.toString().padLeft(2, '0')}-${dayStart.day.toString().padLeft(2, '0')}';
+    final receipts = await MovementsRepo(db).receiptsPendingOrSince(todayIso, createdSince: dayStart);
+    final issues = await MovementsRepo(db).issuesPendingOrSince(todayIso, createdSince: dayStart);
+    final transfers = await MovementsRepo(db)
+        .transfersPendingOrSince(todayIso, createdSince: dayStart, alsoStatuses: const ['REJECTED']);
+    final returns = await MovementsRepo(db).returnsSince(todayIso, createdSince: dayStart);
     final stocktakes = await StocktakeRepo(db).allSessions();
     final facilities = await CatalogRepo(db).facilities();
     final warehouses = await CatalogRepo(db).warehouses();

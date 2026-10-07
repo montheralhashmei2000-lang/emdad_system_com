@@ -5,6 +5,7 @@ import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
+import '../../data/repos/users_repo.dart';
 import '../../domain/permission_impact.dart';
 
 /// تقرير أثر نقل الصلاحيات الخاصة إلى المالك — للمالك، للقراءة فقط.
@@ -22,7 +23,7 @@ class _PermissionImpactCardState extends State<PermissionImpactCard> {
   @override
   void initState() {
     super.initState();
-    _db.select(_db.users).get().then((all) {
+    UsersRepo(_db).allUsers().then((all) {
       if (mounted) setState(() => _items = PermissionImpact.build(all));
     });
   }

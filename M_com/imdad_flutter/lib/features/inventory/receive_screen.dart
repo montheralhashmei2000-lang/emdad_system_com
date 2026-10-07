@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/ids.dart';
 import '../../core/print/voucher_print.dart';
 import '../../core/security/auth_service.dart';
 import '../../core/security/perm.dart';
@@ -242,8 +241,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     final items = await _catalog.items();
     final sups = await _catalog.suppliers()
       ..sort((a, b) => a.name.compareTo(b.name));
-    final whs = (await _db.select(_db.warehouses).get()
-          ..sort((a, b) => a.name.compareTo(b.name)))
+    final whs = (await _catalog.warehouses())
         .where((w) => perm.canWh(w.name))
         .toList();
     final ref = await _moves.nextRef('receipts', 'و-');
@@ -523,9 +521,9 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     if (n == null || n.trim().isEmpty || !mounted) return;
     try {
       if (warehouse) {
-        await _db.into(_db.warehouses).insert(WarehousesCompanion.insert(id: Ids.next('wh'), name: n.trim()));
+        await _catalog.quickAddWarehouse(n);
       } else {
-        await _db.into(_db.suppliers).insert(SuppliersCompanion.insert(id: Ids.next('sup'), name: n.trim()));
+        await _catalog.quickAddSupplier(n);
       }
       if (!mounted) return;
       showImdToast(context, '✔ أُضيف: ${n.trim()}');
@@ -947,7 +945,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
   // ───────────────────────── المسودات ─────────────────────────
   Future<void> _loadDrafts() async {
     setState(() => _drafts = null);
-    final rows = await (_db.select(_db.receipts)..where((t) => t.status.equals('DRAFT'))).get();
+    final rows = await MovementsRepo(_db).draftReceipts();
     if (mounted) setState(() => _drafts = rows);
   }
 
@@ -1017,11 +1015,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     if (!mounted) return;
     final actor = context.read<AuthService>().currentUser;
     try {
-      await _db.transaction(() async {
-        for (final d in g) {
-          await (_db.delete(_db.receipts)..where((t) => t.id.equals(d.id))).go();
-        }
-      });
+      await MovementsRepo(_db).deleteReceiptRows(g.map((d) => d.id));
       await AuditRepo(_db).write('RECEIPT_DRAFT_DELETED', 'receipt', 'حذف مسودة وارد',
           details: {
             'refNo': k,

@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -12,6 +11,7 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../inventory/doc_kit.dart';
 import '../../core/ui/imd_layout.dart';
+import '../../data/repos/audit_repo.dart';
 
 /// سجل النشاط والتدقيق — نقل `renderAuditTrail()` / `audPaint()`:
 /// بطاقة لكل حدث فيها مستوى الخطورة ونوع النشاط والملخّص والتاريخ،
@@ -101,10 +101,7 @@ class _AuditScreenState extends State<AuditScreen> {
   }
 
   Future<void> _load() async {
-    final rows = await (_db.select(_db.auditLogs)
-          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])
-          ..limit(600))
-        .get();
+    final rows = await AuditRepo(_db).recent(limit: 600);
     if (!mounted) return;
     setState(() {
       _docs = rows;

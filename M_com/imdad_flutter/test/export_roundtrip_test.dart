@@ -22,6 +22,9 @@ void main() {
   const localOnly = {
     // حالة قفل الدخول على هذا الجهاز وحده.
     'users.failed_attempts', 'users.locked_until',
+    // عدد دورات PBKDF2 يُحصر عمدًا عند الاستيراد (انظر audit_followup_test)، فلا يطابق قيمة المصدر
+    // المصطنعة (0/1) هنا.
+    'users.iterations',
   };
   // يُقارَن تاريخ الإنشاء في اختبار مستقل؛ هنا يختلف تمثيله بين الطرفين.
   const skippedEverywhere = {'created_at', 'updated_at'};

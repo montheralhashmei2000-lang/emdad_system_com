@@ -87,9 +87,9 @@ class _SensitiveOpsScreenState extends State<SensitiveOpsScreen> {
 
   /// `smqLoad()`
   Future<void> _load() async {
-    final issues = await MovementsRepo(_db).allIssues();
-    final transfers = await MovementsRepo(_db).allTransfers();
-    final audits = await AuditRepo(_db).allLogs();
+    final issues = await MovementsRepo(_db).issuesPendingOrSince('9999-12-31');
+    final transfers = await MovementsRepo(_db).transfersPendingOrSince('9999-12-31');
+    final audits = await AuditRepo(_db).logsByRisk(const ['sensitive', 'critical']);
     final reviews = await AuditRepo(_db).allSensitiveReviews();
     final users = _perm.admin ? await UsersRepo(_db).allUsers() : <User>[];
 

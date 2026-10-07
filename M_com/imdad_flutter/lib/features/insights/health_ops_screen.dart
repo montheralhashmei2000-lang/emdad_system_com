@@ -89,12 +89,12 @@ class _HealthOpsScreenState extends State<HealthOpsScreen> {
 
     final catalog = CatalogRepo(_db);
     final items = await catalog.items();
-    final receipts = await MovementsRepo(_db).allReceipts();
-    final issues = await MovementsRepo(_db).allIssues();
-    final transfers = await MovementsRepo(_db).allTransfers();
-    final returns = await MovementsRepo(_db).allReturns();
+    final receipts = await MovementsRepo(_db).receiptsPendingOrSince(weekAgo);
+    final issues = await MovementsRepo(_db).issuesPendingOrSince(weekAgo);
+    final transfers = await MovementsRepo(_db).transfersPendingOrSince(weekAgo);
+    final returns = await MovementsRepo(_db).returnsSince(weekAgo);
     final stocktakes = await StocktakeRepo(_db).allSessions();
-    final audits = await AuditRepo(_db).allLogs();
+    final audits = await AuditRepo(_db).logsByRisk(const ['critical', 'sensitive']);
     final reviews = await AuditRepo(_db).allSensitiveReviews();
     final users = _perm.admin ? await UsersRepo(_db).allUsers() : <User>[];
     final balances = await MovementsRepo(_db).balances(scope: _perm.scope);

@@ -114,6 +114,14 @@ class AuditRepo {
   /// كل السجلات بلا تقليم ولا حد — لشاشات التحليل (تقرأ الكل وتفلتر بنفسها).
   Future<List<AuditLog>> allLogs() => db.select(db.auditLogs).get();
 
+  /// سجلات أُنشئت بعد [since] — لنافذة النشاط الأخير.
+  Future<List<AuditLog>> logsSince(DateTime since) =>
+      (db.select(db.auditLogs)..where((t) => t.createdAt.isBiggerOrEqualValue(since))).get();
+
+  /// سجلات مستويات خطورة محددة فقط (بلا حساسية لحالة الأحرف) — للوحات الرقابة.
+  Future<List<AuditLog>> logsByRisk(Iterable<String> risks) =>
+      (db.select(db.auditLogs)..where((t) => t.risk.lower().isIn(risks.map((r) => r.toLowerCase())))).get();
+
   Future<List<SensitiveReview>> allSensitiveReviews() => db.select(db.sensitiveReviews).get();
 
   /// وسم تغييرٍ حسّاس بأنه روجع (معرّف المراجعة = معرّف السجل).

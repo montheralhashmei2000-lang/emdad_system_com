@@ -35,7 +35,7 @@ Future<void> showChangePasswordDialog({
       error.value = '✖ كلمتا المرور غير متطابقتين';
       return false;
     }
-    final user = await (db.select(db.users)..where((t) => t.id.equals(userId))).getSingleOrNull();
+    final user = await UsersRepo(db).byId(userId);
     if (user == null) {
       error.value = '✖ تعذّر العثور على الحساب';
       return false;

@@ -456,7 +456,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
       return;
     }
     setState(() => _histOut = const ImdLdText('⏳ جارٍ التحميل…'));
-    final iss = await MovementsRepo(_db).allIssues();
+    final iss = await MovementsRepo(_db).issuesOfUnit(u.id, u.name);
     final items = {for (final i in await _repo.items()) i.id: i.name.isNotEmpty ? i.name : i.code};
     final fMs = f.isEmpty ? null : DateTime.parse('${f}T00:00:00').millisecondsSinceEpoch;
     final tMs = t.isEmpty ? null : DateTime.parse('${t}T23:59:59').millisecondsSinceEpoch;

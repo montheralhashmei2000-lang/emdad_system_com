@@ -23,7 +23,7 @@ class PasswordHash {
 
   /// مطابقة كلمة مرور مع بصمة محفوظة بعدد دوراتها هي (لا العدد الحالي).
   static Future<bool> verify(String password, String saltHex, String hashHex, int iterations) async {
-    if (saltHex.isEmpty || hashHex.isEmpty || iterations < 1) return false;
+    if (saltHex.isEmpty || hashHex.isEmpty || iterations < 1 || iterations > Pbkdf2.iterations) return false;
     final derived = await compute(_derive, (password, saltHex, iterations));
     return Pbkdf2.constantTimeEquals(derived, hashHex);
   }

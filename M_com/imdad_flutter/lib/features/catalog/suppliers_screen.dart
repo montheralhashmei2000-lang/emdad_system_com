@@ -63,26 +63,22 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
   Future<void> _render() async {
     final sups = await _repo.suppliers();
     final moves = MovementsRepo(_db);
-    final receipts = await moves.allReceipts();
-    final returns = await moves.allReturns();
+    final receipts = await moves.usageOf('receipts', 'supplier');
+    final returns = await moves.usageOf('returns', 'party', where: "type = 'TO_SUPPLIER'");
     sups.sort((a, b) => a.name.compareTo(b.name));
     final usage = <String, _Usage>{};
-    void add(String name, String kind, String date) {
-      final k = name.trim();
-      if (k.isEmpty) return;
-      final u = usage.putIfAbsent(k, _Usage.new);
-      u.count++;
-      if (kind == 'receipts') u.receipts++;
-      if (kind == 'returns') u.returns++;
-      if (date.isNotEmpty && (u.lastDate.isEmpty || date.compareTo(u.lastDate) > 0)) u.lastDate = date;
+    void add(Map<String, ({int count, String lastDate})> src, String kind) {
+      src.forEach((k, v) {
+        final u = usage.putIfAbsent(k, _Usage.new);
+        u.count += v.count;
+        if (kind == 'receipts') u.receipts += v.count;
+        if (kind == 'returns') u.returns += v.count;
+        if (v.lastDate.isNotEmpty && (u.lastDate.isEmpty || v.lastDate.compareTo(u.lastDate) > 0)) u.lastDate = v.lastDate;
+      });
     }
 
-    for (final r in receipts) {
-      add(r.supplier, 'receipts', r.date);
-    }
-    for (final r in returns.where((r) => r.type == 'TO_SUPPLIER')) {
-      add(r.party, 'returns', r.date);
-    }
+    add(receipts, 'receipts');
+    add(returns, 'returns');
     if (!mounted) return;
     final cur = sups.where((x) => x.id == _editId).firstOrNull;
     imdSetText(_name, cur?.name ?? '');

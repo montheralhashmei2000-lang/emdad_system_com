@@ -23,6 +23,12 @@ class UsersRepo {
   /// كل الحسابات بلا فرز — لشاشات التحليل.
   Future<List<User>> allUsers() => db.select(db.users).get();
 
+  Future<User?> byId(String id) => (db.select(db.users)..where((t) => t.id.equals(id))).getSingleOrNull();
+
+  /// يعتمد حسابًا معلَّقًا (التوقيع/التدقيق على المستدعي كما كان في الشاشة).
+  Future<void> markApproved(String id) =>
+      (db.update(db.users)..where((t) => t.id.equals(id))).write(const UsersCompanion(approved: Value(true)));
+
   Future<List<User>> users() async {
     final rows = await db.select(db.users).get();
     rows.sort((a, b) => a.username.compareTo(b.username));

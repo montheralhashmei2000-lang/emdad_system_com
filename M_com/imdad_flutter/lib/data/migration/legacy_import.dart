@@ -879,6 +879,10 @@ class LegacyImporter {
     return def;
   }
 
+  /// عدد دورات PBKDF2 القادم من نظيرٍ مزامَن: يُحصر بين القديم والحالي فلا يُضعِف الهاش (رقم صغير)
+  /// ولا يجمّد الدخول (رقم ضخم). القيمة غير الموجبة تبقى كما هي: `verify` يرفضها أصلًا.
+  int _safeIterations(int n) => n < 1 ? n : n.clamp(Pbkdf2.legacyIterations, Pbkdf2.iterations).toInt();
+
   int _i(Map<String, dynamic> m, String k, [int def = 0]) =>
       _d(m, k, def.toDouble()).round();
 
@@ -1062,7 +1066,7 @@ class LegacyImporter {
             saltHex: hasSecret ? Value(salt) : const Value.absent(),
             hashHex: hasSecret ? Value(hash) : const Value.absent(),
             iterations: hasSecret
-                ? Value(_i(u, 'iterations', Pbkdf2.legacyIterations))
+                ? Value(_safeIterations(_i(u, 'iterations', Pbkdf2.legacyIterations)))
                 : const Value.absent(),
             active: Value(_b(u, 'active', true)),
             approved: Value(_b(u, 'approved', true)),

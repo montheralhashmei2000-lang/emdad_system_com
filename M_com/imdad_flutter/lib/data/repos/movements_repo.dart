@@ -77,6 +77,109 @@ class MovementsRepo {
   Future<List<Transfer>> allTransfers() => db.select(db.transfers).get();
   Future<List<Return>> allReturns() => db.select(db.returns).get();
 
+  // نوافذ محدودة للوحات الرقابة: ما ينتظر إجراءً (أي تاريخ) + ما بعد [since] (`YYYY-MM-DD`).
+  // بدل قراءة الجداول كاملة (`all*`) فتنمو الذاكرة مع عمر النظام.
+  // [createdSince]: يضمّ أيضًا ما أُنشئ بعده مهما كان تاريخ سنده (سندٌ بتاريخ قديم أُدخل اليوم).
+  Future<List<Receipt>> receiptsPendingOrSince(String since, {DateTime? createdSince}) =>
+      (db.select(db.receipts)
+            ..where((t) =>
+                t.status.equals('DRAFT') |
+                t.date.isBiggerOrEqualValue(since) |
+                (createdSince == null ? const Constant(false) : t.createdAt.isBiggerOrEqualValue(createdSince))))
+          .get();
+  Future<List<Issue>> issuesPendingOrSince(String since, {DateTime? createdSince}) =>
+      (db.select(db.issues)
+            ..where((t) =>
+                t.status.equals('ORDER') |
+                t.date.isBiggerOrEqualValue(since) |
+                (createdSince == null ? const Constant(false) : t.createdAt.isBiggerOrEqualValue(createdSince))))
+          .get();
+
+  /// [alsoStatuses]: حالات تُقرأ بأي تاريخ إضافةً إلى `PENDING` (لوحة التحكم تعدّ `REJECTED` كلها).
+  Future<List<Transfer>> transfersPendingOrSince(String since,
+          {DateTime? createdSince, List<String> alsoStatuses = const []}) =>
+      (db.select(db.transfers)
+            ..where((t) =>
+                t.status.isIn(['PENDING', ...alsoStatuses]) |
+                t.date.isBiggerOrEqualValue(since) |
+                (createdSince == null ? const Constant(false) : t.createdAt.isBiggerOrEqualValue(createdSince))))
+          .get();
+  Future<List<Return>> returnsSince(String since, {DateTime? createdSince}) => (db.select(db.returns)
+        ..where((t) =>
+            t.date.isBiggerOrEqualValue(since) |
+            (createdSince == null ? const Constant(false) : t.createdAt.isBiggerOrEqualValue(createdSince))))
+      .get();
+
+  /// عدّ استعمال قيمةٍ نصية (مورد/مستودع/جهة) في جدولٍ + آخر تاريخ — تجميعٌ في SQL
+  /// بدل قراءة الجدول كاملًا إلى الذاكرة. [table] و[column] ثابتان من الكود لا من المستخدم.
+  /// المفتاح مقصوصٌ كما في عدّ الشاشات القديم، والفارغ مُهمَل.
+  Future<Map<String, ({int count, String lastDate})>> usageOf(String table, String column, {String where = ''}) async {
+    const tables = {'receipts', 'issues', 'transfers', 'returns'};
+    const columns = {'supplier', 'warehouse', 'dest_warehouse', 'party'};
+    assert(tables.contains(table) && columns.contains(column));
+    if (!tables.contains(table) || !columns.contains(column)) return {};
+    final rows = await db
+        .customSelect('SELECT TRIM($column) AS k, COUNT(*) AS c, MAX(date) AS d FROM "$table" '
+            "WHERE TRIM($column) <> ''${where.isEmpty ? '' : ' AND $where'} GROUP BY TRIM($column)")
+        .get();
+    return {
+      for (final r in rows) r.read<String>('k'): (count: r.read<int>('c'), lastDate: r.readNullable<String>('d') ?? ''),
+    };
+  }
+
+  /// صرف وحدةٍ غير المسودات (مطابقةٌ بالمعرّف أو الاسم) — الفلترة في SQL.
+  Future<List<Issue>> issuesOfUnit(String unitId, String unitName) => (db.select(db.issues)
+        ..where((r) =>
+            r.status.equals('DRAFT').not() &
+            (r.unitId.equals(unitId) |
+                r.beneficiaryUnitId.equals(unitId) |
+                r.beneficiaryUnitName.equals(unitName) |
+                r.recipientDisplay.equals(unitName))))
+      .get();
+
+  Future<List<Receipt>> draftReceipts() => (db.select(db.receipts)..where((t) => t.status.equals('DRAFT'))).get();
+  Future<List<Transfer>> pendingTransfers() => (db.select(db.transfers)..where((t) => t.status.equals('PENDING'))).get();
+
+  /// حذف أسطر مسودة وارد نهائيًا في معاملةٍ واحدة.
+  Future<void> deleteReceiptRows(Iterable<String> ids) => db.transaction(() async {
+        for (final id in ids) {
+          await (db.delete(db.receipts)..where((t) => t.id.equals(id))).go();
+        }
+      });
+
+  /// تأكيد استلام أسطر تحويل (تُحفظ ملاحظة كل سطرٍ كما هي).
+  Future<void> markTransfersReceived(Iterable<Transfer> rows) => db.transaction(() async {
+        for (final d in rows) {
+          await (db.update(db.transfers)..where((t) => t.id.equals(d.id)))
+              .write(TransfersCompanion(status: const Value('RECEIVED'), notes: Value(d.notes)));
+        }
+      });
+
+  Future<void> markTransfersRejected(Iterable<Transfer> rows, String reason) => db.transaction(() async {
+        for (final d in rows) {
+          await (db.update(db.transfers)..where((t) => t.id.equals(d.id)))
+              .write(TransfersCompanion(status: const Value('REJECTED'), rejectReason: Value(reason.trim())));
+        }
+      });
+
+  /// أسطر صرف وحدةٍ مكتملة (لحساب موعد الاستحقاق التالي).
+  Future<List<Issue>> completedIssuesOfUnit(String unitId) =>
+      (db.select(db.issues)..where((t) => t.unitId.equals(unitId) & t.status.equals('COMPLETED'))).get();
+  Future<List<Issue>> completedIssues() => (db.select(db.issues)..where((t) => t.status.equals('COMPLETED'))).get();
+  Future<List<Issue>> issueRowsByRef(String refNo) => (db.select(db.issues)..where((t) => t.refNo.equals(refNo))).get();
+
+  /// تعديل عدد القوة ومدة سندٍ كامل في معاملةٍ واحدة.
+  Future<void> updateIssueStrength(Iterable<Issue> rows, {required double soldiers, required double officers, required int days}) =>
+      db.transaction(() async {
+        for (final d in rows) {
+          await (db.update(db.issues)..where((t) => t.id.equals(d.id))).write(IssuesCompanion(
+            soldierCount: Value(soldiers),
+            officerCount: Value(officers),
+            durationDays: Value(days <= 0 ? 1 : days),
+          ));
+        }
+      });
+
   Future<List<Receipt>> receiptsOfItem(String itemId) =>
       (db.select(db.receipts)..where((t) => t.itemId.equals(itemId))).get();
   Future<List<Issue>> issuesOfItem(String itemId) =>

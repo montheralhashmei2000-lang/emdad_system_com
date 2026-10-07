@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -284,11 +283,11 @@ class _TransferScreenState extends State<TransferScreen> {
   Future<void> _form() async {
     final perm = Perm.of(context);
     final items = await _catalog.items();
-    final whs = (await _db.select(_db.warehouses).get()..sort((a, b) => a.name.compareTo(b.name)))
+    final whs = (await _catalog.warehouses())
         .where((w) => perm.canWh(w.name))
         .toList();
     final units = await _catalog.units();
-    final ents = {for (final e in await _db.select(_db.entitlements).get()) e.itemId: e};
+    final ents = {for (final e in await DailyRepo(_db).entitlements()) e.itemId: e};
     final calc = await DailyRepo(_db).calculator();
     final ref = await _moves.nextRef('transfers', 'ح-');
     if (!mounted) return;
@@ -1065,7 +1064,7 @@ class _TransferScreenState extends State<TransferScreen> {
   // ───────────────────────── بانتظار الاستلام ─────────────────────────
   Future<void> _loadPending() async {
     setState(() => _pending = null);
-    final rows = await (_db.select(_db.transfers)..where((t) => t.status.equals('PENDING'))).get();
+    final rows = await _moves.pendingTransfers();
     if (mounted) setState(() => _pending = rows);
   }
 
@@ -1116,12 +1115,7 @@ class _TransferScreenState extends State<TransferScreen> {
     if (!mounted) return;
     final actor = context.read<AuthService>().currentUser;
     try {
-      await _db.transaction(() async {
-        for (final d in g) {
-          await (_db.update(_db.transfers)..where((t) => t.id.equals(d.id)))
-              .write(TransfersCompanion(status: const Value('RECEIVED'), notes: Value(d.notes)));
-        }
-      });
+      await _moves.markTransfersReceived(g);
       await AuditRepo(_db).write('TRANSFER_RECEIVED', 'transfer', 'تأكيد استلام تحويل مخزني',
           details: {
             'refNo': k,
@@ -1147,12 +1141,7 @@ class _TransferScreenState extends State<TransferScreen> {
     if (reason == null || reason.trim().isEmpty || !mounted) return;
     final actor = context.read<AuthService>().currentUser;
     try {
-      await _db.transaction(() async {
-        for (final d in g) {
-          await (_db.update(_db.transfers)..where((t) => t.id.equals(d.id)))
-              .write(TransfersCompanion(status: const Value('REJECTED'), rejectReason: Value(reason.trim())));
-        }
-      });
+      await _moves.markTransfersRejected(g, reason);
       await AuditRepo(_db).write('TRANSFER_REJECTED', 'transfer', 'رفض تحويل مخزني',
           details: {
             'refNo': k,

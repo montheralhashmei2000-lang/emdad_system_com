@@ -8,9 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 /// **اخفض رقمه** (أو احذف سطره عند الصفر) — الاختبار يفشل إن بقي السقف أعلى من الواقع
 /// حتى لا يتحوّل التحسُّن إلى مساحة لتراجعٍ لاحق.
 const Map<String, int> _allowed = {
-  'inventory/issue_screen.dart': 8,
-  'inventory/transfer_screen.dart': 7,
-  'inventory/receive_screen.dart': 6,
   'inventory/opening_screen.dart': 4,
   'settings/settings_screen.dart': 3,
   'linkages/custody_sheet_editor.dart': 3,
@@ -20,15 +17,10 @@ const Map<String, int> _allowed = {
   'linkages/link_finances.dart': 2,
   'inventory/ration_order_screen.dart': 2,
   'daily/meal_plan_screen.dart': 2,
-  'settings/users_screen.dart': 1,
-  'settings/permission_impact_card.dart': 1,
-  'settings/audit_screen.dart': 1,
   'linkages/money_receipts_tab.dart': 1,
   'inventory/returns_screen.dart': 1,
   'daily/kitchen_log_screen.dart': 1,
-  'auth/change_password_dialog.dart': 1,
   'archive/electronic_archive_screen.dart': 1,
-  'alerts/stock_alerts_screen.dart': 1,
 };
 
 void main() {

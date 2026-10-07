@@ -111,11 +111,11 @@ class _ActivityIntelScreenState extends State<ActivityIntelScreen> {
         '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
     final d14 = iso(since14);
 
-    final audits = await AuditRepo(_db).allLogs();
-    final receipts = await MovementsRepo(_db).allReceipts();
-    final issues = await MovementsRepo(_db).allIssues();
-    final transfers = await MovementsRepo(_db).allTransfers();
-    final returns = await MovementsRepo(_db).allReturns();
+    final audits = await AuditRepo(_db).logsSince(since14);
+    final receipts = await MovementsRepo(_db).receiptsPendingOrSince(d14);
+    final issues = await MovementsRepo(_db).issuesPendingOrSince(d14);
+    final transfers = await MovementsRepo(_db).transfersPendingOrSince(d14);
+    final returns = await MovementsRepo(_db).returnsSince(d14);
     final users = _perm.admin ? await UsersRepo(_db).allUsers() : <User>[];
     final items = await CatalogRepo(_db).items();
     final balances = await MovementsRepo(_db).balances(scope: _perm.scope);

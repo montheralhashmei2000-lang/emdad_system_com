@@ -329,7 +329,9 @@ class AuthService {
       // مفتاحه هنا، وإلا رُفض الهاش الجديد عند بقية الأجهزة (يبقى القديم صالحًا).
       await UsersRepo(db).resign(user.id);
       return await (db.select(db.users)..where((t) => t.id.equals(user.id))).getSingleOrNull() ?? user;
-    } catch (_) {
+    } catch (err, stack) {
+      // الدخول نجح؛ فشل ترقية الهاش لا يُسقطه، لكنه لا يمرّ صامتًا.
+      ErrorLogger.log('auth.hashUpgrade', err, stack);
       return user;
     }
   }
