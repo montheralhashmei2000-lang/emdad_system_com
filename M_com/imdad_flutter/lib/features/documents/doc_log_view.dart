@@ -108,9 +108,10 @@ class _DocLogViewState extends State<DocLogView> {
   Future<void> _load() async {
     final kinds = _allowedTypes.map((t) => t.kind).toSet();
     final docs = await _repo.list(kinds: kinds, scope: _perm.scope);
-    final items = await _db.select(_db.items).get();
-    final whs = await _db.select(_db.warehouses).get();
-    final sups = await _db.select(_db.suppliers).get();
+    final catalog = CatalogRepo(_db);
+    final items = await catalog.items();
+    final whs = await catalog.warehouses();
+    final sups = await catalog.suppliers();
 
     _lineText.clear();
     for (final d in docs) {

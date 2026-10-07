@@ -10,7 +10,6 @@ import 'package:flutter_test/flutter_test.dart';
 const Map<String, int> _allowed = {
   'settings/settings_screen.dart': 3,
   'linkages/custody_sheet_editor.dart': 3,
-  'documents/doc_log_view.dart': 3,
   'linkages/link_finances.dart': 2,
   'inventory/ration_order_screen.dart': 2,
   'daily/meal_plan_screen.dart': 2,
