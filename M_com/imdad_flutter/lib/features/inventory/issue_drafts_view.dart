@@ -35,7 +35,7 @@ class _IssueDraftsViewState extends State<IssueDraftsView> {
   Future<void> _loadDrafts() async {
     setState(() => _drafts = null);
     final scope = Perm.of(context).scope;
-    final rows = await (_db.select(_db.issues)..where((t) => t.status.isIn(MovementsRepo.approvableIssueStatuses))).get();
+    final rows = await MovementsRepo(_db).approvableIssues();
     // مسودات المستودعات خارج نطاق المستخدم لا تُعرض له أصلًا، لا أن تُعرض ثم تُرفض.
     if (mounted) setState(() => _drafts = [for (final r in rows) if (scope == null || scope.contains(r.warehouse)) r]);
   }
@@ -105,11 +105,7 @@ class _IssueDraftsViewState extends State<IssueDraftsView> {
     if (!mounted) return;
     final actor = context.read<AuthService>().currentUser;
     try {
-      await _db.transaction(() async {
-        for (final d in g) {
-          await (_db.delete(_db.issues)..where((t) => t.id.equals(d.id))).go();
-        }
-      });
+      await MovementsRepo(_db).deleteIssueRows(g.map((d) => d.id));
       await AuditRepo(_db).write('ISSUE_DRAFT_DELETED', 'issue', 'حذف مسودة صرف',
           details: {
             'refNo': k,

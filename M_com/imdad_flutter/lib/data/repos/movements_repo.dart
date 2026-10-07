@@ -137,6 +137,16 @@ class MovementsRepo {
                 r.recipientDisplay.equals(unitName))))
       .get();
 
+  Future<List<Issue>> approvableIssues() =>
+      (db.select(db.issues)..where((t) => t.status.isIn(approvableIssueStatuses))).get();
+
+  /// حذف أسطر مسودة صرف نهائيًا في معاملةٍ واحدة.
+  Future<void> deleteIssueRows(Iterable<String> ids) => db.transaction(() async {
+        for (final id in ids) {
+          await (db.delete(db.issues)..where((t) => t.id.equals(id))).go();
+        }
+      });
+
   Future<List<Issue>> orderIssues() => (db.select(db.issues)..where((t) => t.status.equals('ORDER'))).get();
 
   /// رفض أسطر أمر صرف معلَّق في معاملةٍ واحدة.
