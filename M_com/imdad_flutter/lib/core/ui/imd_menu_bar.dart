@@ -37,7 +37,7 @@ class ImdMenuBar extends StatelessWidget {
       ImdMenuButton<String>(
         label: 'ملف',
         icon: 'file',
-        small: true,
+        dense: true,
         items: (_) => [
           item('سند جديد', 'Ctrl+N', actions.onNewDoc != null, 'new'),
           item('حفظ', 'Ctrl+S', actions.onSave != null, 'save'),
@@ -61,7 +61,7 @@ class ImdMenuBar extends StatelessWidget {
       ImdMenuButton<String>(
         label: 'مساعدة',
         icon: 'info',
-        small: true,
+        dense: true,
         items: (_) => const [
           PopupMenuItem<String>(value: 'shortcuts', child: Text('اختصارات لوحة المفاتيح')),
         ],

@@ -22,6 +22,7 @@ import '../../core/ui/imd_page_tabs.dart';
 import '../../core/ui/imd_status_bar.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_window.dart';
+import '../../core/ui/imd_context_menu.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../domain/access_control.dart';
 import '../../domain/app_space.dart';
@@ -212,7 +213,27 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   Future<void> _loadSideWidth() async {
     final prefs = await SharedPreferences.getInstance();
     final w = prefs.getDouble(_sideKey);
-    if (w != null && mounted) setState(() => _sideWidth = w.clamp(_sideMin, _sideMax));
+    final collapsed = prefs.getBool(_collapsedKey);
+    if (!mounted) return;
+    setState(() {
+      if (w != null) _sideWidth = w.clamp(_sideMin, _sideMax);
+      _userCollapsed = collapsed;
+    });
+  }
+
+  /// طيّ القائمة الجانبية يدويًّا: `null` = تلقائي (شريط أيقونات بين 900 و1150، وقائمةٌ
+  /// كاملة فوقها)، و`true`/`false` = اختيار المستخدم يسري على كل العروض فوق 900.
+  static const String _collapsedKey = 'imdad.sideCollapsed';
+  bool? _userCollapsed;
+
+  Future<void> _setCollapsed(bool v) async {
+    setState(() => _userCollapsed = v);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_collapsedKey, v);
+    } catch (_) {
+      // تفضيل شكلٍ فقط: فشل حفظه لا يمنع الطيّ في هذه الجلسة.
+    }
   }
 
   Future<void> _saveSideWidth() async {
@@ -677,8 +698,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final auth = context.read<AuthService>();
     final c = context.imd;
     final wide = width > _Shell.wide;
-    final rail = !wide && width > _Shell.rail;
     final handheld = width <= _Shell.rail;
+    final rail = !handheld && (_userCollapsed ?? !wide);
 
     // قبل أن تُقرأ المساحة المحفوظة لا تُرسم قائمةٌ قد تتبدّل بعد لحظة.
     if (!_spaceReady) {
@@ -840,15 +861,34 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               : null,
           body: Column(
             children: [
-              _Topbar(
-                userName: side.userName,
-                showBurger: handheld,
-                onBurger: () => _scaffoldKey.currentState?.openEndDrawer(),
-                onOpenPage: _go,
-                space: _space ?? '',
-                canSwitch: available.length > 1,
-                onSwitchSpace: _switchSpace,
-              ),
+              if (handheld)
+                _Topbar(
+                  userName: side.userName,
+                  showBurger: true,
+                  onBurger: () => _scaffoldKey.currentState?.openEndDrawer(),
+                  onOpenPage: _go,
+                  space: _space ?? '',
+                  canSwitch: available.length > 1,
+                  onSwitchSpace: _switchSpace,
+                )
+              else
+                _DesktopBar(
+                  userName: side.userName,
+                  collapsed: rail,
+                  onToggleSide: () => _setCollapsed(!rail),
+                  pages: [
+                    for (final p in _open)
+                      ImdOpenPage(id: p, title: _titleOf(p), icon: _iconOf(p), stale: _stale.contains(p)),
+                  ],
+                  activeId: _page,
+                  onSelect: _go,
+                  onClose: _closePage,
+                  onCloseOthers: _closeOthers,
+                  onOpenPage: _go,
+                  space: _space ?? '',
+                  canSwitch: available.length > 1,
+                  onSwitchSpace: _switchSpace,
+                ),
               Expanded(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -867,22 +907,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          if (!handheld)
-                            ImdPageTabs(
-                              pages: [
-                                for (final p in _open)
-                                  ImdOpenPage(
-                                    id: p,
-                                    title: _titleOf(p),
-                                    icon: _iconOf(p),
-                                    stale: _stale.contains(p),
-                                  ),
-                              ],
-                              activeId: _page,
-                              onSelect: _go,
-                              onClose: _closePage,
-                              onCloseOthers: _closeOthers,
-                            ),
                           if (!handheld && _stale.contains(_page))
                             ImdStaleBanner(
                               onRefresh: () => _refreshPage(_page),

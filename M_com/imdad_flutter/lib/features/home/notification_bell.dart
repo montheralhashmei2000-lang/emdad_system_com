@@ -17,13 +17,16 @@ import '../../domain/notification_item.dart';
 /// تنبيهٌ على حالةٍ عولجت.
 class NotificationBell extends StatefulWidget {
   const NotificationBell(
-      {super.key, required this.onOpenPage, this.space = ''});
+      {super.key, required this.onOpenPage, this.space = '', this.dense = false});
 
   /// يفتح شاشة التنبيه في القشرة.
   final ValueChanged<String> onOpenPage;
 
   /// القسم الذي يقف فيه المستخدم — الجرس يخصّ ما بين يديه.
   final String space;
+
+  /// أصغر حجمًا لشريط التطبيق العلوي.
+  final bool dense;
 
   @override
   State<NotificationBell> createState() => _NotificationBellState();
@@ -116,7 +119,7 @@ class _NotificationBellState extends State<NotificationBell> {
     return Stack(
         clipBehavior: Clip.none,
         children: [
-          ImdIconButton(icon: 'bell', onPressed: _open),
+          ImdIconButton(icon: 'bell', onPressed: _open, dense: widget.dense),
           if (unread > 0)
             PositionedDirectional(
               top: -2,

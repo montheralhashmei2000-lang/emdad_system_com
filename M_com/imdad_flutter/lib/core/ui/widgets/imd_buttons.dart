@@ -14,11 +14,15 @@ class ImdMenuButton<T> extends StatelessWidget {
     required this.onSelected,
     this.icon = 'menu',
     this.small = false,
+    this.dense = false,
   });
 
   final String label;
   final String icon;
   final bool small;
+
+  /// أصغر من [small]: لشريط التطبيق العلوي (ارتفاع 28).
+  final bool dense;
   final List<PopupMenuEntry<T>> Function(BuildContext) items;
   final ValueChanged<T> onSelected;
 
@@ -30,17 +34,18 @@ class ImdMenuButton<T> extends StatelessWidget {
       onSelected: onSelected,
       itemBuilder: items,
       child: Container(
-        constraints: BoxConstraints(minHeight: small ? 34 : ImdSizes.touchMin),
-        padding: EdgeInsets.symmetric(horizontal: small ? 12 : 16, vertical: small ? 6 : 9),
+        constraints: BoxConstraints(minHeight: dense ? 28 : (small ? 34 : ImdSizes.touchMin)),
+        padding: EdgeInsets.symmetric(
+            horizontal: dense ? 9 : (small ? 12 : 16), vertical: dense ? 3 : (small ? 6 : 9)),
         decoration: BoxDecoration(
           color: c.surface,
           border: Border.all(color: c.lineStrong),
           borderRadius: BorderRadius.circular(ImdSizes.radius),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          ImdIcon(icon, size: small ? 13 : 15, color: c.text),
+          ImdIcon(icon, size: small || dense ? 13 : 15, color: c.text),
           const SizedBox(width: 6),
-          Text(label, style: TextStyle(fontSize: small ? 12.5 : 13.5, fontWeight: FontWeight.w600, color: c.text)),
+          Text(label, style: TextStyle(fontSize: dense ? 12 : (small ? 12.5 : 13.5), fontWeight: FontWeight.w600, color: c.text)),
           const SizedBox(width: 4),
           ImdIcon('chevron-down', size: 13, color: c.muted),
         ]),
@@ -211,14 +216,17 @@ class _ImdButtonState extends State<ImdButton> {
 
 /// أزرار أيقونة فقط بإطار (`btn btn-o btn-sm` بأيقونة).
 class ImdIconButton extends StatelessWidget {
-  const ImdIconButton({super.key, required this.icon, this.onPressed, this.tooltip, this.kind = ImdBtnKind.outline});
+  const ImdIconButton({super.key, required this.icon, this.onPressed, this.tooltip, this.kind = ImdBtnKind.outline, this.dense = false});
 
   final String icon;
   final VoidCallback? onPressed;
   final String? tooltip;
   final ImdBtnKind kind;
 
+  /// ارتفاع 28 لشريط التطبيق العلوي.
+  final bool dense;
+
   @override
-  Widget build(BuildContext context) =>
-      ImdButton(label: '', icon: icon, onPressed: onPressed, kind: kind, small: true);
+  Widget build(BuildContext context) => ImdButton(
+      label: '', icon: icon, onPressed: onPressed, kind: kind, small: true, height: dense ? 28 : null);
 }

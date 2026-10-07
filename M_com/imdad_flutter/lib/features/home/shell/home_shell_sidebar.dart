@@ -28,6 +28,10 @@ class _Sidebar extends StatelessWidget {
             if (AppSpace.shows(i.space, space) && hasPerm(i.id)) i,
       ];
 
+  /// أبواب القسم [sec] التي يراها المستخدم في المساحة الحالية.
+  List<_MenuItem> _itemsOf(_MenuSection sec) =>
+      [for (final i in sec.items) if (AppSpace.shows(i.space, space) && hasPerm(i.id)) i];
+
   /// هل للمساحة قسمٌ واحد فيُعرض مسطّحًا بلا رأس؟
   static bool _flat(String space, bool Function(String) hasPerm) =>
       _menu
@@ -191,13 +195,27 @@ class _Sidebar extends StatelessWidget {
         Expanded(
           child: SingleChildScrollView(
             child: Column(children: [
-              for (final i in items)
-                _RailTile(
-                  icon: i.icon,
-                  label: i.name,
-                  on: page == i.id,
-                  onTap: () => onGo(i.id),
-                ),
+              // قسمٌ بقائمةٍ واحدة يُعرض مسطّحًا؛ وما سواه تظهر **أيقونات الأقسام
+              // الرئيسية فقط** — ونقرةٌ على أيقونة قسمٍ تفتح قائمةً بأبوابه بجوارها.
+              if (_flat(space, hasPerm))
+                for (final i in items)
+                  _RailTile(
+                    icon: i.icon,
+                    label: i.name,
+                    on: page == i.id,
+                    onTap: () => onGo(i.id),
+                  )
+              else
+                for (final sec in _menu)
+                  if (_itemsOf(sec).isNotEmpty)
+                    _RailSection(
+                      icon: sec.icon,
+                      label: sec.name,
+                      on: _itemsOf(sec).any((i) => i.id == page),
+                      items: _itemsOf(sec),
+                      page: page,
+                      onGo: onGo,
+                    ),
             ]),
           ),
         ),
@@ -234,21 +252,89 @@ class _RailTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.imd;
     final fg = danger ? c.danger : (on ? c.sideText : c.sideMuted);
-    return Semantics(
-      label: label,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          width: 48,
-          height: 44,
-          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: on ? c.sideActive : null,
-            borderRadius: BorderRadius.circular(10),
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        label: label,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            width: 48,
+            height: 44,
+            margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: on ? c.sideActive : null,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: ImdIcon(icon, size: 19, color: fg),
           ),
-          child: ImdIcon(icon, size: 19, color: fg),
+        ),
+      ),
+    );
+  }
+}
+
+/// أيقونة قسمٍ رئيسيّ في الشريط المطويّ: تلميحها اسمه، ونقرتها تفتح قائمةً بأبوابه.
+///
+/// القائمة تُفتح عند الحافة الخارجية للأيقونة (يسارها في الواجهة العربية) فلا
+/// تغطّي الشريط نفسه، والبابُ المفتوح حاليًّا يُعلَّم فيها.
+class _RailSection extends StatelessWidget {
+  const _RailSection({
+    required this.icon,
+    required this.label,
+    required this.on,
+    required this.items,
+    required this.page,
+    required this.onGo,
+  });
+
+  final String icon;
+  final String label;
+
+  /// الصفحة الحالية داخل هذا القسم.
+  final bool on;
+  final List<_MenuItem> items;
+  final String page;
+  final ValueChanged<String> onGo;
+
+  void _open(BuildContext context) {
+    final box = context.findRenderObject() as RenderBox;
+    final origin = box.localToGlobal(Offset.zero);
+    showImdContextMenu(context, Offset(origin.dx, origin.dy), [
+      for (final i in items)
+        ImdMenuItem(
+          label: i.id == page ? '${i.name}  ●' : i.name,
+          icon: i.icon,
+          onTap: () => onGo(i.id),
+        ),
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.imd;
+    final fg = on ? c.sideText : c.sideMuted;
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        label: label,
+        button: true,
+        child: InkWell(
+          onTap: () => _open(context),
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            width: 48,
+            height: 44,
+            margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: on ? c.sideActive : null,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: ImdIcon(icon, size: 19, color: fg),
+          ),
         ),
       ),
     );

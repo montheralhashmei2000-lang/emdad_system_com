@@ -7,6 +7,8 @@ import 'package:imdad/core/security/perm.dart';
 import 'package:imdad/core/theme/app_theme.dart';
 import 'package:imdad/core/ui/imd_page_tabs.dart';
 import 'package:imdad/core/ui/imd_status_bar.dart';
+import 'package:imdad/core/ui/imd_tokens.dart';
+import 'package:imdad/features/home/notification_bell.dart';
 import 'package:imdad/core/ui/imd_widgets.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/sync/auto_sync.dart';
@@ -114,7 +116,42 @@ void main() {
 
     await pump(tester);
     expect(tester.takeException(), isNull);
-    expect(find.text('نظام الإمداد والتموين'), findsWidgets);
+    // الشريط الواحد: لا اسم نظامٍ مكرَّر ولا شارة «IAM محمي» على سطح المكتب.
+    expect(find.text('نظام الإمداد والتموين'), findsNothing);
+    expect(find.text('IAM محمي'), findsNothing);
+  });
+
+  testWidgets('سطح المكتب: شريطٌ علويٌّ واحد يضم التبويبات والأدوات', (tester) async {
+    wideWindow(tester);
+    await enterSupply(tester);
+
+    // الرئيسية تُفتح من الشريط الجانبي: لا تبويبة لها في الشريط العلوي.
+    expect(find.descendant(of: find.byType(ImdPageTabs), matching: find.text('الرئيسية')), findsNothing);
+    // زرّ الطيّ والأدوات (القسم، السمة، الجرس) في الصفّ نفسه.
+    final tabsTop = tester.getTopLeft(find.byTooltip('طيّ القائمة')).dy;
+    final bellTop = tester.getTopLeft(find.byType(NotificationBell)).dy;
+    expect((tabsTop - bellTop).abs(), lessThan(ImdSizes.desktopBarHeight),
+        reason: 'التبويبات والجرس في صفّين مختلفين');
+    // ولا شريط تبويباتٍ مستقلّ تحت الشريط العلوي.
+    final bars = find.byWidgetPredicate((w) => w is Container && w.constraints?.maxHeight == 38);
+    expect(bars, findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('زرّ الطيّ يحوّل القائمة الكاملة إلى أيقوناتٍ ويعيدها', (tester) async {
+    window(tester, 1600);
+    await enterSupply(tester);
+    expect(find.text('العمليات المخزنية'), findsWidgets, reason: 'القائمة كاملةٌ في البدء');
+
+    await tester.tap(find.byTooltip('طيّ القائمة'));
+    await pump(tester);
+    expect(find.text('العمليات المخزنية'), findsNothing, reason: 'بعد الطيّ أيقوناتٌ بلا أسماء');
+    expect(find.byTooltip('توسيع القائمة'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('توسيع القائمة'));
+    await pump(tester);
+    expect(find.text('العمليات المخزنية'), findsWidgets);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('الشريط يُبنى بأبوابه بعد اختيار القسم', (tester) async {
@@ -153,11 +190,24 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('العمليات المخزنية'), findsNothing,
           reason: 'القضيب أيقوناتٌ لا أسماء');
-      // والاسم يبقى في تسمية Semantics لمن يبحث (Tooltip حُذف من القضيب).
+      // الأقسام الرئيسية وحدها تظهر أيقوناتٍ (اسمها في Semantics والتلميح)، وأبوابها
+      // الفرعية لا تُرسم حتى تُفتح قائمة القسم.
+      expect(
+          find.byWidgetPredicate(
+              (w) => w is Semantics && w.properties.label == 'العمليات المخزنية'),
+          findsWidgets);
       expect(
           find.byWidgetPredicate(
               (w) => w is Semantics && w.properties.label == 'استلام'),
-          findsWidgets);
+          findsNothing);
+
+      // نقرة أيقونة القسم تفتح قائمةً بأبوابه، واختيار بابٍ يفتح شاشته.
+      await tester.tap(find.byTooltip('العمليات المخزنية').first);
+      await pump(tester);
+      expect(find.text('استلام'), findsWidgets);
+      await tester.tap(find.text('استلام').last);
+      await pump(tester);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('اليدوية: شريطٌ سفليّ ودرج', (tester) async {

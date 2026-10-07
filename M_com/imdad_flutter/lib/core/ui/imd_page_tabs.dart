@@ -28,7 +28,12 @@ class ImdPageTabs extends StatelessWidget {
     required this.onSelect,
     required this.onClose,
     this.onCloseOthers,
+    this.embedded = false,
   });
+
+  /// داخل شريط التطبيق الواحد: بلا خلفيةٍ ولا إطارٍ ولا ارتفاعٍ خاصّ — يملأ ارتفاع
+  /// الشريط المضيف ويتركه هو يرسم خلفيته.
+  final bool embedded;
 
   final List<ImdOpenPage> pages;
   final String activeId;
@@ -39,6 +44,26 @@ class ImdPageTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.imd;
+    Widget tabAt(ImdOpenPage p) => _Tab(
+          page: p,
+          active: p.id == activeId,
+          closable: embedded || pages.length > 1,
+          embedded: embedded,
+          onTap: () => onSelect(p.id),
+          onClose: () => onClose(p.id),
+          onCloseOthers: onCloseOthers == null || pages.length < 2 ? null : () => onCloseOthers!(p.id),
+        );
+    if (embedded) {
+      // `shrinkWrap`: عرضُ القائمة = عرض تبويباتها (حتى سقف المتاح)، فيبقى ما بعدها
+      // من الشريط فراغًا يُسحب منه الشريط/النافذة. وارتفاعها يُفرض على كل تبويبةٍ
+      // (قيدٌ ضيّق) فتملأ ارتفاع الشريط بلا حساب.
+      return ListView(
+        shrinkWrap: true,
+        scrollDirection: Axis.horizontal,
+        children: [for (final p in pages) tabAt(p)],
+      );
+    }
+    final tabs = Row(children: [for (final p in pages) tabAt(p)]);
     return Container(
       height: 38,
       decoration: BoxDecoration(
@@ -48,19 +73,7 @@ class ImdPageTabs extends StatelessWidget {
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Row(
-          children: [
-            for (final p in pages)
-              _Tab(
-                page: p,
-                active: p.id == activeId,
-                closable: pages.length > 1,
-                onTap: () => onSelect(p.id),
-                onClose: () => onClose(p.id),
-                onCloseOthers: onCloseOthers == null || pages.length < 2 ? null : () => onCloseOthers!(p.id),
-              ),
-          ],
-        ),
+        child: tabs,
       ),
     );
   }
@@ -74,8 +87,10 @@ class _Tab extends StatefulWidget {
     required this.onTap,
     required this.onClose,
     this.onCloseOthers,
+    this.embedded = false,
   });
 
+  final bool embedded;
   final ImdOpenPage page;
   final bool active;
   final bool closable;
@@ -111,9 +126,9 @@ class _TabState extends State<_Tab> {
                   ImdMenuItem(label: 'إغلاق الباقي', onTap: widget.onCloseOthers!),
                 ]),
         child: Container(
-          margin: const EdgeInsets.only(top: 5, left: 2, right: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          constraints: const BoxConstraints(maxWidth: 220),
+          margin: EdgeInsets.only(top: widget.embedded ? 6 : 5, left: 2, right: 2),
+          padding: EdgeInsets.symmetric(horizontal: widget.embedded ? 8 : 10),
+          constraints: BoxConstraints(maxWidth: widget.embedded ? 150 : 220),
           decoration: BoxDecoration(
             color: active ? c.surface : (_hover ? c.hover : null),
             border: Border(

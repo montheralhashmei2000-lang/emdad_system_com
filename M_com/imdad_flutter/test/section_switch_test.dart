@@ -161,14 +161,14 @@ void main() {
         .pages
         .map((p) => p.id)
         .toList();
-    expect(tabTitles(), ['dash', 'items']);
+    expect(tabTitles(), ['items'], reason: 'الرئيسية بلا تبويبة');
 
     await switchSection(tester);
-    expect(tabTitles(), ['dash'], reason: 'تبويبات المحروقات وحدها');
+    expect(tabTitles(), isEmpty, reason: 'تبويبات المحروقات وحدها');
     expect(find.byType(ImdStatusBar), findsOneWidget);
 
     await switchSection(tester);
-    expect(tabTitles(), ['dash', 'items'], reason: 'تبويبات الإمداد كما تُركت');
+    expect(tabTitles(), ['items'], reason: 'تبويبات الإمداد كما تُركت');
   });
 
   testWidgets('اختيار القسم يُحفظ، والتبديل المباشر لا يمرّ بشاشة الاختيار', (tester) async {

@@ -447,7 +447,10 @@ extension ImdThemeX on BuildContext {
 class ImdSizes {
   static double get radius => ImdStyle.classic ? 2 : 12; // --ui-radius
   static const double sideWidth = 290; // .side
-  static const double topbarHeight = 59; // .topbar
+  static const double topbarHeight = 59; // .topbar (الجوال)
+
+  /// الشريط الواحد على سطح المكتب: عنوان النافذة والتبويبات والأدوات في صفٍّ واحد.
+  static const double desktopBarHeight = 40;
   static const EdgeInsets mainPadding = EdgeInsets.symmetric(horizontal: 36, vertical: 28); // ≥1200px
   static const EdgeInsets mainPaddingMid = EdgeInsets.symmetric(horizontal: 28, vertical: 24); // 901–1199px
   // `ImdBp.tablet` اسمٌ بديل لـ`mobile` (≤900)، والمنطق يفحص `mobile` أولًا
