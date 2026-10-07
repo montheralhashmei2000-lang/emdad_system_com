@@ -137,6 +137,12 @@ class MovementsRepo {
                 r.recipientDisplay.equals(unitName))))
       .get();
 
+  /// أحدث أسطر الوارد بتاريخ السند (للمطابقة مع طلبيات الإعاشة).
+  Future<List<Receipt>> recentReceipts({int limit = 400}) => (db.select(db.receipts)
+        ..orderBy([(t) => OrderingTerm.desc(t.date)])
+        ..limit(limit))
+      .get();
+
   Future<List<Issue>> approvableIssues() =>
       (db.select(db.issues)..where((t) => t.status.isIn(approvableIssueStatuses))).get();
 

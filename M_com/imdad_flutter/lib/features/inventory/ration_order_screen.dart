@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -140,7 +139,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
   Future<void> _render() async {
     final scope = Perm.of(context).scope;
     final orders = await _repo.orders(status: _filterStatus, scope: scope);
-    final warehouses = await _db.select(_db.warehouses).get();
+    final warehouses = await CatalogRepo(_db).warehouses();
     final items = await CatalogRepo(_db).items();
     final authorities = await _repo.authorities(onlyActive: true);
     final main = await _repo.mainWarehouseName();
@@ -519,10 +518,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
     final perm = Perm.of(context);
     if (!perm.guard(context, 'rationOrders', PermAction.edit)) return;
 
-    final recent = await (_db.select(_db.receipts)
-          ..orderBy([(t) => OrderingTerm.desc(t.date)])
-          ..limit(400))
-        .get();
+    final recent = await MovementsRepo(_db).recentReceipts();
     if (!mounted) return;
     // سندات التوريد المتاحة للمطابقة — أحدثها أولًا، بلا تكرار المرجع.
     final refs = <String, String>{};
