@@ -979,6 +979,13 @@ class LinkageRepo {
     return out;
   }
 
+  /// مسيرات عهدةٍ واحدة (بلا فرز).
+  Future<List<LinkCustodySheet>> custodySheetsOf(String custodyId) =>
+      (db.select(db.linkCustodySheets)..where((t) => t.custodyId.equals(custodyId))).get();
+
+  /// كل أسطر كل المسيرات (للاقتراحات والإجماليات).
+  Future<List<LinkCustodySheetRow>> allSheetRows() => db.select(db.linkCustodySheetRows).get();
+
   Future<List<LinkCustodySheetRow>> sheetRows(String sheetId) async {
     final rows = await (db.select(db.linkCustodySheetRows)..where((t) => t.sheetId.equals(sheetId))).get();
     rows.sort((a, b) => a.seq.compareTo(b.seq));

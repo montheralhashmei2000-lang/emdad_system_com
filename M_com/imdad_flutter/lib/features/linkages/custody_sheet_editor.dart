@@ -201,12 +201,12 @@ class _CustodySheetEditorState extends State<CustodySheetEditor> {
       if (mounted) setState(() => _otherUsed = 0);
       return;
     }
-    final db = context.read<AppDatabase>();
-    final sheets = await (db.select(db.linkCustodySheets)..where((t) => t.custodyId.equals(c.id))).get();
+    final repo = LinkageRepo(context.read<AppDatabase>());
+    final sheets = await repo.custodySheetsOf(c.id);
     var used = 0.0;
     for (final s in sheets) {
       if (s.id == widget.initial?.id) continue;
-      final rows = await (db.select(db.linkCustodySheetRows)..where((t) => t.sheetId.equals(s.id))).get();
+      final rows = await repo.sheetRows(s.id);
       final t = custodyTotalsIn([
         for (final r in rows)
           CustodyRowValues(
@@ -255,7 +255,7 @@ class _CustodySheetEditorState extends State<CustodySheetEditor> {
   Future<void> _loadHints() async {
     final db = context.read<AppDatabase>();
     final contracts = await LinkageRepo(db).contracts();
-    final all = await db.select(db.linkCustodySheetRows).get();
+    final all = await LinkageRepo(db).allSheetRows();
     Set<String> pick(String Function(LinkCustodySheetRow) f) => {for (final r in all) if (f(r).trim().isNotEmpty) f(r).trim()};
     if (!mounted) return;
     setState(() {
