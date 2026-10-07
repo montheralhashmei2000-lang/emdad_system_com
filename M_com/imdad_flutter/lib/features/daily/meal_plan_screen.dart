@@ -80,8 +80,8 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
     final scope = Perm.of(context).scope;
     final plans = await _repo.plans(status: _filterStatus, scope: scope);
     final items = await CatalogRepo(_db).items();
-    final facilities = await _db.select(_db.facilities).get();
-    final warehouses = await _db.select(_db.warehouses).get();
+    final facilities = await CatalogRepo(_db).facilities();
+    final warehouses = await CatalogRepo(_db).warehouses();
     if (!mounted) return;
     setState(() {
       _plans = plans;
