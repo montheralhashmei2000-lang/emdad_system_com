@@ -12,7 +12,6 @@ const Map<String, int> _allowed = {
   'linkages/custody_sheet_editor.dart': 3,
   'linkages/link_finances.dart': 2,
   'linkages/money_receipts_tab.dart': 1,
-  'inventory/returns_screen.dart': 1,
   'daily/kitchen_log_screen.dart': 1,
   'archive/electronic_archive_screen.dart': 1,
 };

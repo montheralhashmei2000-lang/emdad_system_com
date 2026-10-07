@@ -225,7 +225,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
   Future<void> _fetch() async {
     final perm = Perm.of(context);
     final items = await _catalog.items();
-    final whs = (await _db.select(_db.warehouses).get()..sort((a, b) => a.name.compareTo(b.name)))
+    final whs = (await _catalog.warehouses())
         .where((w) => perm.canWh(w.name))
         .toList();
     final units = await _catalog.units();
