@@ -20,6 +20,9 @@ class UsersRepo {
 
   final AppDatabase db;
 
+  /// كل الحسابات بلا فرز — لشاشات التحليل.
+  Future<List<User>> allUsers() => db.select(db.users).get();
+
   Future<List<User>> users() async {
     final rows = await db.select(db.users).get();
     rows.sort((a, b) => a.username.compareTo(b.username));

@@ -314,6 +314,25 @@ class _FuelLedgerScreenState extends State<FuelLedgerScreen> {
         ImdCol('الرصيد', numeric: true),
       ],
       pageSize: 50,
+      values: () {
+        var run = opening;
+        return [
+          [arDigits(_from), '—', 'رصيد مُرحَّل', 'ما استقرّ في الخزّان قبل بداية المدى', '—', '—', '${nf(opening)} ${Fuel.unit}'],
+          for (final m in moves)
+            () {
+              run = Fuel.round(run + m.inQty - m.outQty);
+              return [
+                arDigits(m.date),
+                m.refNo,
+                m.kind,
+                m.detail.isEmpty ? '—' : m.detail,
+                m.inQty == 0 ? '—' : nf(m.inQty),
+                m.outQty == 0 ? '—' : nf(m.outQty),
+                '${nf(run)} ${Fuel.unit}',
+              ];
+            }(),
+        ];
+      }(),
       rows: [
         // السطر الأول رصيدٌ مُرحَّل لا حركة، فيُميَّز ولا يُجمع مع الوارد.
         [

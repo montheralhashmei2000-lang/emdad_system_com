@@ -8,6 +8,7 @@ import '../../core/ui/imd_files.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_tokens.dart';
+import '../../core/ui/imd_shimmer.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/catalog_repo.dart';
@@ -219,7 +220,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
         ]),
       ),
       if (_loading)
-        const ImdLd('⏳ جارٍ التحميل…')
+        const ImdShimmerTable(rows: 8, columns: 7)
       else
         ImdTable(
           columns: const [

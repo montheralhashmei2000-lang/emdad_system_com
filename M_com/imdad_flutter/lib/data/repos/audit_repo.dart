@@ -111,6 +111,20 @@ class AuditRepo {
     }
   }
 
+  /// كل السجلات بلا تقليم ولا حد — لشاشات التحليل (تقرأ الكل وتفلتر بنفسها).
+  Future<List<AuditLog>> allLogs() => db.select(db.auditLogs).get();
+
+  Future<List<SensitiveReview>> allSensitiveReviews() => db.select(db.sensitiveReviews).get();
+
+  /// وسم تغييرٍ حسّاس بأنه روجع (معرّف المراجعة = معرّف السجل).
+  Future<void> markSensitiveReviewed({required String logId, required String reviewedBy, required String note}) =>
+      db.into(db.sensitiveReviews).insertOnConflictUpdate(SensitiveReviewsCompanion.insert(
+            id: logId,
+            logId: logId,
+            reviewedBy: Value(reviewedBy),
+            note: Value(note),
+          ));
+
   Future<List<AuditLog>> recent({int limit = 300, String risk = '', String query = ''}) async {
     final rows = await (db.select(db.auditLogs)
           ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])

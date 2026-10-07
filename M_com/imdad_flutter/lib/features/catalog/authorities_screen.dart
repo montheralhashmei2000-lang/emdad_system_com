@@ -67,7 +67,7 @@ class _AuthoritiesScreenState extends State<AuthoritiesScreen> {
 
   Future<void> _render() async {
     final rows = await _repo.authorities();
-    final orders = await _db.select(_db.rationOrders).get();
+    final orders = await _repo.orders();
     final usage = <String, int>{};
     for (final o in orders) {
       if (o.authorityId.isEmpty) continue;

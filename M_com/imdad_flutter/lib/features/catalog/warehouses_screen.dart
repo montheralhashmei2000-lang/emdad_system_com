@@ -11,6 +11,7 @@ import '../../data/db/app_database.dart';
 import '../../data/repos/audit_repo.dart';
 import '../../data/repos/camp_ledger_repo.dart';
 import '../../data/repos/catalog_repo.dart';
+import '../../data/repos/movements_repo.dart';
 import 'warehouse_dashboard_view.dart';
 import 'camp_link_field.dart';
 
@@ -63,13 +64,14 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
 
   /// `stoLoad()` ثم `renderStores()`
   Future<void> _render() async {
-    final whs = await _db.select(_db.warehouses).get();
-    final receipts = await _db.select(_db.receipts).get();
-    final issues = await _db.select(_db.issues).get();
-    final transfers = await _db.select(_db.transfers).get();
-    final returns = await _db.select(_db.returns).get();
-    final facs = await _db.select(_db.facilities).get();
-    final units = await _db.select(_db.beneficiaryUnits).get();
+    final moves = MovementsRepo(_db);
+    final whs = await _repo.warehouses();
+    final receipts = await moves.allReceipts();
+    final issues = await moves.allIssues();
+    final transfers = await moves.allTransfers();
+    final returns = await moves.allReturns();
+    final facs = await _repo.facilities();
+    final units = await _repo.units();
     whs.sort((a, b) => a.name.compareTo(b.name));
     final camps = units.where((u) => u.type == 'camp' || u.parentId.isEmpty).toList()
       ..sort((a, b) => a.code.compareTo(b.code));
@@ -191,7 +193,7 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
     if (!mounted) return;
     final actor = context.read<AuthService>().currentUser;
     try {
-      await (_db.delete(_db.warehouses)..where((t) => t.id.equals(it.id))).go();
+      await _repo.deleteWarehouse(it.id);
       await AuditRepo(_db).write('WAREHOUSE_DELETED', 'warehouse', 'حذف مستودع',
           details: {'target': it.name, 'status': 'DELETED', 'qty': u?.count ?? 0, 'risk': 'sensitive'}, actor: actor);
       if (!mounted) return;

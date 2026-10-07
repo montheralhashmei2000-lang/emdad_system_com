@@ -225,6 +225,10 @@ class AssetsRepo {
     return assetId;
   }
 
+  /// كل العهد القائمة (لم تُرجَع بعد) دفعةً واحدة — استعلامٌ لكل صفٍّ يجعل قائمة المئة أصل مئة رحلة.
+  Future<List<AssetAssignment>> openAssignments() =>
+      (db.select(db.assetAssignments)..where((t) => t.returnedDate.equals(''))).get();
+
   /// الحذف يُمنع ما دامت عليه عهدة قائمة: أصلٌ يُحذف وهو بيد وحدةٍ يضيع أثره
   /// ولا يُسأل عنه أحد.
   Future<({bool ok, String error})> delete(String id, {String actor = ''}) async {

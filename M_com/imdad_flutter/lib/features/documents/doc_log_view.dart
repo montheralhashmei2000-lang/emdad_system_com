@@ -7,6 +7,7 @@ import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_tokens.dart';
+import '../../core/ui/imd_shimmer.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/catalog_repo.dart';
@@ -247,7 +248,7 @@ class _DocLogViewState extends State<DocLogView> {
       ),
       const SizedBox(height: 16),
       if (_docs == null)
-        const ImdLd('جارٍ التحميل…')
+        const ImdShimmerTable(rows: 8, columns: 8)
       else
         ImdTable(
           columns: const [
@@ -263,6 +264,20 @@ class _DocLogViewState extends State<DocLogView> {
           ],
           pageSize: 50,
           empty: 'لا توجد مستندات مطابقة',
+          values: [
+            for (final g in rows)
+              [
+                _typeOf(g.kind).label,
+                g.refNo,
+                g.date.isEmpty ? '—' : g.date,
+                g.warehouse.isEmpty ? '—' : g.warehouse,
+                g.party.isEmpty ? '—' : g.party,
+                nf(g.linesCount),
+                _statusLabel(g),
+                g.createdBy.isEmpty ? '—' : g.createdBy,
+                '',
+              ],
+          ],
           rows: [
             for (final g in rows) _row(g),
           ],

@@ -5,6 +5,7 @@ import 'package:drift/drift.dart';
 import '../../core/ids.dart';
 import '../db/app_database.dart';
 import '../../core/error_log.dart';
+import '../../core/ui/imd_format.dart';
 
 /// وحدة قياس الصنف (تُحفظ JSON داخل عمود units).
 class ItemUnit {
@@ -277,6 +278,9 @@ class CatalogRepo {
     return rows;
   }
 
+  /// بترتيب الإنشاء (بلا فرز) — لشاشةٍ تعرض الوحدات بترتيب إدخالها.
+  Future<List<BeneficiaryUnit>> unitsUnsorted() => db.select(db.beneficiaryUnits).get();
+
   Future<List<BeneficiaryUnit>> camps() async =>
       (await units()).where((u) => u.isCamp || u.parentId.isEmpty).toList();
 
@@ -344,6 +348,84 @@ class CatalogRepo {
     if (b.code.isNotEmpty) return 1;
     return a.name.compareTo(b.name);
   }
+
+  // ───────── عمليات تستعملها شاشات الكتالوج (كانت استعلاماتٍ مباشرة في الشاشات) ─────────
+
+  Future<Item?> itemByCode(String code) async =>
+      (await (db.select(db.items)..where((t) => t.code.equals(code))).get()).firstOrNull;
+
+  Future<void> setItemBarcode(String id, String barcode) =>
+      (db.update(db.items)..where((t) => t.id.equals(id))).write(ItemsCompanion(barcode: Value(barcode)));
+
+  /// يفرّغ وحدات الصنف (استيراد صنفٍ بلا وحدة): `saveItem` يضيف وحدةً افتراضية.
+  Future<void> clearItemUnits(String id) =>
+      (db.update(db.items)..where((t) => t.id.equals(id))).write(const ItemsCompanion(units: Value('[]')));
+
+  /// تحديث صنفٍ قائم من صفّ استيراد: الاسم والتصنيف والحد الأدنى دائمًا، والوحدة
+  /// الأساسية إن وُجدت، ووحدةٌ أولى ([firstUnitJson]) إن لم يكن للصنف وحدات.
+  Future<void> updateItemFromImport(
+    String id, {
+    required String name,
+    required String categoryName,
+    required String categoryId,
+    required double minQty,
+    String baseUnit = '',
+    String? firstUnitJson,
+  }) =>
+      (db.update(db.items)..where((t) => t.id.equals(id))).write(ItemsCompanion(
+        name: Value(name),
+        categoryName: Value(categoryName),
+        categoryId: Value(categoryId),
+        baseUnit: baseUnit.isEmpty ? const Value.absent() : Value(baseUnit),
+        units: firstUnitJson == null ? const Value.absent() : Value(firstUnitJson),
+        minQty: Value(minQty),
+      ));
+
+  /// رصيدٌ افتتاحي للصنف في مستودع — تثبيتٌ يستبدل السابق (كشاشة الأرصدة الافتتاحية).
+  Future<void> setOpeningBalance(Item item, String warehouse, double qty, String actor) =>
+      db.transaction(() async {
+        await (db.delete(db.openingBalances)
+              ..where((t) => t.itemId.equals(item.id) & t.warehouse.equals(warehouse)))
+            .go();
+        await db.into(db.openingBalances).insert(OpeningBalancesCompanion.insert(
+              id: Ids.next('opb'),
+              itemId: item.id,
+              itemCode: Value(item.code),
+              itemName: Value(item.name),
+              warehouse: Value(warehouse),
+              qty: Value(qty),
+              date: Value(isoDay(DateTime.now())),
+              setBy: Value(actor),
+            ));
+      });
+
+  Future<void> deleteCategory(String id) =>
+      (db.delete(db.categories)..where((t) => t.id.equals(id))).go();
+
+  Future<void> deleteWarehouse(String id) =>
+      (db.delete(db.warehouses)..where((t) => t.id.equals(id))).go();
+
+  Future<void> deleteUnit(String id) =>
+      (db.delete(db.beneficiaryUnits)..where((t) => t.id.equals(id))).go();
+
+  Future<void> deleteFacility(String id) =>
+      (db.delete(db.facilities)..where((t) => t.id.equals(id))).go();
+
+  Future<void> deleteSupplier(String id) =>
+      (db.delete(db.suppliers)..where((t) => t.id.equals(id))).go();
+
+  /// اشتراكات وحداتٍ في مطبخ/فرن دفعةً واحدة: كل عنصرٍ (معرّف الوحدة ← قائمة معرّفات
+  /// المرافق الجديدة). العمود المفرد `facilityId` يبقى أول اشتراك للتوافق مع التصدير القديم.
+  Future<void> setUnitFacilities(Map<String, List<String>> idsByUnit) => db.transaction(() async {
+        for (final e in idsByUnit.entries) {
+          await (db.update(db.beneficiaryUnits)..where((t) => t.id.equals(e.key))).write(
+            BeneficiaryUnitsCompanion(
+              facilityIds: Value(jsonEncode(e.value)),
+              facilityId: Value(e.value.isEmpty ? '' : e.value.first),
+            ),
+          );
+        }
+      });
 
   static String _newId(String prefix) =>
       Ids.next(prefix);

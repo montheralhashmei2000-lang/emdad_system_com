@@ -537,6 +537,11 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
             });
           },
           footer: _totals(rows),
+          // قيم الخلايا الخام: بحثٌ فوريّ وتصفيةُ أعمدةٍ وتجميعٌ وعدّادُ سجلاتٍ في
+          // شريط الحالة لجداول الحركة الطويلة.
+          values: [
+            for (final (i, r) in rows.indexed) [nf(i + 1), for (final cell in r) cell.text],
+          ],
           rows: [
             for (final (i, r) in rows.indexed)
               [

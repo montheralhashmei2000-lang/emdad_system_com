@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -13,6 +12,8 @@ import '../../core/ui/imd_layout.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
+import '../../data/repos/users_repo.dart';
+import '../../data/repos/movements_repo.dart';
 import '../../data/repos/audit_repo.dart';
 import '../home/home_shell.dart';
 import '../inventory/doc_kit.dart';
@@ -86,11 +87,11 @@ class _SensitiveOpsScreenState extends State<SensitiveOpsScreen> {
 
   /// `smqLoad()`
   Future<void> _load() async {
-    final issues = await _db.select(_db.issues).get();
-    final transfers = await _db.select(_db.transfers).get();
-    final audits = await _db.select(_db.auditLogs).get();
-    final reviews = await _db.select(_db.sensitiveReviews).get();
-    final users = _perm.admin ? await _db.select(_db.users).get() : <User>[];
+    final issues = await MovementsRepo(_db).allIssues();
+    final transfers = await MovementsRepo(_db).allTransfers();
+    final audits = await AuditRepo(_db).allLogs();
+    final reviews = await AuditRepo(_db).allSensitiveReviews();
+    final users = _perm.admin ? await UsersRepo(_db).allUsers() : <User>[];
 
     final reviewed = {for (final r in reviews) r.logId};
     final logs = audits
@@ -183,12 +184,7 @@ class _SensitiveOpsScreenState extends State<SensitiveOpsScreen> {
     if (logId.isEmpty) return;
     final note = await imdPrompt(context, 'ملاحظة المراجعة — اختياري', ok: 'تأكيد المراجعة');
     if (note == null) return;
-    await _db.into(_db.sensitiveReviews).insertOnConflictUpdate(SensitiveReviewsCompanion.insert(
-          id: logId,
-          logId: logId,
-          reviewedBy: Value(_perm.email),
-          note: Value(note.trim()),
-        ));
+    await AuditRepo(_db).markSensitiveReviewed(logId: logId, reviewedBy: _perm.email, note: note.trim());
     await AuditRepo(_db).write(
       'SENSITIVE_REVIEW_MARKED',
       'sensitive_review',

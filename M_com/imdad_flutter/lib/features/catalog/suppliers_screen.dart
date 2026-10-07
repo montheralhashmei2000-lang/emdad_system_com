@@ -8,10 +8,12 @@ import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_layout.dart';
 import '../../core/ui/imd_tokens.dart';
+import '../../core/ui/imd_shimmer.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/audit_repo.dart';
 import '../../data/repos/catalog_repo.dart';
+import '../../data/repos/movements_repo.dart';
 
 /// الموردون — نقل مطابق لـ `renderSuppliers()`: بحث وإحصاءات، نموذج إضافة/تعديل،
 /// ملاحظات تشغيلية، وجدول بالاستخدام (الوارد والمرتجع للمورد) وآخر استخدام.
@@ -60,8 +62,9 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
   /// `supLoad()` ثم `renderSuppliers()`
   Future<void> _render() async {
     final sups = await _repo.suppliers();
-    final receipts = await _db.select(_db.receipts).get();
-    final returns = await _db.select(_db.returns).get();
+    final moves = MovementsRepo(_db);
+    final receipts = await moves.allReceipts();
+    final returns = await moves.allReturns();
     sups.sort((a, b) => a.name.compareTo(b.name));
     final usage = <String, _Usage>{};
     void add(String name, String kind, String date) {
@@ -140,7 +143,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
     if (!mounted) return;
     final actor = context.read<AuthService>().currentUser;
     try {
-      await (_db.delete(_db.suppliers)..where((t) => t.id.equals(it.id))).go();
+      await _repo.deleteSupplier(it.id);
       await AuditRepo(_db).write('SUPPLIER_DELETED', 'supplier', 'حذف مورد',
           details: {'target': it.name, 'status': 'DELETED', 'qty': u?.count ?? 0, 'risk': 'sensitive'}, actor: actor);
       if (!mounted) return;
@@ -236,7 +239,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
         ),
       ]),
       if (_loading)
-        const ImdLd('جارٍ التحميل…')
+        const ImdShimmerTable(rows: 6, columns: 5)
       else
         ImdTable(
           minWidth: 820,

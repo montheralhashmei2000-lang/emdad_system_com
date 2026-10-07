@@ -1,11 +1,9 @@
 import 'dart:math' as math;
 
-import 'package:drift/drift.dart' show BooleanExpressionOperators, Value;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/ids.dart';
 import '../../core/print/barcode_labels.dart';
 import '../../core/print/barcode128.dart';
 import '../../core/security/perm.dart';
@@ -54,6 +52,7 @@ String _fmtNum(double v) => v == v.roundToDouble() ? v.toInt().toString() : v.to
 class _ItemsScreenState extends State<ItemsScreen> {
   late final AppDatabase _db = context.read<AppDatabase>();
   late final CatalogRepo _repo = CatalogRepo(_db);
+  late final MovementsRepo _moves = MovementsRepo(_db);
 
   // حالة الشاشة `itm`
   String _tab = 'list';
@@ -365,7 +364,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
     var ok = 0, skip = 0, qtyPending = 0;
     // الرصيد لا يُحفظ على الصنف: يصير رصيدًا افتتاحيًا في مستودع، مصدر الأرصدة
     // الوحيد. مع مستودع واحد يُعرف مكانه؛ ومع أكثر يُترك لشاشة الأرصدة الافتتاحية.
-    final whs = await _db.select(_db.warehouses).get();
+    final whs = await _repo.warehouses();
     final soleWh = whs.length == 1 ? whs.single.name : '';
     for (final r in rows) {
       final code = (r['code'] ?? '').trim();
@@ -379,20 +378,21 @@ class _ItemsScreenState extends State<ItemsScreen> {
         final unit = (r['unit'] ?? '').trim();
         final qty = double.tryParse((r['qty'] ?? '').trim()) ?? 0;
         final min = double.tryParse((r['min'] ?? '').trim()) ?? 0;
-        final existing = await (_db.select(_db.items)..where((t) => t.code.equals(code))).get();
+        final existingItem = await _repo.itemByCode(code);
         final catRow = _cats.where((x) => x.name == cat).firstOrNull;
-        if (existing.isNotEmpty) {
-          final it = existing.first;
-          await (_db.update(_db.items)..where((t) => t.id.equals(it.id))).write(ItemsCompanion(
-            name: Value(name),
-            categoryName: Value(cat),
-            categoryId: Value(catRow?.id ?? it.categoryId),
-            baseUnit: unit.isEmpty ? const Value.absent() : Value(unit),
-            units: (unit.isEmpty || _unitsRaw(it).isNotEmpty)
-                ? const Value.absent()
-                : Value('[{"name":${_jsonStr(unit)},"factor":1,"isBase":true}]'),
-            minQty: Value(min),
-          ));
+        if (existingItem != null) {
+          final it = existingItem;
+          await _repo.updateItemFromImport(
+            it.id,
+            name: name,
+            categoryName: cat,
+            categoryId: catRow?.id ?? it.categoryId,
+            baseUnit: unit,
+            firstUnitJson: (unit.isEmpty || _unitsRaw(it).isNotEmpty)
+                ? null
+                : '[{"name":${_jsonStr(unit)},"factor":1,"isBase":true}]',
+            minQty: min,
+          );
         } else {
           final id = await _repo.saveItem(
             code: code,
@@ -404,15 +404,15 @@ class _ItemsScreenState extends State<ItemsScreen> {
             minQty: min,
           );
           if (unit.isEmpty) {
-            await (_db.update(_db.items)..where((t) => t.id.equals(id))).write(const ItemsCompanion(units: Value('[]')));
+            await _repo.clearItemUnits(id);
           }
         }
         if (qty != 0) {
           if (soleWh.isEmpty) {
             qtyPending++;
           } else {
-            final item = await (_db.select(_db.items)..where((t) => t.code.equals(code))).getSingle();
-            await _setOpening(item, soleWh, qty, actor);
+            final item = (await _repo.itemByCode(code))!;
+            await _repo.setOpeningBalance(item, soleWh, qty, actor);
           }
         }
         ok++;
@@ -428,25 +428,6 @@ class _ItemsScreenState extends State<ItemsScreen> {
       '${qtyPending > 0 ? ' — لم تُسجَّل كميات $qtyPending صنفًا لتعدد المستودعات: أدخلها من «الأرصدة الافتتاحية»' : ''}',
     );
     await _fetch();
-  }
-
-  /// رصيد افتتاحي للصنف في المستودع — تثبيت يستبدل السابق كما في شاشة الأرصدة الافتتاحية.
-  Future<void> _setOpening(Item item, String warehouse, double qty, String actor) async {
-    await _db.transaction(() async {
-      await (_db.delete(_db.openingBalances)
-            ..where((t) => t.itemId.equals(item.id) & t.warehouse.equals(warehouse)))
-          .go();
-      await _db.into(_db.openingBalances).insert(OpeningBalancesCompanion.insert(
-            id: Ids.next('opb'),
-            itemId: item.id,
-            itemCode: Value(item.code),
-            itemName: Value(item.name),
-            warehouse: Value(warehouse),
-            qty: Value(qty),
-            date: Value(isoDay(DateTime.now())),
-            setBy: Value(actor),
-          ));
-    });
   }
 
   static String _jsonStr(String s) => '"${s.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"';
@@ -535,7 +516,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
     if (!await imdConfirm(context, 'حذف التصنيف؟ الأصناف المرتبطة به تحتفظ بالاسم القديم.', ok: 'حذف', danger: true)) {
       return;
     }
-    await (_db.delete(_db.categories)..where((t) => t.id.equals(cat.id))).go();
+    await _repo.deleteCategory(cat.id);
     if (!mounted) return;
     showImdToast(context, '✔ حُذف التصنيف');
     await _fetch();
@@ -801,9 +782,9 @@ class _ItemsScreenState extends State<ItemsScreen> {
     }
     if (us.isEmpty) return showImdToast(context, '✖ أضف وحدة قياس واحدة على الأقل');
     if (!us.any((u) => u.isBase)) us[0] = ItemUnit(name: us[0].name, factor: us[0].factor, isBase: true);
-    final dup = await (_db.select(_db.items)..where((t) => t.code.equals(code))).get();
+    final dup = await _repo.itemByCode(code);
     if (!mounted) return;
-    if (dup.isNotEmpty && dup.first.id != _editId) return showImdToast(context, '✖ الكود مستخدم لصنف آخر');
+    if (dup != null && dup.id != _editId) return showImdToast(context, '✖ الكود مستخدم لصنف آخر');
     setState(() => _saving = true);
     try {
       final cat = _cats.where((x) => x.id == _iCat).firstOrNull;
@@ -865,9 +846,9 @@ class _ItemsScreenState extends State<ItemsScreen> {
     }
     setState(() => _balOut = const ImdLd('جارٍ الحساب…', center: true));
     final it = _items.firstWhere((x) => x.id == id);
-    final rc = (await (_db.select(_db.receipts)..where((t) => t.itemId.equals(id))).get())
+    final rc = (await _moves.receiptsOfItem(id))
         .where((r) => r.status != 'DRAFT');
-    final iss = (await (_db.select(_db.issues)..where((t) => t.itemId.equals(id))).get())
+    final iss = (await _moves.issuesOfItem(id))
         .where((r) => r.status != 'DRAFT');
     final units = _unitsRaw(it);
     double fac(String u) {
@@ -939,10 +920,10 @@ class _ItemsScreenState extends State<ItemsScreen> {
       return;
     }
     setState(() => _movOut = const ImdLd('جارٍ التحميل…', center: true));
-    final rc = (await (_db.select(_db.receipts)..where((t) => t.itemId.equals(id))).get())
+    final rc = (await _moves.receiptsOfItem(id))
         .where((r) => r.status != 'DRAFT')
         .map((r) => (t: 'in', at: r.createdAt, date: r.date, side: r.supplier.isNotEmpty ? r.supplier : r.warehouse, qty: r.qty, unit: r.unitName, ref: r.refNo, notes: r.notes));
-    final iss = (await (_db.select(_db.issues)..where((t) => t.itemId.equals(id))).get())
+    final iss = (await _moves.issuesOfItem(id))
         .where((r) => r.status != 'DRAFT')
         .map((r) => (
               t: 'out',
@@ -1113,7 +1094,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
       final ms = DateTime.now().millisecondsSinceEpoch.toString();
       final bc = '104${ms.substring(ms.length - 9)}${rnd.nextInt(90) + 10}';
       try {
-        await (_db.update(_db.items)..where((t) => t.id.equals(x.id))).write(ItemsCompanion(barcode: Value(bc)));
+        await _repo.setItemBarcode(x.id, bc);
         n++;
       } catch (err, stack) {
         ErrorLogger.log('items.barcodeGenerate', err, stack);

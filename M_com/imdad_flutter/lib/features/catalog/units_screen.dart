@@ -9,6 +9,7 @@ import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/catalog_repo.dart';
+import '../../data/repos/movements_repo.dart';
 
 /// الوحدات المستفيدة — نقل مطابق لـ `renderUnits()`: الشجرة التنظيمية (معسكرات ووحدات تابعة)
 /// مع الترقيم التلقائي من `imdad-upgrade-v4.js`، وسجل الصرف الاستهلاكي للوحدة.
@@ -60,7 +61,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
 
   /// `unFetch()` — بترتيب الإنشاء.
   Future<void> _fetch() async {
-    final rows = await _db.select(_db.beneficiaryUnits).get();
+    final rows = await _repo.unitsUnsorted();
     if (!mounted) return;
     setState(() {
       _units = rows;
@@ -374,7 +375,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
     if (!Perm.of(context).guard(context, 'units', 'delete')) return;
     if (!await imdConfirm(context, 'حذف هذه الوحدة نهائيًا؟', ok: 'حذف', danger: true)) return;
     try {
-      await (_db.delete(_db.beneficiaryUnits)..where((t) => t.id.equals(u.id))).go();
+      await _repo.deleteUnit(u.id);
       if (_editId == u.id) _editId = null;
       if (!mounted) return;
       showImdToast(context, '✔ حُذفت الوحدة');
@@ -455,8 +456,8 @@ class _UnitsScreenState extends State<UnitsScreen> {
       return;
     }
     setState(() => _histOut = const ImdLdText('⏳ جارٍ التحميل…'));
-    final iss = await _db.select(_db.issues).get();
-    final items = {for (final i in await _db.select(_db.items).get()) i.id: i.name.isNotEmpty ? i.name : i.code};
+    final iss = await MovementsRepo(_db).allIssues();
+    final items = {for (final i in await _repo.items()) i.id: i.name.isNotEmpty ? i.name : i.code};
     final fMs = f.isEmpty ? null : DateTime.parse('${f}T00:00:00').millisecondsSinceEpoch;
     final tMs = t.isEmpty ? null : DateTime.parse('${t}T23:59:59').millisecondsSinceEpoch;
     final rows = iss.where((r) {

@@ -1,6 +1,4 @@
-import 'dart:convert';
 
-import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -60,8 +58,7 @@ class _KitchensScreenState extends State<KitchensScreen> {
   /// `kitFetchAll()`
   Future<void> _fetch() async {
     final facs = await _repo.facilities();
-    final whs = await _db.select(_db.warehouses).get()
-      ..sort((a, b) => a.name.compareTo(b.name));
+    final whs = await _repo.warehouses();
     final units = await _repo.units();
     if (!mounted) return;
     setState(() {
@@ -150,7 +147,7 @@ class _KitchensScreenState extends State<KitchensScreen> {
                   kind: ImdBtnKind.danger,
                   onPressed: () async {
                     if (!await imdConfirm(context, 'حذف هذا المطبخ/الفرن نهائيًا؟', ok: 'حذف', danger: true)) return;
-                    await (_db.delete(_db.facilities)..where((t) => t.id.equals(f.id))).go();
+                    await _repo.deleteFacility(f.id);
                     if (!context.mounted) return;
                     showImdToast(context, '✔ تم الحذف');
                     await _fetch();
@@ -353,28 +350,18 @@ class _KitchensScreenState extends State<KitchensScreen> {
   Future<void> _saveSubs() async {
     if (!Perm.of(context).guard(context, 'kitchens', 'edit')) return;
     if (_subFid.isEmpty) return showImdToast(context, '✖ اختر المطبخ/الفرن أولًا');
-    var n = 0;
-    await _db.transaction(() async {
-      for (final u in _units) {
-        final checked = _subChecks[u.id] ?? false;
-        final current = facilityIdsOf(u);
-        final was = current.contains(_subFid);
-        if (checked == was) continue;
+    final changes = <String, List<String>>{};
+    for (final u in _units) {
+      final checked = _subChecks[u.id] ?? false;
+      final current = facilityIdsOf(u);
+      final was = current.contains(_subFid);
+      if (checked == was) continue;
 
-        // هذا الاشتراك وحده يُضاف أو يُزال؛ بقية اشتراكات الوحدة لا تُمس.
-        final next = checked
-            ? [...current, _subFid]
-            : current.where((id) => id != _subFid).toList();
-        await (_db.update(_db.beneficiaryUnits)..where((t) => t.id.equals(u.id))).write(
-          BeneficiaryUnitsCompanion(
-            facilityIds: Value(jsonEncode(next)),
-            // العمود المفرد يبقى متوافقًا مع التصدير القديم: أول اشتراك.
-            facilityId: Value(next.isEmpty ? '' : next.first),
-          ),
-        );
-        n++;
-      }
-    });
+      // هذا الاشتراك وحده يُضاف أو يُزال؛ بقية اشتراكات الوحدة لا تُمس.
+      changes[u.id] = checked ? [...current, _subFid] : current.where((id) => id != _subFid).toList();
+    }
+    await _repo.setUnitFacilities(changes);
+    final n = changes.length;
     if (!mounted) return;
     if (n == 0) return showImdToast(context, 'لا تغييرات لحفظها');
     showImdToast(context, '✔ حُفظت الاشتراكات ($n تغيير)');

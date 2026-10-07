@@ -12,6 +12,9 @@ import '../../core/ui/imd_layout.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
+import '../../data/repos/users_repo.dart';
+import '../../data/repos/audit_repo.dart';
+import '../../data/repos/stocktake_repo.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../domain/stock_ledger.dart';
@@ -120,14 +123,14 @@ class _ExecutiveCmdScreenState extends State<ExecutiveCmdScreen> {
     final d7 = iso(since7);
 
     final items = await CatalogRepo(_db).items();
-    final receipts = await _db.select(_db.receipts).get();
-    final issues = await _db.select(_db.issues).get();
-    final transfers = await _db.select(_db.transfers).get();
-    final returns = await _db.select(_db.returns).get();
-    final stocktakes = await _db.select(_db.stocktakes).get();
-    final audits = await _db.select(_db.auditLogs).get();
-    final reviews = await _db.select(_db.sensitiveReviews).get();
-    final users = _perm.admin ? await _db.select(_db.users).get() : <User>[];
+    final receipts = await MovementsRepo(_db).allReceipts();
+    final issues = await MovementsRepo(_db).allIssues();
+    final transfers = await MovementsRepo(_db).allTransfers();
+    final returns = await MovementsRepo(_db).allReturns();
+    final stocktakes = await StocktakeRepo(_db).allSessions();
+    final audits = await AuditRepo(_db).allLogs();
+    final reviews = await AuditRepo(_db).allSensitiveReviews();
+    final users = _perm.admin ? await UsersRepo(_db).allUsers() : <User>[];
     final balances = await MovementsRepo(_db).balances(scope: _perm.scope);
 
     _draftReceipts = receipts.where((x) => x.status == 'DRAFT').map((x) => x.refNo).toSet().length;

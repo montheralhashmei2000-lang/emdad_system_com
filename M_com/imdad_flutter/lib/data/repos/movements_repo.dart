@@ -71,6 +71,17 @@ class MovementsRepo {
 
   final AppDatabase db;
 
+  // ───────── قراءات خام للشاشات (كانت `db.select` مباشرة فيها) ─────────
+  Future<List<Receipt>> allReceipts() => db.select(db.receipts).get();
+  Future<List<Issue>> allIssues() => db.select(db.issues).get();
+  Future<List<Transfer>> allTransfers() => db.select(db.transfers).get();
+  Future<List<Return>> allReturns() => db.select(db.returns).get();
+
+  Future<List<Receipt>> receiptsOfItem(String itemId) =>
+      (db.select(db.receipts)..where((t) => t.itemId.equals(itemId))).get();
+  Future<List<Issue>> issuesOfItem(String itemId) =>
+      (db.select(db.issues)..where((t) => t.itemId.equals(itemId))).get();
+
   // ───────── دفتر الأرصدة ─────────
   /// يبني دفتر الأرصدة من كل الحركات المحفوظة (نفس قواعد stock-ledger.js).
   Future<StockLedger> ledger() async {

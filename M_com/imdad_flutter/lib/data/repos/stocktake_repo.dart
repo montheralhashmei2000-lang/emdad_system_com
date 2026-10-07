@@ -28,6 +28,8 @@ class StocktakeRepo {
   static const String decisionIgnore = 'IGNORE';
   static const String decisionRecount = 'RECOUNT';
 
+  Future<List<Stocktake>> allSessions() => db.select(db.stocktakes).get();
+
   Future<List<Stocktake>> sessions({String? warehouse, String? status}) async {
     final q = db.select(db.stocktakes);
     if (warehouse != null && warehouse.isNotEmpty) {

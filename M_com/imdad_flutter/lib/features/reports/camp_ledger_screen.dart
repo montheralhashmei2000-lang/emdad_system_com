@@ -333,6 +333,20 @@ class _CampLedgerScreenState extends State<CampLedgerScreen> {
           ImdCol('', center: true),
         ],
         pageSize: 50,
+        values: [
+          for (final r in _rows)
+            [
+              r.ledger.itemName,
+              nf(r.amounts.openingEntitled),
+              nf(r.amounts.entitlementTotal),
+              nf(r.amounts.delivered),
+              nf(r.amounts.entitlementBalance),
+              r.amounts.entitlementStatus.label,
+              nf(r.amounts.consumedKitchen),
+              nf(r.amounts.stockBalance),
+              '',
+            ],
+        ],
         rows: [
           for (final r in _rows)
             [

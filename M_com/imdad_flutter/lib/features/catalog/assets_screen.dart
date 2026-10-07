@@ -12,6 +12,7 @@ import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/assets_repo.dart';
+import '../../data/repos/catalog_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/assets.dart';
 import 'asset_barcode_sheet.dart';
@@ -136,16 +137,15 @@ class _AssetsScreenState extends State<AssetsScreen> {
   Future<void> _render() async {
     final scope = Perm.of(context).scope;
     final rows = await _repo.assets(type: _filterType, status: _filterStatus, scope: scope);
-    final facilities = await _db.select(_db.facilities).get();
-    final units = await _db.select(_db.beneficiaryUnits).get();
-    final warehouses = await _db.select(_db.warehouses).get();
-    final suppliers = await _db.select(_db.suppliers).get();
+    final catalog = CatalogRepo(_db);
+    final facilities = await catalog.facilities();
+    final units = await catalog.unitsUnsorted();
+    final warehouses = await catalog.warehouses();
+    final suppliers = await catalog.suppliers();
 
     // العهد القائمة تُقرأ دفعة واحدة: استعلامٌ لكل صف يجعل قائمة بمئة أصل
     // مئةَ رحلة إلى القاعدة عند كل إعادة رسم.
-    final open = await (_db.select(_db.assetAssignments)
-          ..where((t) => t.returnedDate.equals('')))
-        .get();
+    final open = await _repo.openAssignments();
 
     if (!mounted) return;
     setState(() {
