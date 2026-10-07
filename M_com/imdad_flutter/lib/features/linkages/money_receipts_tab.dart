@@ -296,7 +296,7 @@ class _ReceiptFormState extends State<_ReceiptForm> {
     try {
       final comp = _companion();
       await widget.repo.saveMoneyReceipt(comp, actor: widget.actor);
-      final saved = await (widget.repo.db.select(widget.repo.db.linkMoneyReceipts)..where((t) => t.id.equals(comp.id.value))).getSingle();
+      final saved = await widget.repo.moneyReceiptById(comp.id.value);
       return saved;
     } catch (e) {
       if (mounted) showImdToast(context, '✖ $e', error: true);

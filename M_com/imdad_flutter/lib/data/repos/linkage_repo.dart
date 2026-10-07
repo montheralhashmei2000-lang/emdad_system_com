@@ -1084,6 +1084,9 @@ class LinkageRepo {
 
   // ───────────────── استلام مبلغ مالي ─────────────────
 
+  Future<LinkMoneyReceipt> moneyReceiptById(String id) =>
+      (db.select(db.linkMoneyReceipts)..where((t) => t.id.equals(id))).getSingle();
+
   /// سندات استلام المبالغ، الأحدث أولًا.
   Future<List<LinkMoneyReceipt>> moneyReceipts() async {
     final rows = await db.select(db.linkMoneyReceipts).get();
