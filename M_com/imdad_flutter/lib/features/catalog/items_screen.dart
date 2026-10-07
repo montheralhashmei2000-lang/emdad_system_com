@@ -1014,7 +1014,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                   Row(mainAxisSize: MainAxisSize.min, children: [
                     Text('نسخ:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: c.text)),
                     const SizedBox(width: 6),
-                    SizedBox(width: 70, child: ImdFld(controller: _bcCopies, number: true, dense: true)),
+                    ImdFit(width: 70, child: ImdFld(controller: _bcCopies, number: true, dense: true)),
                     const SizedBox(width: 6),
                     ImdScanButton(controller: _bcCopies),
                   ]),
