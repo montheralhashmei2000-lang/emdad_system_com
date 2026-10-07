@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -41,7 +40,7 @@ class _PendingScreenState extends State<PendingScreen> {
 
   /// `poLoad()`
   Future<void> _load() async {
-    final rows = await (_db.select(_db.issues)..where((t) => t.status.equals('ORDER'))).get();
+    final rows = await MovementsRepo(_db).orderIssues();
     if (mounted) setState(() => _docs = rows);
   }
 
@@ -86,15 +85,7 @@ class _PendingScreenState extends State<PendingScreen> {
     if (reason == null || reason.trim().isEmpty || !mounted) return;
     final by = Perm.of(context).email;
     try {
-      await _db.transaction(() async {
-        for (final d in g) {
-          await (_db.update(_db.issues)..where((t) => t.id.equals(d.id))).write(IssuesCompanion(
-            status: const Value('REJECTED'),
-            rejectReason: Value(reason.trim()),
-            rejectedBy: Value(by),
-          ));
-        }
-      });
+      await MovementsRepo(_db).rejectIssueRows(g, reason: reason, by: by);
       if (!mounted) return;
       showImdToast(context, '✖ رُفض الأمر');
       await _load();

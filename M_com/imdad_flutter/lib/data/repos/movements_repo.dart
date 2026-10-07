@@ -137,6 +137,20 @@ class MovementsRepo {
                 r.recipientDisplay.equals(unitName))))
       .get();
 
+  Future<List<Issue>> orderIssues() => (db.select(db.issues)..where((t) => t.status.equals('ORDER'))).get();
+
+  /// رفض أسطر أمر صرف معلَّق في معاملةٍ واحدة.
+  Future<void> rejectIssueRows(Iterable<Issue> rows, {required String reason, required String by}) =>
+      db.transaction(() async {
+        for (final d in rows) {
+          await (db.update(db.issues)..where((t) => t.id.equals(d.id))).write(IssuesCompanion(
+            status: const Value('REJECTED'),
+            rejectReason: Value(reason.trim()),
+            rejectedBy: Value(by),
+          ));
+        }
+      });
+
   Future<List<Receipt>> draftReceipts() => (db.select(db.receipts)..where((t) => t.status.equals('DRAFT'))).get();
   Future<List<Transfer>> pendingTransfers() => (db.select(db.transfers)..where((t) => t.status.equals('PENDING'))).get();
 
