@@ -208,6 +208,9 @@ class DailyRepo {
 
   // --------------------------------------------------- نسب الاستحقاق
 
+  /// ينفّذ [body] في معاملةٍ واحدة (حفظ عدة أسطر سجلٍّ معًا أو لا شيء).
+  Future<T> atomic<T>(Future<T> Function() body) => db.transaction(body);
+
   Future<List<Entitlement>> entitlements() => db.select(db.entitlements).get();
 
   Future<void> saveEntitlement({

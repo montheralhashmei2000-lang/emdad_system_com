@@ -189,7 +189,7 @@ class _KitchenLogScreenState extends State<KitchenLogScreen> {
     }
 
     setState(() => _saving = true);
-    await _db.transaction(() async {
+    await _daily.atomic(() async {
       for (final (r, it, qty, baseQty) in out) {
         final ent = _entOf(it.id);
         await _daily.saveKitchenLog(
