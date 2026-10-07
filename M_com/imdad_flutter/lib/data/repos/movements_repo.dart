@@ -138,6 +138,13 @@ class MovementsRepo {
       .get();
 
   /// أحدث أسطر الوارد بتاريخ السند (للمطابقة مع طلبيات الإعاشة).
+  /// عدد السندات (مراجع مميّزة) لا الأسطر — تجميعٌ في SQL.
+  Future<int> distinctDocCount(String table) async {
+    assert(const {'receipts', 'issues'}.contains(table));
+    final r = await db.customSelect('SELECT COUNT(DISTINCT ref_no) AS c FROM "$table"').getSingle();
+    return r.read<int>('c');
+  }
+
   Future<List<Receipt>> recentReceipts({int limit = 400}) => (db.select(db.receipts)
         ..orderBy([(t) => OrderingTerm.desc(t.date)])
         ..limit(limit))
