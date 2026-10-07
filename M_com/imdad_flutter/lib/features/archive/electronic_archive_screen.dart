@@ -18,6 +18,7 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/archive_auto.dart';
 import '../../data/repos/archive_repo.dart';
+import '../../data/repos/catalog_repo.dart';
 import '../../domain/access_control.dart';
 import 'archive_auto_settings.dart';
 
@@ -95,7 +96,7 @@ class _ElectronicArchiveScreenState extends State<ElectronicArchiveScreen> {
   // ───────── التحميل ─────────
   Future<void> _load() async {
     final rows = await _repo.list();
-    final whs = await _db.select(_db.warehouses).get();
+    final whs = await CatalogRepo(_db).warehouses();
     final cats = await _repo.categories();
     final tags = await _repo.tags();
     if (!mounted) return;
