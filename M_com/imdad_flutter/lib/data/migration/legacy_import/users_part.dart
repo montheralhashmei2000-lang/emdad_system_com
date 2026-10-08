@@ -1,0 +1,178 @@
+part of '../legacy_import.dart';
+
+/// الحسابات: حارس رفض الاستقبال (`_userRejection`) واستيراد الصفوف.
+/// كلا الموضعين منقولٌ حرفيًّا بشروطه وترتيبها كما كانت.
+///
+/// نقلٌ حرفيّ من `LegacyImporter` — خليطٌ في المكتبة نفسها، فواجهة
+/// المستورد العامة (`importJson`/`importFile`) لم تتغيّر.
+mixin _LegacyUsers on _LegacyBase {
+  // ───────── الجداول ─────────
+  /// سبب رفض استقبال حسابٍ، أو `null` إن قُبل.
+  ///
+  /// **قاعدتان، كلتاهما تُقاس بالمحلي لا بالوارد وحده:**
+  ///  • **رفع الدور** إلى `admin`/`owner` (حسابٌ جديد، أو رتبةٌ أعلى من المحلية) يلزمه
+  ///    توقيع المالك `r` على `userId|role|updatedAt`. خفضُ الدور أو بقاؤه لا يلزمه.
+  ///  • **فكّ حجبٍ** (قسمٌ محجوبٌ محليًّا غاب من الوارد) يلزمه توقيع `s` على
+  ///    `userId|section_blocked|updatedAt`. إضافة حجب لا تلزمه.
+  ///
+  /// وبلا مفتاح مالكٍ مضبوط (وضع تطوير) لا تُفرض القاعدتان — كحال تفعيل الأجهزة.
+  ({String kind, String reason})? _userRejection(Map<String, dynamic> u, User? local) {
+    if (_ownerKey.isEmpty) return null;
+    final id = _id(u);
+    final role = _s(u, 'role', 'user');
+    final updatedSec = u['updatedAt'] is num ? (u['updatedAt'] as num).toInt() : null;
+    final sigs = OwnerSignature.parse(u['ownerSig'] is String ? u['ownerSig'] as String : null);
+
+    if (OwnerSignature.rank(role) > OwnerSignature.rank(local?.role)) {
+      final ok = updatedSec != null &&
+          OwnerSignature.verifyRole(
+            sigB64: sigs[OwnerSignature.roleKey] ?? '',
+            userId: id,
+            role: role,
+            updatedAtSec: updatedSec,
+            publicKey: _ownerKey,
+          );
+      if (!ok) return (kind: 'role', reason: 'رفع الدور إلى «$role» بلا توقيع مالكٍ صحيح');
+    }
+
+    // **حسابٌ مميَّز قائم** (مدير/مالك محليًّا ومديرٌ/مالك واردًا): أي تغيير في
+    // بصمة كلمة المرور أو الصلاحيات أو النطاق أو التفعيل يلزمه توقيع المالك `c` على
+    // القيم الواردة نفسها. وإلا استبدل جهازٌ مقترن هاش المدير بهاشٍ يعرفه فدخل
+    // بالإدارة بلا رفع دورٍ يُرفض. خفضُ الدور لا يلزمه (لا يمنح شيئًا).
+    if (local != null && OwnerSignature.rank(local.role) > 0 && OwnerSignature.rank(role) > 0) {
+      // بصمةٌ غائبة أو فارغة لا تُكتب (انظر `_importUsers`): تبقى القائمة محليًّا.
+      final hasSecret = _s(u, 'saltHex').isNotEmpty && _s(u, 'hashHex').isNotEmpty;
+      final inSalt = hasSecret ? _s(u, 'saltHex') : local.saltHex;
+      final inHash = hasSecret ? _s(u, 'hashHex') : local.hashHex;
+      final inPerms = u.containsKey('permissions') ? _json(u['permissions'], '{}') : local.permissions;
+      final inScope = u.containsKey('warehouseScope')
+          ? (u['warehouseScope'] is List ? _json(u['warehouseScope']) : _s(u, 'warehouseScope', 'ALL'))
+          : local.warehouseScope;
+      final inActive = u.containsKey('active') ? _b(u, 'active', true) : local.active;
+      final inApproved = u.containsKey('approved') ? _b(u, 'approved', true) : local.approved;
+      final changed = inSalt != local.saltHex ||
+          inHash != local.hashHex ||
+          inPerms != local.permissions ||
+          inScope != local.warehouseScope ||
+          inActive != local.active ||
+          inApproved != local.approved;
+      if (changed) {
+        final ok = updatedSec != null &&
+            OwnerSignature.verifyCreds(
+              sigB64: sigs[OwnerSignature.credsKey] ?? '',
+              userId: id,
+              role: role,
+              saltHex: inSalt,
+              hashHex: inHash,
+              permissions: inPerms,
+              warehouseScope: inScope,
+              active: inActive,
+              approved: inApproved,
+              updatedAtSec: updatedSec,
+              publicKey: _ownerKey,
+            );
+        if (!ok) return (kind: 'credentials', reason: 'تغيير بيانات دخول أو صلاحيات حساب مدير/مالك بلا توقيع مالكٍ صحيح');
+      }
+    }
+
+    // غياب الحقل (نظيرٌ أقدم) ليس فكًّا: لا يمسّ حجبًا قائمًا أصلًا (يُترك الحقل).
+    if (u['sectionBlocked'] is String) {
+      final incomingJson = u['sectionBlocked'] as String;
+      final localSet = SectionBlock.parse(local?.sectionBlocked);
+      final removed = localSet.difference(SectionBlock.parse(incomingJson));
+      if (removed.isNotEmpty) {
+        final ok = updatedSec != null &&
+            OwnerSignature.verifySections(
+              sigB64: sigs[OwnerSignature.sectionsKey] ?? '',
+              userId: id,
+              blockedJson: incomingJson,
+              updatedAtSec: updatedSec,
+              publicKey: _ownerKey,
+            );
+        if (!ok) return (kind: 'unblock', reason: 'فكّ حجب (${(removed.toList()..sort()).join('، ')}) بلا توقيع مالكٍ صحيح');
+      }
+    }
+    return null;
+  }
+
+  Future<void> _importUsers(Object? raw, LegacyImportResult res, {required bool trusted}) async {
+    final rows = _rows(raw);
+    var passwordless = 0;
+    final existing = {for (final x in await db.select(db.users).get()) x.id: x};
+    for (final u in rows) {
+      if (!_accept('users', _id(u))) {
+        res.usersSkipped++;
+        continue;
+      }
+
+      final local = existing[_id(u)];
+      final rejection = trusted ? null : _userRejection(u, local);
+      if (rejection != null) {
+        final username = _s(u, 'username', _s(u, 'email').split('@').first);
+        res.rejectedUsers.add(RejectedUser(id: _id(u), username: username, kind: rejection.kind, reason: rejection.reason));
+        await AuditRepo(db).log(
+          action: 'sync.role_rejected',
+          entityType: 'مستخدم',
+          summary: 'رُفض استقبال «$username»: ${rejection.reason}',
+          details: {
+            'userId': _id(u),
+            'username': username,
+            'kind': rejection.kind,
+            'incomingRole': _s(u, 'role', 'user'),
+            'localRole': local?.role,
+            'reason': rejection.reason,
+          },
+          risk: AuditRepo.riskHigh,
+          actorEmail: 'sync',
+        );
+        continue;
+      }
+
+      // **كلمة المرور تُنقل مع الحساب.** الملح والبصمة يخرجان في التصدير، وكان
+      // الاستيراد لا يقرؤهما — فيصل الحساب إلى الفرع ببصمة فارغة، ويستحيل
+      // الدخول به مديرًا كان أو غيره. الحساب بلا بصمته ليس حسابًا.
+      final salt = _s(u, 'saltHex');
+      final hash = _s(u, 'hashHex');
+      final hasSecret = salt.isNotEmpty && hash.isNotEmpty;
+      if (!hasSecret) passwordless++;
+
+      await db.into(db.users).insertOnConflictUpdate(UsersCompanion.insert(
+            id: _id(u),
+            username: _s(u, 'username', _s(u, 'email').split('@').first),
+            name: Value(_s(u, 'name')),
+            email: Value(_s(u, 'email')),
+            role: Value(_s(u, 'role', 'user')),
+            roles: Value(_json(u['roles'])),
+            permissions: Value(_json(u['permissions'], '{}')),
+            warehouseScope: Value(u['warehouseScope'] is List
+                ? _json(u['warehouseScope'])
+                : _s(u, 'warehouseScope', 'ALL')),
+            // حمولةٌ بلا بصمة تترك الأعمدة الثلاثة **غائبة** لا فارغة: الغياب
+            // يُبقي كلمة المرور القائمة على هذا الجهاز، والفراغ يمحوها. ونسخة
+            // ويب قديمة بلا بصمات كانت ستمحو كلمات المرور عند كل استيراد.
+            saltHex: hasSecret ? Value(salt) : const Value.absent(),
+            hashHex: hasSecret ? Value(hash) : const Value.absent(),
+            iterations: hasSecret
+                ? Value(_safeIterations(_i(u, 'iterations', Pbkdf2.legacyIterations)))
+                : const Value.absent(),
+            active: Value(_b(u, 'active', true)),
+            approved: Value(_b(u, 'approved', true)),
+            createdAt: Value(_created(u)),
+            // الحقول الأمنية الجديدة: الغياب (نظيرٌ أقدم) يترك القائم لا يمحوه.
+            sectionBlocked: u['sectionBlocked'] is String ? Value(u['sectionBlocked'] as String) : const Value.absent(),
+            ownerSig: u['ownerSig'] is String && (u['ownerSig'] as String).isNotEmpty
+                ? Value(u['ownerSig'] as String)
+                : const Value.absent(),
+            updatedAt: u['updatedAt'] is num
+                ? Value(DateTime.fromMillisecondsSinceEpoch((u['updatedAt'] as num).toInt() * 1000))
+                : const Value.absent(),
+          ));
+    }
+    _count(res, 'users', rows.length);
+    if (passwordless > 0) {
+      res.warnings
+          .add('$passwordless حسابًا وصل بلا كلمة مرور (تصدير قديم لا يحمل '
+              'الملح والبصمة) — يُعيّنها مدير النظام من شاشة المستخدمين.');
+    }
+  }
+}
