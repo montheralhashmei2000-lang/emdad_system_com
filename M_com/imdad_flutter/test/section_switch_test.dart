@@ -5,6 +5,7 @@ import 'package:imdad/core/security/auth_service.dart';
 import 'package:imdad/core/theme/app_theme.dart';
 import 'package:imdad/core/ui/imd_page_tabs.dart';
 import 'package:imdad/core/ui/imd_status_bar.dart';
+import 'package:imdad/core/ui/imd_section_theme.dart';
 import 'package:imdad/core/ui/imd_tokens.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/sync/auto_sync.dart';
@@ -104,14 +105,29 @@ void main() {
       .evaluate()
       .length;
 
-  testWidgets('التبديل يغيّر الهوية البصرية: أخضر الإمداد ثم برتقالي المحروقات', (tester) async {
+  testWidgets('الافتراض: القسمان بهويّةٍ واحدة — أخضر الإمداد', (tester) async {
+    // تطبيقٌ واحدٌ بهويّةٍ واحدة: تبديلُ القسم لا يقلب ألوان الأزرار والشارات
+    // والروابط كلّها، فلا يبدو القسمان تطبيقَين.
+    await ImdSectionTheme.set(false);
     await enterShell(tester);
     expect(shellColors(tester).accent, ImdColors.light.accent, reason: 'الإمداد أخضر زمردي');
-    expect(shellColors(tester).side, ImdColors.light.side);
 
     await switchSection(tester);
     expect(tester.takeException(), isNull);
-    expect(shellColors(tester).accent, ImdColors.fuelLight.accent, reason: 'المحروقات بلوحتها المستقلة');
+    expect(shellColors(tester).accent, ImdColors.light.accent,
+        reason: 'المحروقات يتبع لوحة الإمداد ما لم يُطلب تمييزه');
+    expect(shellColors(tester).side, ImdColors.light.side);
+  });
+
+  testWidgets('بتمييز القسم من الإعدادات: المحروقات بلوحته البرتقالية', (tester) async {
+    await ImdSectionTheme.set(true);
+    addTearDown(() => ImdSectionTheme.set(false));
+    await enterShell(tester);
+    expect(shellColors(tester).accent, ImdColors.light.accent);
+
+    await switchSection(tester);
+    expect(tester.takeException(), isNull);
+    expect(shellColors(tester).accent, ImdColors.fuelLight.accent, reason: 'اللوحة المستقلة باقيةٌ خيارًا');
     expect(shellColors(tester).accent, isNot(ImdColors.light.accent));
     expect(shellColors(tester).side, ImdColors.fuelLight.side);
 
@@ -179,11 +195,22 @@ void main() {
     expect(prefs.getString('imdad.space.${auth.currentUser!.id}'), AppSpace.fuel);
   });
 
-  testWidgets('الوضع الداكن يطبّق لوحة المحروقات الداكنة', (tester) async {
+  testWidgets('الوضع الداكن مع تمييز القسم يطبّق لوحة المحروقات الداكنة', (tester) async {
+    await ImdSectionTheme.set(true);
+    addTearDown(() => ImdSectionTheme.set(false));
     imdTheme = ImdTheme(ThemeMode.dark);
     await enterShell(tester);
     await switchSection(tester);
     expect(shellColors(tester).accent, ImdColors.fuelDark.accent);
+    expect(shellColors(tester).isDark, isTrue);
+  });
+
+  testWidgets('الوضع الداكن الموحَّد: المحروقات بداكن الإمداد', (tester) async {
+    await ImdSectionTheme.set(false);
+    imdTheme = ImdTheme(ThemeMode.dark);
+    await enterShell(tester);
+    await switchSection(tester);
+    expect(shellColors(tester).accent, ImdColors.dark.accent);
     expect(shellColors(tester).isDark, isTrue);
   });
 }

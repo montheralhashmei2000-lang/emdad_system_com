@@ -15,8 +15,9 @@ class _Sidebar extends StatelessWidget {
     this.width = ImdSizes.sideWidth,
   });
 
-  /// عرض القائمة الكاملة — يسحبه المستخدم بفاصلٍ قابلٍ للسحب.
-  final double width;
+  /// عرض القائمة الكاملة — يسحبه المستخدم بفاصلٍ قابلٍ للسحب على سطح المكتب.
+  /// و`null` داخل درج الجوال: العرض للدرج، والقائمة تملؤه.
+  final double? width;
 
   /// أيقوناتٌ بلا أسماء — لشاشةٍ لا تتسع لـ٢٩٠ بكسل من قائمة.
   final bool rail;
@@ -56,6 +57,9 @@ class _Sidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     if (rail) return _rail(context);
     final c = context.imd;
+    // داخل الدرج: حشوةٌ تتجاوز شريط الحالة أعلى وشريط التنقّل أسفل، وإلا بدأ
+    // أولُ بندٍ تحت ساعة النظام وانحشر «تسجيل خروج» فوق أزرار التنقّل.
+    final inset = width == null ? MediaQuery.paddingOf(context) : EdgeInsets.zero;
     return Container(
       width: width,
       decoration: BoxDecoration(
@@ -71,7 +75,7 @@ class _Sidebar extends StatelessWidget {
         ),
         border: BorderDirectional(start: BorderSide(color: c.sideLine)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      padding: EdgeInsets.fromLTRB(10, 12 + inset.top, 10, 12 + inset.bottom),
       // الرأس والتذييل ثابتان، والقائمة بينهما تتمرّر. لا `IntrinsicHeight` هنا:
       // `AnimatedSize` تُرجع ارتفاع الطفل الهدف لا المتحرّك، فيفيض العمود
       // مؤقتًا عند طيّ قسمٍ أو التبديل بين قسمين.

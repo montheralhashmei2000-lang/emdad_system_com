@@ -1,12 +1,12 @@
 ; Inno Setup script for imdad
-; Version 8.0.0
+; Version 8.0.1
 ; Arabic RTL installer for Windows
 ;
 ; المسارات نسبةً إلى هذا الملف. الترتيب: `flutter build windows --release` ثم ترجمة هذا
 ; السكربت بـ ISCC. المخرج في build\installer (مجلد build مُتجاهَل في git).
 
-#define MyAppName "imdad"
-#define MyAppVersion "8.0.0"
+#define MyAppName "Emdad System"
+#define MyAppVersion "8.0.1"
 #define MyAppPublisher "Emdad System"
 #define MyAppExeName "imdad.exe"
 #define SourceDir SourcePath + "..\..\build\windows\x64\runner\Release"

@@ -84,17 +84,34 @@ void main() {
     });
   }
 
-  testWidgets('الأقسام الستة في قائمة أقسام الإعدادات', (tester) async {
+  testWidgets('أقسام الإعدادات حاضرةٌ في قائمتها', (tester) async {
     await pump(tester, 'general');
     for (final name in [
-      'هوية النظام والشعار',
+      'بيانات الجهة والشعار',
       'رأس وتذييل النماذج',
+      'المظهر والعرض',
+      'الأرقام والعملات',
       'المستخدمون والصلاحيات',
       'تفعيل الأجهزة',
       'التحقق من التوقيع',
       'المزامنة والتوقيع',
     ]) {
       expect(find.text(name), findsWidgets, reason: name);
+    }
+  });
+
+  testWidgets('القائمة مُجمَّعة بعناوين لا بندًا إثر بند', (tester) async {
+    // أربعةَ عشرَ بندًا متساويًا بلا عناوين تُقرأ كلُّها بحثًا عن واحد.
+    await pump(tester, 'general');
+    for (final group in [
+      'الجهة والهوية',
+      'التفضيلات والعرض',
+      'العمليات',
+      'الأمان والوصول',
+      'البيانات والمزامنة',
+      'النظام',
+    ]) {
+      expect(find.text(group), findsWidgets, reason: group);
     }
   });
 

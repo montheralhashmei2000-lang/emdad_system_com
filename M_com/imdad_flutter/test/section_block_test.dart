@@ -341,7 +341,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 80));
       }
       expect(tester.takeException(), isNull);
-      expect(find.text('هوية النظام والشعار'), findsWidgets, reason: 'قسمٌ غير محجوب يبقى');
+      expect(find.text('بيانات الجهة والشعار'), findsWidgets, reason: 'قسمٌ غير محجوب يبقى');
       expect(find.text('المستخدمون والصلاحيات'), findsNothing, reason: 'admin.users مخفيّ');
     });
 

@@ -15,6 +15,7 @@ import 'core/security/auth_service.dart';
 import 'core/security/idle_lock.dart';
 import 'core/security/owner_key.dart';
 import 'core/ui/imd_density.dart';
+import 'core/ui/imd_section_theme.dart';
 import 'core/ui/imd_fonts.dart';
 import 'core/ui/imd_layout.dart';
 import 'core/ui/imd_screen_actions.dart';
@@ -64,7 +65,7 @@ Future<void> main() async {
       WindowOptions(
         size: compact ? ImdWindow.loginSize : const Size(1280, 820),
         minimumSize: compact ? ImdWindow.loginSize : const Size(360, 600),
-        title: 'نظام الإمداد والتموين',
+        title: 'Emdad System',
         center: true,
         titleBarStyle: compact ? TitleBarStyle.hidden : TitleBarStyle.normal,
         windowButtonVisibility: !compact,
@@ -204,6 +205,10 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
     // تفضيلات الشكل (نمط كلاسيكي/كثافة) قبل أول إطار ما أمكن حتى لا يومض الشكل الآخر.
     ImdStyle.load();
     ImdDensity.load();
+    ImdSectionTheme.load();
+    // تنسيق الأرقام من القاعدة: معيارُ الجهة لا تفضيلُ جهاز، فيسبق أول رقمٍ
+    // يُرسم. وفشلُه يُبقي الافتراضات ولا يمنع الإقلاع.
+    SettingsRepo(widget.db).loadNumbers().catchError((_) {});
     // الإعداد يُقرأ من القاعدة ثم تبدأ المراقبة إن كانت الجلسة مستعادة.
     _idle.load().then((_) {
       if (mounted && _signedIn) _idle.activate();
@@ -298,7 +303,7 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
         builder: (context, theme, _) => MaterialApp(
         // تحتاجه نافذة معاينة الطباعة (تُفتح من طبقة الطباعة بلا سياق).
         navigatorKey: imdNavigatorKey,
-        title: 'نظام الإمداد والتموين',
+        title: 'Emdad System',
         debugShowCheckedModeBanner: false,
         theme: ImdStyle.classic ? AppTheme.classic(font: ImdStyle.classicFont) : AppTheme.light(font: theme.font),
         darkTheme: AppTheme.dark(font: theme.font),

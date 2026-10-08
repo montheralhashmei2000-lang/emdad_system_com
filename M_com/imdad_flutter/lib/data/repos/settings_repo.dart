@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 
 import '../../core/ui/imd_fonts.dart';
+import '../../core/ui/imd_numbers.dart';
 import '../db/app_database.dart';
 import '../../domain/print_layout.dart';
 
@@ -190,4 +191,21 @@ class SettingsRepo {
   }
 
   Future<void> saveIdentity(AppIdentity id) => write(orgKey, id.toMap());
+
+  static const String numbersKey = ImdNumbers.key;
+
+  /// تفضيلات تنسيق الأرقام — تُزامَن: صورةُ الرقم في السند معيارُ الجهة كلّها.
+  Future<ImdNumberPrefs> numbers() async {
+    final map = await read(numbersKey);
+    return map.isEmpty ? const ImdNumberPrefs() : ImdNumberPrefs.fromMap(map);
+  }
+
+  /// يحفظ التفضيل **ويُفعّله في الجلسة** — فلا يُحفظ شيءٌ ويُعرض غيره.
+  Future<void> saveNumbers(ImdNumberPrefs p) async {
+    await write(numbersKey, p.toMap());
+    ImdNumbers.apply(p);
+  }
+
+  /// يقرأ التفضيل المحفوظ ويُفعّله — يُنادى مرةً عند الإقلاع.
+  Future<void> loadNumbers() async => ImdNumbers.apply(await numbers());
 }

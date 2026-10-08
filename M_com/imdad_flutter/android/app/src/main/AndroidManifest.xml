@@ -11,7 +11,7 @@
     <!-- المزامنة تستخدم dart:io (مقابس خام) فلا يحكمها usesCleartextTraffic؛ تعطيله يمنع HTTP عبر مكتبات Java فقط.
          allowBackup=false يمنع استخراج ملفات التطبيق عبر adb أو النسخ السحابي. -->
     <application
-        android:label="الإمداد والتموين"
+        android:label="Emdad System"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"

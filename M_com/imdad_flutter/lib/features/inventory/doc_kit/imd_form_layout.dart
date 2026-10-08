@@ -165,6 +165,136 @@ class ImdRvRow extends StatelessWidget {
 }
 
 
+/// شبكة حقول سطر الصنف على الجوال — الصنف ووحدته وكميته في صفٍّ واحد.
+///
+/// الكمية بلا وحدتها رقمٌ بلا معنى، فالثلاثة وحدةُ قراءةٍ واحدة. وكان التخطيط
+/// في شاشات السندات الأربع يضع «الصنف والوحدة» في صفّ ثم «الكمية» وحدها في
+/// صفٍّ تحته: تنفصل الكميةُ عن وحدتها، وتبتعد الوحدةُ عن الرقم الذي تصفه،
+/// ويبقى في الصفّ الثاني فراغٌ عريضٌ لا يشغله شيء.
+///
+/// فإن ضاق العرض عن الثلاثة مجتمعةً نزل **الصنف** وحده إلى صفّه — هو أطول
+/// الحقول نصًّا وأحوجها إلى العرض — وبقيت الوحدة والكمية مقترنتين تحته. أمّا
+/// الحقول الثانوية ([extras]: نوع العملية، تاريخ الانتهاء) فلها صفٌّ ثالث لا
+/// تزاحم به الأساسية.
+class ImdEntryRowGrid extends StatelessWidget {
+  const ImdEntryRowGrid({
+    super.key,
+    required this.item,
+    required this.unit,
+    required this.qty,
+    this.itemLabel = 'الصنف',
+    this.unitLabel = 'الوحدة',
+    this.qtyLabel = 'الكمية',
+    this.meta,
+    this.leading,
+    this.extras = const <(String, Widget)>[],
+    this.actions = const <Widget>[],
+  });
+
+  final Widget item;
+  final Widget unit;
+  final Widget qty;
+  final String itemLabel;
+  final String unitLabel;
+  final String qtyLabel;
+
+  /// سطر معلوماتٍ تحت الصنف (الرصيد المتاح مثلًا).
+  final String? meta;
+
+  /// حقلٌ يسبق الوحدة ويشاركها صفَّها — «الوحدة المستفيدة» في الصرف الموجَّه.
+  /// وجودُه يُنزل الصنف إلى صفّه دائمًا: أربعةُ حقولٍ لا تجتمع في سطرٍ واحد.
+  final (String, Widget)? leading;
+
+  /// حقولٌ ثانوية في صفٍّ تحت الأساسية.
+  final List<(String, Widget)> extras;
+
+  /// أزرار آخر السطر (حذف، نسخ) — تحاذي الحقول لا عناوينها.
+  final List<Widget> actions;
+
+  /// أقلّ عرضٍ تجتمع عنده الثلاثة: الصنف لا يقلّ عن ١٣٠ ليُقرأ اسمه.
+  static const double _oneRowMin = 130 + _unitW + _qtyW + 3 * ImdSizes.compactGap + 40;
+  static const double _unitW = 96;
+  static const double _qtyW = 78;
+
+  Widget _labeled(String label, Widget field) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [ImdRowLabel(label), field],
+      );
+
+  /// الأزرار تحت عنوانٍ شفّاف: يحجز ارتفاع العنوان فتحاذي الأزرارُ الحقولَ
+  /// مهما تغيّر ارتفاع العنوان بالكثافة — بدل حشوةٍ علويةٍ برقمٍ مُقدَّر.
+  Widget _actionsColumn() => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Opacity(opacity: 0, child: ImdRowLabel(' ')),
+          Row(mainAxisSize: MainAxisSize.min, children: actions),
+        ],
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    const gap = SizedBox(width: ImdSizes.compactGap);
+    final itemColumn = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ImdRowLabel(itemLabel),
+        item,
+        if (meta != null) ImdRowMeta(meta!),
+      ],
+    );
+    final extrasRow = extras.isEmpty
+        ? null
+        : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            for (var i = 0; i < extras.length; i++) ...[
+              if (i > 0) gap,
+              Expanded(child: _labeled(extras[i].$1, extras[i].$2)),
+            ],
+          ]);
+
+    return LayoutBuilder(builder: (context, box) {
+      final oneRow = leading == null && box.maxWidth >= _oneRowMin;
+      final rows = <Widget>[];
+      if (oneRow) {
+        rows.add(Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: itemColumn),
+          gap,
+          SizedBox(width: _unitW, child: _labeled(unitLabel, unit)),
+          gap,
+          SizedBox(width: _qtyW, child: _labeled(qtyLabel, qty)),
+          if (actions.isNotEmpty) ...[gap, _actionsColumn()],
+        ]));
+      } else {
+        rows.add(Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: itemColumn),
+          if (actions.isNotEmpty) ...[gap, _actionsColumn()],
+        ]));
+        rows.add(const SizedBox(height: ImdSizes.compactGap));
+        rows.add(Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (leading != null) ...[
+            Expanded(child: _labeled(leading!.$1, leading!.$2)),
+            gap,
+          ],
+          Expanded(child: _labeled(unitLabel, unit)),
+          gap,
+          Expanded(child: _labeled(qtyLabel, qty)),
+        ]));
+      }
+      if (extrasRow != null) {
+        rows.add(const SizedBox(height: ImdSizes.compactGap));
+        rows.add(extrasRow);
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: rows,
+      );
+    });
+  }
+}
+
+
 /// بياناتٌ ثانوية لسطر الصنف تُعرض تحته بخطٍّ أصغر.
 class ImdRowMeta extends StatelessWidget {
   const ImdRowMeta(this.text, {super.key});

@@ -238,42 +238,23 @@ class _IssueScreenState extends State<IssueScreen>
             ? 'رصيد «$_wh»: ${nf(shown!.qty)} ${shown.unit}'
             : 'المتاح: ${nf(shown!.qty)} ${shown.unit}');
     final f = _rowFields(r);
-    Widget labeled(String label, Widget field) =>
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [ImdRowLabel(label), field]);
-    final picker = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const ImdRowLabel('الصنف'),
-      f.picker,
-      ImdRowMeta(meta),
-    ]);
-    final ben = labeled('الوحدة المستفيدة', f.ben);
-    final unit = labeled('الوحدة', f.unit);
-    final qty = labeled('الكمية', f.qty);
-    final del = Padding(padding: const EdgeInsets.only(top: 19), child: f.delete);
-    final refill = f.refill;
-    final cy = labeled('نوع العملية', f.cy);
-    const gap = SizedBox(width: ImdSizes.compactGap);
     // بطاقةٌ معنونة للجوال وحده: الشاشة الضيّقة لا تتّسع لرأس جدولٍ يبقى ذا
     // معنى، وسطح المكتب يمرّ من `_desktopTable`.
-    final grid = Column(children: [
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: picker),
-        gap,
-        Expanded(child: multi ? ben : unit),
-      ]),
-      const SizedBox(height: ImdSizes.compactGap),
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (multi) ...[SizedBox(width: 104, child: unit), gap],
-        SizedBox(width: 92, child: qty),
-        if (refill) ...[gap, Expanded(child: cy)],
-        gap,
-        del,
-      ]),
-    ]);
     return ImdRvRow(
       index: index,
       trailing: _baseHint(r),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        grid,
+        ImdEntryRowGrid(
+          item: f.picker,
+          meta: meta,
+          unit: f.unit,
+          qty: f.qty,
+          // التوجيه متعدّد الوحدات يضيف حقلًا رابعًا، فينزل الصنف إلى صفّه
+          // وتبقى الوحدةُ المستفيدة والوحدةُ والكمية في صفٍّ واحد.
+          leading: multi ? ('الوحدة المستفيدة', f.ben) : null,
+          extras: [if (f.refill) ('نوع العملية', f.cy)],
+          actions: [f.delete],
+        ),
         Padding(
           padding: const EdgeInsets.only(top: 4),
           child: ImdFld(controller: r.notes, hint: 'ملاحظات على هذا الصنف...'),

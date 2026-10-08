@@ -16,6 +16,7 @@ import '../../core/ui/imd_empty_state.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/imd_density.dart';
+import '../../core/ui/imd_section_theme.dart';
 import '../../core/ui/imd_fonts.dart';
 import '../../core/ui/imd_menu_bar.dart';
 import '../../core/ui/imd_page_tabs.dart';
@@ -192,11 +193,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   bool? _fuelDark;
   String? _fuelFont;
 
-  /// سمة القسم: الإمداد هو سمة التطبيق نفسها، والمحروقات لوحتها المستقلة
-  /// (برتقالي محروق) بنفس البنية — الحقول والجداول والقشرة واحدة.
+  /// سمة القسم: الإمداد هو سمة التطبيق نفسها. والمحروقات تتبعه افتراضًا —
+  /// تطبيقٌ واحدٌ بهويّةٍ واحدة — إلا أن يُطلب تمييزه بلوحته البرتقالية من
+  /// الإعدادات ([ImdSectionTheme.distinctFuel]).
   ThemeData _themeFor(BuildContext context, String space) {
     final base = Theme.of(context);
-    if (space != AppSpace.fuel) return base;
+    if (space != AppSpace.fuel || !ImdSectionTheme.distinctFuel) return base;
     final dark = base.brightness == Brightness.dark;
     final font = base.textTheme.bodyMedium?.fontFamily ?? ImdFonts.defaultFamily;
     if (_fuelTheme == null || _fuelDark != dark || _fuelFont != font) {
@@ -842,9 +844,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           // وما وراءها يُفتح منه.
           endDrawer: handheld
               ? Drawer(
-                  width: ImdSizes.sideWidth,
+                  width: ImdSizes.drawerWidth(context),
                   backgroundColor: sc.side,
                   child: _Sidebar(
+                    // داخل الدرج تملأ القائمةُ عرضَه؛ ولو فرضت ٢٩٠ على درجٍ
+                    // أضيق منها فاضت أفقيًّا.
+                    width: null,
                     page: _menuPageOf(_page),
                     space: space,
                     openSec: _openSec,

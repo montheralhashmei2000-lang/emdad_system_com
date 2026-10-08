@@ -749,34 +749,17 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
   /// عرض الجوال: بطاقةٌ معنونة لكل صنف — الشاشة الضيّقة لا تتّسع لرأس جدول.
   Widget _rowView(BuildContext context, int index, List<_Row> rows, _Row r, String metaLabel) {
     final f = _rowFields(rows, r, metaLabel);
-    Widget labeled(String label, Widget field) =>
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [ImdRowLabel(label), field]);
     return ImdRvRow(
       index: index,
       trailing: _baseHint(r),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              const ImdRowLabel('الصنف'),
-              f.picker,
-              ImdRowMeta(f.meta),
-            ]),
-          ),
-          const SizedBox(width: ImdSizes.compactGap),
-          SizedBox(width: 104, child: labeled('الوحدة', f.unit)),
-        ]),
-        const SizedBox(height: ImdSizes.compactGap),
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(width: 92, child: labeled('الكمية', f.qty)),
-          if (f.refill) ...[
-            const SizedBox(width: ImdSizes.compactGap),
-            Expanded(child: labeled('حالة الأسطوانة', f.cy)),
-          ],
-          const SizedBox(width: ImdSizes.compactGap),
-          Padding(padding: const EdgeInsets.only(top: 19), child: f.delete),
-        ]),
-      ]),
+      child: ImdEntryRowGrid(
+        item: f.picker,
+        meta: f.meta,
+        unit: f.unit,
+        qty: f.qty,
+        extras: [if (f.refill) ('حالة الأسطوانة', f.cy)],
+        actions: [f.delete],
+      ),
     );
   }
 

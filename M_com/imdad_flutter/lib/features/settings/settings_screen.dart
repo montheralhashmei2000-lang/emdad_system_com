@@ -12,7 +12,12 @@ import '../../core/security/perm.dart';
 import '../../core/ui/imd_charts.dart';
 import '../../core/ui/imd_drop_zone.dart';
 import '../../core/ui/imd_form.dart';
+import '../../core/print/print_format.dart';
+import '../../core/ui/imd_density.dart';
 import '../../core/ui/imd_format.dart';
+import '../../core/ui/imd_numbers.dart';
+import '../../core/ui/imd_section_theme.dart';
+import '../../core/ui/imd_style.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_layout.dart';
 import '../../core/ui/imd_tokens.dart';
@@ -35,7 +40,8 @@ import '../../data/migration/data_export.dart';
 import '../../data/migration/excel_import.dart';
 import '../../data/migration/legacy_import.dart';
 import '../../data/repos/catalog_repo.dart';
-import '../inventory/doc_kit.dart' show ImdReadonlyField;
+import '../inventory/doc_kit.dart' show ImdFormGrid, ImdReadonlyField;
+import '../../main.dart' show ImdTheme;
 import '../../data/repos/selfcheck_repo.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../data/repos/movements_repo.dart';
@@ -46,8 +52,14 @@ import '../../domain/rules_engine.dart';
 import '../home/home_shell.dart';
 import '../archive/archive_auto_settings.dart';
 
+/// رقم إصدار التطبيق — **يطابق `version` في `pubspec.yaml`**.
+///
+/// كان النصّ هنا «٧٫٤٫٠» و`pubspec` على «8.0.1»: رقمان لإصدارٍ واحد، والظاهر
+/// للمستخدم وفي فحص السلامة هو المتخلّف منهما. يحرسه `app_version_test`.
+const kAppVersion = '8.0.1';
+
 /// إصدار التطبيق كما يظهر في «عن النظام».
-const kAppVersionLabel = 'نظام الإمداد والتموين — الإصدار ٧.٤.٠';
+final kAppVersionLabel = 'نظام الإمداد والتموين — الإصدار ${arDigits(kAppVersion)}';
 
 /// الإعدادات — نقل `renderSettings()` و`imdSettingsShell()`:
 /// قائمة أقسام جانبية (نظرة عامة، الجهة، المستخدمون، المخزون، الطباعة،
@@ -64,33 +76,67 @@ class SettingsScreen extends StatefulWidget {
 }
 
 /// قسم في القائمة الجانبية (`SETTINGS_SECTIONS`).
+/// مجموعاتُ قائمة الإعدادات — عناوينٌ تفصل الأقسام فلا تُقرأ أربعةَ عشرَ بندًا
+/// متساويةً بحثًا عن واحد. الترتيب هنا هو ترتيب العرض.
+class _Group {
+  const _Group(this.id, this.name);
+  final String id;
+  final String name;
+}
+
+const _groups = <_Group>[
+  _Group('org', 'الجهة والهوية'),
+  _Group('prefs', 'التفضيلات والعرض'),
+  _Group('ops', 'العمليات'),
+  _Group('security', 'الأمان والوصول'),
+  _Group('data', 'البيانات والمزامنة'),
+  _Group('system', 'النظام'),
+];
+
 class _Section {
-  const _Section(this.id, this.icon, this.name, this.desc);
+  const _Section(this.id, this.icon, this.name, this.desc, this.group);
+
+  /// مجموعةُ البند في القائمة — `''` للبند المفرد في الأعلى («نظرة عامة»).
+  final String group;
   final String id;
   final String icon;
   final String name;
   final String desc;
 }
 
+/// ترتيبُ الإعدادات على نسق الأنظمة المعروفة: بيانات الجهة أولًا، ثم تفضيلات
+/// العرض والأرقام والطباعة، ثم العمليات، ثم الأمان، ثم البيانات، ثم النظام.
+/// وكانت أربعةَ عشرَ بندًا في قائمةٍ واحدة بلا عناوين، ترتيبُها تاريخُ إضافتها.
 const _sections = <_Section>[
-  _Section('general', 'home', 'نظرة عامة', 'الجاهزية والجلسة الحالية ومؤشرات البيانات'),
-  _Section('company', 'building', 'هوية النظام والشعار', 'الشعار واسم الجهة الظاهران في الواجهة والتقارير'),
-  _Section('forms', 'file', 'رأس وتذييل النماذج', 'الرأس والتذييل وخانات التوقيع في المطبوعات'),
-  _Section('users', 'users', 'المستخدمون والصلاحيات', 'الحسابات المحلية والأدوار ومركز الصلاحيات'),
-  _Section('inventory', 'package', 'المخزون والاستحقاقات',
-      'الأرصدة الافتتاحية ومعدلات الاستحقاق والقوانين'),
-  _Section('print', 'printer', 'الطباعة والتصدير والاستيراد', 'النماذج المطبوعة وأدوات كل شاشة'),
-  _Section('archiveAuto', 'zap', 'الأرشفة التلقائية', 'تفعيل أرشفة السندات والتقارير المطبوعة تلقائيًّا في الأرشيف الإلكتروني — مفصّلة بكل عملية'),
-  _Section('sync', 'swap', 'المزامنة والتوقيع', 'ربط الأجهزة ومزامنتها والتوقيع الإلكتروني والإشعارات'),
+  _Section('general', 'home', 'نظرة عامة', 'الجاهزية والجلسة الحالية ومؤشرات البيانات', ''),
+
+  _Section('company', 'building', 'بيانات الجهة والشعار',
+      'اسم الجهة وشعارها وخطّها — تظهر في الواجهة وكل مطبوعة', 'org'),
+  _Section('forms', 'file', 'رأس وتذييل النماذج', 'الرأس والتذييل وخانات التوقيع في المطبوعات', 'org'),
   _Section('authorities', 'users', 'جهات الاعتمادات',
-      'من يعتمدون الطلبيات ويطلب منهم المخزن الرئيسي'),
+      'من يعتمدون الطلبيات ويطلب منهم المخزن الرئيسي', 'org'),
+
+  _Section('appearance', 'sun', 'المظهر والعرض',
+      'السمة والكثافة والنمط وهوية قسم المحروقات', 'prefs'),
+  _Section('numbers', 'hash', 'الأرقام والعملات',
+      'صورة الأرقام وفواصلها وخانات الكميات والمبالغ — في الشاشات والمطبوعات', 'prefs'),
+  _Section('print', 'printer', 'الطباعة والتصدير والاستيراد', 'النماذج المطبوعة وأدوات كل شاشة', 'prefs'),
+
+  _Section('inventory', 'package', 'المخزون والاستحقاقات',
+      'الأرصدة الافتتاحية ومعدلات الاستحقاق والقوانين', 'ops'),
+  _Section('archiveAuto', 'zap', 'الأرشفة التلقائية', 'تفعيل أرشفة السندات والتقارير المطبوعة تلقائيًّا في الأرشيف الإلكتروني — مفصّلة بكل عملية', 'ops'),
+
+  _Section('users', 'users', 'المستخدمون والصلاحيات', 'الحسابات المحلية والأدوار ومركز الصلاحيات', 'security'),
   _Section('devices', 'monitor', 'تفعيل الأجهزة',
-      'رمز تفعيل كل جهاز ومفتاح الإصدار — لا يعمل جهاز بلا رمز'),
+      'رمز تفعيل كل جهاز ومفتاح الإصدار — لا يعمل جهاز بلا رمز', 'security'),
   _Section('verify', 'check-circle', 'التحقق من التوقيع',
-      'التأكد من أن مستندًا مطبوعًا صادرٌ عن مفتاح معروف ولم يتغيّر'),
-  _Section('backup', 'database', 'النسخ الاحتياطي', 'تصدير البيانات واستعادتها'),
-  _Section('health', 'shield', 'الصيانة والفحص', 'فحص سلامة النظام والوصول السريع للشاشات'),
-  _Section('about', 'info', 'عن النظام', 'الإصدار ووضع التشغيل'),
+      'التأكد من أن مستندًا مطبوعًا صادرٌ عن مفتاح معروف ولم يتغيّر', 'security'),
+
+  _Section('sync', 'swap', 'المزامنة والتوقيع', 'ربط الأجهزة ومزامنتها والتوقيع الإلكتروني والإشعارات', 'data'),
+  _Section('backup', 'database', 'النسخ الاحتياطي', 'تصدير البيانات واستعادتها', 'data'),
+
+  _Section('health', 'shield', 'الصيانة والفحص', 'فحص سلامة النظام والوصول السريع للشاشات', 'system'),
+  _Section('about', 'info', 'عن النظام', 'الإصدار ووضع التشغيل', 'system'),
 ];
 
 class _SettingsScreenState extends State<SettingsScreen> {
@@ -423,6 +469,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) _toast('✔ جُهِّز مفتاح القائد على هذا الجهاز');
   }
 
+  /// وضع السمة: يُحفظ في هوية الجهة (كزرّ الشريط وشاشة الهوية) ويسري فورًا.
+  /// وهنا وحده «تلقائي»: الزرّ السريع يبدّل بين فاتحٍ وداكن ولا يبلغه.
+  Future<void> _setTheme(String pref) async {
+    final settings = SettingsRepo(_db);
+    final id = await settings.identity();
+    await settings.saveIdentity(id.copyWith(themePref: pref));
+    if (mounted) context.read<ImdTheme>().apply(pref);
+  }
+
   Future<void> _removeSignKey() async {
     if (!_perm.guardSys(context, SysPerm.settingsSensitive)) return;
     final ok = await imdConfirm(
@@ -535,7 +590,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// قائمة التنقل بين أقسام الإعدادات — رأسيّةٌ على سطح المكتب وأفقيّةٌ على الجوال.
   Widget _nav({required bool horizontal}) {
     final c = context.imd;
-    final buttons = [for (final s in _visibleSections) _navButton(s, horizontal: horizontal)];
+    final sections = _visibleSections;
+    final buttons = <Widget>[];
+    if (horizontal) {
+      buttons.addAll([for (final s in sections) _navButton(s, horizontal: true)]);
+    } else {
+      // رأسيًّا: عنوانُ المجموعة فوق بنودها، فلا تُقرأ القائمةُ كلّها بحثًا عن بند.
+      var lastGroup = ' ';
+      for (final s in sections) {
+        if (s.group != lastGroup) {
+          lastGroup = s.group;
+          final g = _groups.where((x) => x.id == s.group).firstOrNull;
+          if (g != null) buttons.add(_navGroupTitle(g.name));
+        }
+        buttons.add(_navButton(s, horizontal: false));
+      }
+    }
     return Container(
       padding: EdgeInsets.all(horizontal ? 6 : 8),
       decoration: BoxDecoration(
@@ -565,6 +635,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ]),
     );
   }
+
+  Widget _navGroupTitle(String name) => Padding(
+        padding: const EdgeInsets.fromLTRB(10, 12, 10, 4),
+        child: Text(
+          name,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: .2,
+            color: context.imd.faint,
+          ),
+        ),
+      );
 
   Widget _navButton(_Section s, {required bool horizontal}) {
     final c = context.imd;
@@ -630,6 +713,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final role = UserRole.label(user?.role);
     // غير موجود في الاختبارات التي تبني الشاشة بلا القفل التلقائي.
     final IdleLock? idle = _readOrNull<IdleLock>(context);
+    // السمة تُغيَّر من هنا؛ وتبديلُها يُعيد بناء التطبيق كلَّه فتُحدَّث القائمة.
+    final ImdTheme? theme = _readOrNull<ImdTheme>(context);
 
     return [
       (
@@ -982,6 +1067,151 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
       (
+        'appearance',
+        'المظهر العرض السمة فاتح داكن تلقائي الكثافة العالية النمط الكلاسيكي '
+            'ألوان قسم المحروقات هوية القسم برتقالي أخضر',
+        ImdPanel(
+          title: 'المظهر والعرض',
+          icon: 'sun',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const ImdNote('تفضيلاتُ عرضٍ على هذا الجهاز — لا تُزامَن ولا تمسّ البيانات.'),
+            if (theme != null) ...[
+              ImdLabeled(
+                'وضع السمة',
+                ImdSelect<String>(
+                  value: switch (theme.mode) {
+                    ThemeMode.light => 'light',
+                    ThemeMode.dark => 'dark',
+                    ThemeMode.system => 'auto',
+                  },
+                  items: const [
+                    ('auto', 'تلقائي — يتبع النظام'),
+                    ('light', 'فاتح'),
+                    ('dark', 'داكن'),
+                  ],
+                  onChanged: (v) => _setTheme(v ?? 'auto'),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            // كان المفتاحان في شريط حالة سطح المكتب وحده، فلا سبيل إليهما على
+            // أندرويد أصلًا.
+            ValueListenableBuilder<bool>(
+              valueListenable: ImdDensity.notifier,
+              builder: (_, high, __) => ImdCheckbox(
+                value: high,
+                label: 'كثافة عالية — صفوفٌ ومسافاتٌ أضيق ليتّسع الجدول لبياناتٍ أكثر',
+                onChanged: (v) => ImdDensity.set(v),
+              ),
+            ),
+            ValueListenableBuilder<bool>(
+              valueListenable: ImdStyle.notifier,
+              builder: (_, on, __) => ImdCheckbox(
+                value: on,
+                label: 'النمط الكلاسيكي — مسطّحٌ بلا ظلال وزواياه حادّة وخطّه Tahoma',
+                onChanged: (v) => ImdStyle.set(v),
+              ),
+            ),
+            ValueListenableBuilder<bool>(
+              valueListenable: ImdSectionTheme.notifier,
+              builder: (_, on, __) => ImdCheckbox(
+                value: on,
+                label: 'تمييز قسم المحروقات بلوحةٍ برتقالية — وإلّا تبع لوحة الإمداد',
+                onChanged: (v) => ImdSectionTheme.set(v),
+              ),
+            ),
+          ]),
+        ),
+      ),
+      (
+        'numbers',
+        'الأرقام العملات صورة الرقم هندية لاتينية فاصل الآلاف الفاصل العشري '
+            'خانات الكميات الكسور خانات المبالغ العملة الطباعة التصدير',
+        ImdPanel(
+          title: 'الأرقام والعملات',
+          icon: 'hash',
+          child: ValueListenableBuilder<ImdNumberPrefs>(
+            valueListenable: ImdNumbers.notifier,
+            builder: (context, p, __) {
+              final w = _perm.writable('settings');
+              void save(ImdNumberPrefs next) {
+                if (!_perm.guard(context, 'settings', PermAction.edit)) return;
+                SettingsRepo(_db).saveNumbers(next);
+              }
+
+              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                const ImdNote('تُزامَن مع بقية الإعدادات: صورةُ الرقم في السند معيارُ '
+                    'الجهة كلّها، فلا يصدر سندان بصيغتين.'),
+                ImdFormGrid(children: [
+                  ImdLabeled(
+                    'أرقام الشاشات',
+                    ImdSelect<String>(
+                      value: p.uiDigits.id,
+                      items: [for (final d in ImdDigits.values) (d.id, d.label)],
+                      onChanged: w ? (v) => save(p.copyWith(uiDigits: ImdDigits.of(v))) : null,
+                    ),
+                  ),
+                  ImdLabeled(
+                    'أرقام المطبوعات والتصدير',
+                    ImdSelect<String>(
+                      value: p.printDigits.id,
+                      items: [for (final d in ImdDigits.values) (d.id, d.label)],
+                      onChanged: w ? (v) => save(p.copyWith(printDigits: ImdDigits.of(v))) : null,
+                    ),
+                  ),
+                  ImdLabeled(
+                    'فاصل الآلاف',
+                    ImdSelect<String>(
+                      value: p.thousands,
+                      items: ImdNumberPrefs.thousandsOptions,
+                      onChanged: w ? (v) => save(p.copyWith(thousands: v)) : null,
+                    ),
+                  ),
+                  ImdLabeled(
+                    'الفاصل العشري',
+                    ImdSelect<String>(
+                      value: p.decimal,
+                      items: ImdNumberPrefs.decimalOptions,
+                      onChanged: w ? (v) => save(p.copyWith(decimal: v)) : null,
+                    ),
+                  ),
+                  ImdLabeled(
+                    'كسور الكميات (تُحذف أصفارها الزائدة)',
+                    ImdSelect<int>(
+                      value: p.qtyDecimals,
+                      items: const [(0, 'بلا كسور — ٣'), (1, 'خانة — ٢٫٥'), (2, 'خانتان — ٢٫٥٠'), (3, 'ثلاث — ٢٫٥٠٠')],
+                      onChanged: w ? (v) => save(p.copyWith(qtyDecimals: v)) : null,
+                    ),
+                  ),
+                  ImdLabeled(
+                    'خانات المبالغ (ثابتةٌ لا تُقصّ)',
+                    ImdSelect<int>(
+                      value: p.moneyDecimals,
+                      items: const [(0, 'بلا كسور — ١٢٠'), (2, 'خانتان — ١٢٠٫٠٠'), (3, 'ثلاث — ١٢٠٫٠٠٠')],
+                      onChanged: w ? (v) => save(p.copyWith(moneyDecimals: v)) : null,
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 12),
+                // معاينةٌ حيّة: الإعداد يُرى أثره قبل فتح شاشةٍ أو طباعة ورقة.
+                ImdPanel(
+                  margin: EdgeInsets.zero,
+                  title: 'معاينة',
+                  icon: 'eye',
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    ImdLabeled('كمية في الشاشات', ImdReadonlyField(text: '${nf(1234567.5)}  ·  ${nf(2.5)}')),
+                    ImdLabeled('مبلغ في الشاشات', ImdReadonlyField(text: nfMoney(30000))),
+                    ImdLabeled('رقم في المطبوعات', ImdReadonlyField(text: printNum(1234567.5))),
+                    ImdLabeled('مبلغ في المطبوعات', ImdReadonlyField(text: printMoney(30000))),
+                    ImdLabeled('تاريخ في المطبوعات', ImdReadonlyField(text: printDate('2026-05-15'))),
+                  ]),
+                ),
+              ]);
+            },
+          ),
+        ),
+      ),
+      (
         'authorities',
         'جهات الاعتمادات الجهات ركن الإمداد رئيس الشعبة قائد الفرقة '
             'اعتماد الطلبيات دليل',
@@ -1132,7 +1362,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           title: 'عن النظام',
           icon: 'info',
           child: Wrap(spacing: 8, runSpacing: 8, children: [
-            const ImdChip(kAppVersionLabel, tone: ImdTone.ok),
+            ImdChip(kAppVersionLabel, tone: ImdTone.ok),
             const ImdChip('وضع التشغيل: محلي بالكامل (بدون إنترنت)', tone: ImdTone.code),
             ImdChip(
               kIsWeb ? 'المنصة: متصفح' : 'المنصة: ${Platform.operatingSystem}',

@@ -1,7 +1,7 @@
 name: imdad
-description: نظام الإمداد والتموين — تطبيق أصلي (Android / Windows)
+description: Emdad System — نظام الإمداد والتموين — تطبيق أصلي (Android / Windows)
 publish_to: "none"
-version: 8.0.0+800
+version: 8.0.1+801
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

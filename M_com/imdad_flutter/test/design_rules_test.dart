@@ -41,11 +41,10 @@ void main() {
     'lib/features/fuel/fuel_directories_screen.dart',
     'lib/features/fuel/fuel_plan_vs_issued_screen.dart',
     'lib/features/fuel/fuel_stocktake_screen.dart',
-    'lib/features/inventory/issue_screen.dart',
+    // شاشات السندات الأربع (الصرف/الاستلام/التحويل/المرتجعات) خرجت من هنا:
+    // عروضُها الثابتة كانت في تخطيط سطر الجوال اليدوي، وقد صار `ImdEntryRowGrid`
+    // يتولّاه بـ`Expanded` و`LayoutBuilder`.
     'lib/features/inventory/ration_order/ration_approve_sheet.dart',
-    'lib/features/inventory/receive_screen.dart',
-    'lib/features/inventory/returns_screen.dart',
-    'lib/features/inventory/transfer_screen.dart',
     // لوحة التنقل الجانبية في فرع سطح المكتب فقط (>900).
     'lib/features/reports/reports_center_screen.dart',
     'lib/features/settings/settings_screen.dart',

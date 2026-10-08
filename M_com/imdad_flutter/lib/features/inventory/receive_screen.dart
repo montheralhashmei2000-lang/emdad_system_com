@@ -867,41 +867,20 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
   /// الضيّقة لا تتّسع لرأس جدولٍ يبقى ذا معنى.
   Widget _rowView(BuildContext context, int index, _Row r) {
     final f = _rowFields(r);
-    Widget labeled(String label, Widget field) =>
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [ImdRowLabel(label), field]);
     return ImdRvRow(
       index: index,
       trailing: _baseHint(r),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              const ImdRowLabel('الصنف'),
-              f.picker,
-              ImdRowMeta(f.meta),
-            ]),
-          ),
-          const SizedBox(width: ImdSizes.compactGap),
-          SizedBox(width: 104, child: labeled('الوحدة', f.unit)),
-        ]),
-        const SizedBox(height: ImdSizes.compactGap),
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(width: 92, child: labeled('الكمية', f.qty)),
-          if (f.refill) ...[
-            const SizedBox(width: ImdSizes.compactGap),
-            Expanded(child: labeled('نوع العملية', f.cy)),
-          ],
-          if (f.hasExpiry) ...[
-            const SizedBox(width: ImdSizes.compactGap),
-            Expanded(child: labeled('تاريخ الانتهاء', f.expiry)),
-          ],
-          const SizedBox(width: ImdSizes.compactGap),
-          Padding(
-            padding: const EdgeInsets.only(top: 15),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [f.copy, f.delete]),
-          ),
-        ]),
-      ]),
+      child: ImdEntryRowGrid(
+        item: f.picker,
+        meta: f.meta,
+        unit: f.unit,
+        qty: f.qty,
+        extras: [
+          if (f.refill) ('نوع العملية', f.cy),
+          if (f.hasExpiry) ('تاريخ الانتهاء', f.expiry),
+        ],
+        actions: [f.copy, f.delete],
+      ),
     );
   }
 

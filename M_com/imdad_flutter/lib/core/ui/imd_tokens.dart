@@ -447,6 +447,15 @@ extension ImdThemeX on BuildContext {
 class ImdSizes {
   static double get radius => ImdStyle.classic ? 2 : 12; // --ui-radius
   static const double sideWidth = 290; // .side
+
+  /// عرض درج الجوال: [sideWidth] ثابتُ **سطح المكتب**، وهو على هاتفٍ عرضه ٣٦٠
+  /// يبتلع ٨٠٪ من الشاشة وعلى ٣٢٠ يبتلع ٩٠٪ — فلا يبقى من الصفحة تحته ما
+  /// يُذكّر بمكانك ولا ما تنقر عليه لتغلقه. ثلاثةُ أرباع الشاشة تكفي أطولَ
+  /// بنودِ القائمة («الرقابات والأرشيف») وتُبقي ربعًا ظاهرًا من الصفحة.
+  static double drawerWidth(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width * .76;
+    return w < sideWidth ? w : sideWidth;
+  }
   static const double topbarHeight = 59; // .topbar (الجوال)
 
   /// الشريط الواحد على سطح المكتب: عنوان النافذة والتبويبات والأدوات في صفٍّ واحد.
