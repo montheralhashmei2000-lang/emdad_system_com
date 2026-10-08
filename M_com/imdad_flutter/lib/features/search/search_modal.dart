@@ -46,6 +46,11 @@ class _SearchBodyState extends State<_SearchBody> {
   bool _busy = false;
   SearchHits _hits = const SearchHits.empty();
 
+  /// رقم آخر استعلامٍ أُطلق. الـdebounce يقلّل التكرار ولا يمنع التراكب: بحثٌ
+  /// يمسح ستة عشر جدولًا بـ`LIKE '%…%'` قد يتجاوز الـ٣٠٠ م.ث، فيعود الأبطأ
+  /// (مدخلٌ أقدم) بعد الأحدث ويكتب نتائجه فوقه. فتُهمل كل نتيجةٍ ليست الأحدث.
+  int _seq = 0;
+
   /// المدخل الذي تنتمي إليه النتائج المعروضة — لرسالة «لم أجد نتائج لـ…».
   String _shown = '';
 
@@ -101,6 +106,9 @@ class _SearchBodyState extends State<_SearchBody> {
 
   Future<void> _run() async {
     final q = _q.text.trim();
+    // يُزاد أيضًا للمدخل القصير: استعلامٌ جارٍ أطلقه مدخلٌ أطول ثم مُحي حرفٌ
+    // منه يجب أن يسقط، وإلا ظهرت نتائجه على مدخلٍ لا يُبحث به.
+    final seq = ++_seq;
     if (q.length < SearchService.minQuery) {
       setState(() {
         _hits = const SearchHits.empty();
@@ -116,7 +124,7 @@ class _SearchBodyState extends State<_SearchBody> {
       q,
       access: SearchAccess(canView: perm.has, scope: perm.scope),
     );
-    if (!mounted) return;
+    if (!mounted || seq != _seq) return;
     setState(() {
       _hits = hits;
       _flat = [for (final list in hits.byType.values) ...list];
