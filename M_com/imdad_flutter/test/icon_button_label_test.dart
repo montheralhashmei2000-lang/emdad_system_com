@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -69,5 +71,37 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
 
     expect(find.text('طباعة'), findsOneWidget);
+  });
+
+  /// حارسُ مواضع الاستعمال، لا حارسُ المكوّن.
+  ///
+  /// الاختبارات أعلاه تُثبت أن [ImdIconButton] يُوصل التلميحة إذا أُعطيها. وكان
+  /// ٢١ موضعًا في الشاشات لا يُعطيها أصلًا: زرُّ تعديلٍ وحذفٍ وإضافةٍ وتحديثٍ
+  /// وإغلاقٍ وجرسُ تنبيهاتٍ وزرُّ قائمةٍ وزرُّ بحث — أيقوناتٌ عارية لا ينطق
+  /// قارئُ الشاشة لها اسمًا، ولا يرى مستخدمُ سطح المكتب تلميحة.
+  ///
+  /// وقائمةُ استثناءاتٍ هنا تتبوّأ، كما في `design_rules_test`: فلا استثناء —
+  /// زرُّ أيقونةٍ بلا اسمٍ خطأٌ حيث كان.
+  test('كل زرِّ أيقونةٍ في الشِّفرة يحمل اسمًا', () {
+    final files = [
+      for (final e in Directory('lib').listSync(recursive: true))
+        if (e is File && e.path.endsWith('.dart') && !e.path.endsWith('.g.dart')) e,
+    ];
+    final call = RegExp(r'(?<![A-Za-z])(ImdIconButton|IconButton)\s*\(');
+    final bad = <String>[];
+    for (final f in files) {
+      final rel = f.path.replaceAll(String.fromCharCode(92), '/');
+      final lines = f.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        if (!call.hasMatch(lines[i])) continue;
+        if (lines[i].contains('class ') || lines[i].trimLeft().startsWith('//')) continue;
+        // التلميحة قد تأتي على سطرٍ تالٍ داخل نفس الاستدعاء.
+        final window = lines.sublist(i, i + 9 > lines.length ? lines.length : i + 9).join('\n');
+        if (!window.contains('tooltip')) bad.add('$rel:${i + 1}');
+      }
+    }
+    expect(bad, isEmpty,
+        reason: 'زرُّ أيقونةٍ بلا tooltip: لا اسمَ لقارئ الشاشة ولا تلميحةَ للمؤشّر:\n'
+            '${bad.join('\n')}');
   });
 }

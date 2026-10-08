@@ -654,6 +654,7 @@ class _CablesScreenState extends State<CablesScreen> {
         )
       else
         ImdTable(
+          pageSize: 50,
           columns: const [
             ImdCol('الاتجاه'),
             ImdCol('الرقم'),

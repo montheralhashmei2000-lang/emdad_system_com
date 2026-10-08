@@ -850,7 +850,7 @@ class _AssetsScreenState extends State<AssetsScreen> {
                 ImdIconButton(
                   icon: 'trash',
                   tooltip: 'حذف',
-                  onPressed: can ? () => _delete(a) : null,
+                  onPressed: _canDel ? () => _delete(a) : null,
                 ),
               ]),
             ],
@@ -873,6 +873,10 @@ class _AssetsScreenState extends State<AssetsScreen> {
         AssetStatus.damaged || AssetStatus.consumed => ImdTone.err,
         _ => ImdTone.off,
       };
+
+  /// صلاحية الحذف وحدها: [Perm.writable] يصدق بالإضافة أو التعديل أو
+  /// الاعتماد، فكان زرُّ الحذف يظهر لمن لا يملك الحذف.
+  bool get _canDel => Perm.of(context).canDelete('assets');
 
   Widget _lifeCell(Asset a) {
     final left = AssetRules.daysLeft(

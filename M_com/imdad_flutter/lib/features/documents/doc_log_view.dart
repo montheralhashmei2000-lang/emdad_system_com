@@ -309,7 +309,7 @@ class _DocLogViewState extends State<DocLogView> {
         Text(g.refNo, style: const TextStyle(fontWeight: FontWeight.w700)),
         if (g.editCount > 0) ImdChip('معدّل ${nf(g.editCount)}', tone: ImdTone.code),
       ]),
-      Text(g.date.isEmpty ? '—' : g.date),
+      Text(g.date.isEmpty ? '—' : arDigits(g.date)),
       Text(g.warehouse.isEmpty ? '—' : g.warehouse),
       Text(g.party.isEmpty ? '—' : g.party),
       Text(nf(g.linesCount)),

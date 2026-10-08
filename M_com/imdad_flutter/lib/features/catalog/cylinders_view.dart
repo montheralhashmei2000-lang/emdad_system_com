@@ -148,6 +148,7 @@ class _CylindersViewState extends State<CylindersView> {
           title: 'العهد لدى المطابخ والوحدات',
           icon: 'users',
           child: ImdTable(
+            pageSize: 50,
             columns: const [ImdCol('الجهة'), ImdCol('النوع'), ImdCol('العدد', numeric: true)],
             empty: 'لا عهد قائمة — تُسجَّل من «صرف بضاعة» بعملية «تسليم عهدة»',
             rows: [

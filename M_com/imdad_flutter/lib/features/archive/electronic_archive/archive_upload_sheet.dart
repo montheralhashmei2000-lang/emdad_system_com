@@ -49,6 +49,7 @@ class _UploadSheetState extends State<_UploadSheet> {
         withData: false,
       );
       if (res == null || res.paths.isEmpty) return;
+      if (!mounted) return;
       setState(() {
         for (final pth in res.paths) {
           if (pth != null && !_files.contains(pth)) _files.add(pth);

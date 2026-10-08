@@ -89,7 +89,8 @@ void main() {
     }
   }
 
-  /// أزرار الأيقونة لا تعرض Tooltip في هذا المشروع (أُزيلت عمدًا)، فيُبحث بخاصية tooltip نفسها.
+  /// يُبحث بخاصية `tooltip` على الودجة نفسها لا بنصٍّ في الشجرة: التلميحة
+  /// تُرسَم في الطبقة العائمة عند الوقوف بالمؤشّر وحده، فلا يجدها `find.text`.
   Finder tip(String t) => find.byWidgetPredicate((w) => w is ImdIconButton && w.tooltip == t);
 
   testWidgets('بلا صلاحية الصفحة: لا يرى شيئًا', (tester) async {

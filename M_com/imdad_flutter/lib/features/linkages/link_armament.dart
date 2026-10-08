@@ -251,6 +251,7 @@ class _LinkArmamentTabState extends State<LinkArmamentTab> {
         const ImdEmptyBox('لا سجلات تسليحٍ مطابقة')
       else
         ImdTable(
+          pageSize: 50,
           columns: const [
             ImdCol('الفرد', flex: 2),
             ImdCol('نوع السلاح'),

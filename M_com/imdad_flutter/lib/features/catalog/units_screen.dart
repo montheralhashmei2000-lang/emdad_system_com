@@ -238,6 +238,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
           const SizedBox(width: 8),
           ImdIconButton(
             icon: 'refresh',
+            tooltip: 'تحديث الشجرة',
             onPressed: () async {
               await _fetch();
               if (context.mounted) showImdToast(context, '🔄 حُدّثت الشجرة');
@@ -355,14 +356,19 @@ class _UnitsScreenState extends State<UnitsScreen> {
               const SizedBox(width: 8),
               ImdIconButton(
                 icon: 'edit',
+                tooltip: 'تعديل',
                 onPressed: () {
                   _editId = u.id;
                   _initForm();
                 },
               ),
-              if (kids == 0) ...[
+              if (kids == 0 && Perm.of(context).canDelete('units')) ...[
                 const SizedBox(width: 6),
-                ImdIconButton(icon: 'trash', kind: ImdBtnKind.danger, onPressed: () => _delete(u)),
+                ImdIconButton(
+                    icon: 'trash',
+                    tooltip: 'حذف',
+                    kind: ImdBtnKind.danger,
+                    onPressed: () => _delete(u)),
               ],
             ],
           ],

@@ -119,7 +119,7 @@ class _NotificationBellState extends State<NotificationBell> {
     return Stack(
         clipBehavior: Clip.none,
         children: [
-          ImdIconButton(icon: 'bell', onPressed: _open, dense: widget.dense),
+          ImdIconButton(icon: 'bell', tooltip: 'التنبيهات', onPressed: _open, dense: widget.dense),
           if (unread > 0)
             PositionedDirectional(
               top: -2,

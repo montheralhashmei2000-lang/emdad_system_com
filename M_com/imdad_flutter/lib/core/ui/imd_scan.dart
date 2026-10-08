@@ -102,6 +102,7 @@ class _ScanManyPageState extends State<_ScanManyPage> {
                 ImdButton(label: 'إنهاء ($_count)', icon: 'check', onPressed: () => Navigator.of(context).pop()),
                 const Spacer(),
                 IconButton(
+                  tooltip: 'الكشّاف',
                   onPressed: () => _ctrl.toggleTorch(),
                   icon: const ImdIcon('zap', size: 22, color: ImdFixedColors.cameraForeground),
                 ),
@@ -138,10 +139,10 @@ class ImdScanButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ImdButton.outline(
-      label: '',
+    if (!ImdScanner.supported) return const SizedBox.shrink();
+    return ImdIconButton(
       icon: 'camera',
-      small: true,
+      tooltip: 'مسح الباركود بالكاميرا',
       onPressed: () async {
         final v = await ImdScanner.scan(context);
         if (v == null || v.isEmpty) return;
@@ -203,6 +204,7 @@ class _ScanPageState extends State<_ScanPage> {
                 ImdButton.outline(label: 'إغلاق', icon: 'x', onPressed: () => Navigator.of(context).pop()),
                 const Spacer(),
                 IconButton(
+                  tooltip: 'الكشّاف',
                   onPressed: () => _ctrl.toggleTorch(),
                   icon: const ImdIcon('zap', size: 22, color: ImdFixedColors.cameraForeground),
                 ),

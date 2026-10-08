@@ -155,6 +155,7 @@ class _FinanceStatementState extends State<FinanceStatement> {
           const ImdEmptyBox('لا حركة على هذا الحساب')
         else
           ImdTable(
+            pageSize: 50,
             columns: const [
               ImdCol('التاريخ'),
               ImdCol('النوع'),

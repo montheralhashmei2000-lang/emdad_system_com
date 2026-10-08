@@ -637,7 +637,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
               items: opts.isEmpty ? [('', empty)] : opts,
               onChanged: (v) => on(v ?? ''),
             ),
-            button: ImdIconButton(icon: 'plus', onPressed: () => _quickAdd(wh)),
+            button: ImdIconButton(icon: 'plus', tooltip: 'إضافة سريعة', onPressed: () => _quickAdd(wh)),
           ),
           size: 11,
         );
@@ -841,6 +841,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
           );
     final delete = ImdIconButton(
       icon: 'x',
+      tooltip: 'حذف السطر',
       kind: ImdBtnKind.danger,
       onPressed: () => setState(() {
         _rows.remove(r);

@@ -6,6 +6,7 @@ import '../../core/print/document_pdf.dart';
 import '../../core/security/perm.dart';
 import '../../core/ui/imd_files.dart';
 import '../../core/ui/imd_form.dart';
+import '../../core/ui/imd_screen_actions.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_shimmer.dart';
@@ -44,14 +45,19 @@ class _BalancesScreenState extends State<BalancesScreen> {
   String _warehouse = '';
   bool _loading = true;
 
+  ImdScreenActions? _screenActions;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _screenActions = ImdScreenActions.maybeOf(context)
+      ?..register(onPrint: _print, onRefresh: _load);
   }
 
   @override
   void dispose() {
+    _screenActions?.clear();
     _q.dispose();
     super.dispose();
   }

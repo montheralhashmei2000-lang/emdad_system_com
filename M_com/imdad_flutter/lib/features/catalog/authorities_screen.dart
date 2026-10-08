@@ -182,6 +182,8 @@ class _AuthoritiesScreenState extends State<AuthoritiesScreen> {
             ]);
     }
     final can = Perm.of(context).writable('supplyAuthorities');
+    // صلاحية الحذف وحدها: `writable` يصدق بالإضافة أو التعديل أو الاعتماد.
+    final canDel = Perm.of(context).canDelete('supplyAuthorities');
     final active = _items.where((a) => a.active).length;
 
     final body = <Widget>[
@@ -260,7 +262,7 @@ class _AuthoritiesScreenState extends State<AuthoritiesScreen> {
               ? null
               : (i) => [
                     ImdMenuItem(label: 'تعديل', icon: 'edit', onTap: () => _edit(_items[i])),
-                    if ((_usage[_items[i].id] ?? 0) == 0)
+                    if (canDel && (_usage[_items[i].id] ?? 0) == 0)
                       ImdMenuItem(label: 'حذف', icon: 'trash', danger: true, onTap: () => _delete(_items[i])),
                   ],
           rows: [
@@ -281,7 +283,7 @@ class _AuthoritiesScreenState extends State<AuthoritiesScreen> {
                         icon: 'edit',
                         tooltip: 'تعديل',
                         onPressed: () => _edit(a)),
-                  if (can && (_usage[a.id] ?? 0) == 0)
+                  if (canDel && (_usage[a.id] ?? 0) == 0)
                     ImdIconButton(
                         icon: 'trash',
                         tooltip: 'حذف',

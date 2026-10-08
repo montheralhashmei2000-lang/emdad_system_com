@@ -73,7 +73,7 @@ Future<T?> showImdModal<T>(
                   Expanded(
                     child: Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: c.text)),
                   ),
-                  ImdIconButton(icon: 'x', onPressed: () => Navigator.of(ctx).pop()),
+                  ImdIconButton(icon: 'x', tooltip: 'إغلاق', onPressed: () => Navigator.of(ctx).pop()),
                 ]),
                 const SizedBox(height: 14),
                 Flexible(child: SingleChildScrollView(child: builder(ctx))),

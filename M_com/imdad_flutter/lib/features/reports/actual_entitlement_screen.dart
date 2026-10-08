@@ -7,6 +7,7 @@ import '../../core/print/document_pdf.dart';
 import '../../core/security/perm.dart';
 import '../../core/ui/imd_files.dart';
 import '../../core/ui/imd_form.dart';
+import '../../core/ui/imd_screen_actions.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_layout.dart';
 import '../../core/ui/imd_tokens.dart';
@@ -54,10 +55,20 @@ class _ActualEntitlementScreenState extends State<ActualEntitlementScreen> {
   bool _loading = true;
   bool _busy = false;
 
+  ImdScreenActions? _screenActions;
+
   @override
   void initState() {
     super.initState();
     _boot();
+    _screenActions = ImdScreenActions.maybeOf(context)
+      ?..register(onPrint: _print, onRefresh: _boot);
+  }
+
+  @override
+  void dispose() {
+    _screenActions?.clear();
+    super.dispose();
   }
 
   DateSpan get _span => PeriodKind.resolve(

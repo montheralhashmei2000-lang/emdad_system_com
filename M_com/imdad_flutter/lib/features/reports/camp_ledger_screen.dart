@@ -7,6 +7,7 @@ import '../../core/security/auth_service.dart';
 import '../../core/security/perm.dart';
 import '../../core/ui/imd_files.dart';
 import '../../core/ui/imd_form.dart';
+import '../../core/ui/imd_screen_actions.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_layout.dart';
 import '../../core/ui/imd_tokens.dart';
@@ -43,10 +44,20 @@ class _CampLedgerScreenState extends State<CampLedgerScreen> {
   bool _loading = true;
   bool _busy = false;
 
+  ImdScreenActions? _screenActions;
+
   @override
   void initState() {
     super.initState();
     _boot();
+    _screenActions = ImdScreenActions.maybeOf(context)
+      ?..register(onPrint: _print, onRefresh: _load);
+  }
+
+  @override
+  void dispose() {
+    _screenActions?.clear();
+    super.dispose();
   }
 
   Future<void> _boot() async {

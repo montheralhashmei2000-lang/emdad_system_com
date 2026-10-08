@@ -64,7 +64,7 @@ class _Topbar extends StatelessWidget {
         child: Row(
           children: [
             if (showBurger) ...[
-              ImdIconButton(icon: 'menu', onPressed: onBurger),
+              ImdIconButton(icon: 'menu', tooltip: 'القائمة', onPressed: onBurger),
               const SizedBox(width: 8),
             ],
             if (showTitle)
@@ -160,15 +160,21 @@ class _DesktopBar extends StatelessWidget {
           ),
           child: Row(children: [
             const SizedBox(width: 8),
-            Tooltip(
-              message: collapsed ? 'توسيع القائمة' : 'طيّ القائمة',
-              child: InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: onToggleSide,
-                child: SizedBox(
-                  width: 34,
-                  height: 28,
-                  child: Center(child: ImdIcon('menu', size: 16, color: c.text2)),
+            // `Tooltip` يُظهر النصَّ للمُبصر ولا يُسمّي الزرَّ في شجرة
+            // الدلالات، و`InkWell` عارٍ من أي اسم — فالاثنان لازمان.
+            Semantics(
+              label: collapsed ? 'توسيع القائمة' : 'طيّ القائمة',
+              button: true,
+              child: Tooltip(
+                message: collapsed ? 'توسيع القائمة' : 'طيّ القائمة',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: onToggleSide,
+                  child: SizedBox(
+                    width: 34,
+                    height: 28,
+                    child: Center(child: ImdIcon('menu', size: 16, color: c.text2)),
+                  ),
                 ),
               ),
             ),
@@ -258,15 +264,13 @@ class _SearchButton extends StatelessWidget {
   final bool dense;
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-        // `ImdIconButton` لا تمرّر `tooltip` إلى زرّها، فالتلميح بالغلاف كما
-        // يفعل زرّ طيّ القائمة في هذا الشريط نفسه.
-        message: ImdShortcuts.supported ? 'البحث العام (Ctrl+K)' : 'البحث العام',
-        child: ImdIconButton(
-          icon: 'search',
-          dense: dense,
-          onPressed: () => ImdScreenActions.maybeOf(context)?.onSearch?.call(),
-        ),
+  Widget build(BuildContext context) => ImdIconButton(
+        icon: 'search',
+        // `tooltip` يُضيف التلميحة **واسمًا دلاليًّا** لقارئ الشاشة؛ وغلافُ
+        // `Tooltip` وحده كان يُظهر النصّ للمُبصر ولا يُسمّي الزرَّ.
+        tooltip: ImdShortcuts.supported ? 'البحث العام (Ctrl+K)' : 'البحث العام',
+        dense: dense,
+        onPressed: () => ImdScreenActions.maybeOf(context)?.onSearch?.call(),
       );
 }
 

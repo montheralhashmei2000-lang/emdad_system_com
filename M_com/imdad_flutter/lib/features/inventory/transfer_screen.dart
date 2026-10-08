@@ -978,6 +978,7 @@ class _TransferScreenState extends State<TransferScreen> {
     );
     final delete = ImdIconButton(
       icon: 'x',
+      tooltip: 'حذف السطر',
       kind: ImdBtnKind.danger,
       onPressed: () => setState(() {
         _rows.remove(r);

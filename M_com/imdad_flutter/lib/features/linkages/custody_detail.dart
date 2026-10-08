@@ -92,6 +92,7 @@ class _CustodyDetailState extends State<CustodyDetail> {
         const ImdEmptyBox('لا عقود مرتبطة بهذه العهدة — اختر العهدة في حقل «العهدة المرتبطة» بمحرر العقد')
       else
         ImdTable(
+          pageSize: 50,
           columns: const [
             ImdCol('رقم العقد'),
             ImdCol('التصنيف', flex: 2),

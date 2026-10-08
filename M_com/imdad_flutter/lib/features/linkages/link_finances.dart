@@ -614,6 +614,7 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
         const ImdEmptyBox('لا عهدٍ مطابقة')
       else
         ImdTable(
+          pageSize: 50,
           columns: const [
             ImdCol('الرقم'),
             ImdCol('النوع'),
@@ -727,6 +728,7 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
         const ImdEmptyBox('لا إخلاءاتٍ مطابقة')
       else
         ImdTable(
+          pageSize: 50,
           columns: const [
             ImdCol('الرقم'),
             ImdCol('النوع'),
@@ -812,6 +814,7 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
         const ImdEmptyBox('لا مسيراتٍ مطابقة')
       else
         ImdTable(
+          pageSize: 50,
           columns: const [
             ImdCol('رقم العهدة'),
             ImdCol('صاحب العهدة', flex: 2),
@@ -891,6 +894,7 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
         const ImdEmptyBox('لا عقودٍ مطابقة')
       else
         ImdTable(
+          pageSize: 50,
           columns: const [
             ImdCol('الرقم'),
             ImdCol('التصنيف', flex: 2),

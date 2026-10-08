@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/print/document_pdf.dart';
 import '../../core/security/perm.dart';
 import '../../core/ui/imd_form.dart';
+import '../../core/ui/imd_screen_actions.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_tokens.dart';
@@ -47,14 +48,19 @@ class _OpeningScreenState extends State<OpeningScreen> {
   String _warehouse = '';
   bool _loading = true;
 
+  ImdScreenActions? _screenActions;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _screenActions = ImdScreenActions.maybeOf(context)
+      ?..register(onSave: _saveAll, onPrint: _print, onRefresh: _load);
   }
 
   @override
   void dispose() {
+    _screenActions?.clear();
     _q.dispose();
     for (final c in _inputs.values) {
       c.dispose();

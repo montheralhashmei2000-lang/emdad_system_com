@@ -196,6 +196,10 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
     }
   }
 
+  /// صلاحية الحذف وحدها: [Perm.writable] يصدق بالإضافة أو التعديل أو
+  /// الاعتماد، فكان زرُّ الحذف يظهر لمن لا يملك الحذف.
+  bool get _canDel => Perm.of(context).canDelete('fuelAllocations');
+
   Future<void> _delete(FuelAllocationRow row) async {
     if (!Perm.of(context)
         .guard(context, 'fuelAllocations', PermAction.delete)) {
@@ -483,10 +487,11 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
                         icon: 'edit',
                         tooltip: 'تعديل',
                         onPressed: () => _edit(r)),
-                    ImdIconButton(
-                        icon: 'trash',
-                        tooltip: 'حذف',
-                        onPressed: () => _delete(r)),
+                    if (_canDel)
+                      ImdIconButton(
+                          icon: 'trash',
+                          tooltip: 'حذف',
+                          onPressed: () => _delete(r)),
                   ])
                 else
                   const SizedBox.shrink(),

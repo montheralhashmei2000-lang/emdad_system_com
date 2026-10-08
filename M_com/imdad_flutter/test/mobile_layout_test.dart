@@ -11,6 +11,8 @@ import 'package:imdad/core/ui/imd_tokens.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/sync/auto_sync.dart';
 import 'package:imdad/domain/app_space.dart';
+import 'package:imdad/features/fuel/fuel_dashboard_screen.dart';
+import 'package:imdad/features/fuel/fuel_moves_screen.dart';
 import 'package:imdad/features/home/home_shell.dart';
 import 'package:imdad/main.dart' show ImdTheme;
 import 'package:provider/provider.dart';
@@ -40,6 +42,24 @@ void main() {
     'cables',
     'linkages', 'linkFinances', 'linkArmament',
     'archive',
+    // أبوابٌ ولوحاتٌ كانت خارج المسح: كلٌّ منها شاشةٌ كاملة لا تبويبةٌ داخل غيرها.
+    'supplyMoves', 'supplyOrders', 'supplyData', 'supplyDaily', 'supplyReports',
+    'dailyOperations', 'stocktake', 'reports', 'auditTrail',
+    'activityIntel', 'executiveCmd', 'healthOps', 'sensitiveOps',
+  ];
+
+  /// قسم المحروقات — كان خارج المسح كلَّه.
+  ///
+  /// الخطوة ٨ في `CLAUDE.md` تُلزم إضافة كل صفحةٍ جديدة هنا، وصفحاتُ المحروقات
+  /// الأربعُ والعشرون لم تُضَف قط: فلم يُتحقَّق من أيٍّ منها على مقاس هاتف.
+  /// والمساحة تُضبط على [AppSpace.fuel] قبل المسح، إذ `_pageBody` يبني الصفحة
+  /// بحسب مساحتها.
+  const fuelPages = [
+    'fuelDashboard', 'fuelAllocations', 'fuelMoves', 'fuelStocktake',
+    'fuelData', 'fuelWarehouses', 'fuelUnits', 'fuelVehicles',
+    'fuelReports', 'fuelConsumption', 'fuelLedger', 'fuelOfficial',
+    'fuelPlanVsIssued', 'fuelStocks', 'fuelSettings', 'fuelOpening',
+    'fuelIssue', 'fuelSupply', 'fuelTransfer', 'fuelDaily',
   ];
 
   /// خط التطبيق الحقيقي: اختبارات Flutter ترسم كل نصٍّ بخط Ahem (كل حرفٍ مربعٌ
@@ -98,11 +118,20 @@ void main() {
     await tester.pump();
   }
 
-  Future<List<String>> sweep(WidgetTester tester, Size size, {double textScale = 1}) async {
+  Future<List<String>> sweep(
+    WidgetTester tester,
+    Size size, {
+    double textScale = 1,
+    List<String> pages = supplyPages,
+    String space = AppSpace.supply,
+  }) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
+    SharedPreferences.setMockInitialValues({
+      'imdad.space.${auth.currentUser!.id}': space,
+    });
 
     // تُجمع الأخطاء بتفاصيلها (سلسلة الودجات) لا بعنوانها وحده، فيُعرف أي سطرٍ
     // من أي ملفٍّ يفيض.
@@ -116,7 +145,7 @@ void main() {
 
     final nav = ImdNav.of(tester.element(find.byType(Scaffold).first));
     final bad = <String>[];
-    for (final page in supplyPages) {
+    for (final page in pages) {
       nav.go(page);
       await settle(tester);
       for (final d in captured) {
@@ -157,6 +186,59 @@ void main() {
   testWidgets('لوحي ٨٠٠×١٢٨٠: لا فيض في أي شاشة', (tester) async {
     final bad = await sweep(tester, const Size(800, 1280));
     expect(bad, isEmpty, reason: bad.join('\n'));
+  });
+
+  group('قسم المحروقات على مقاس هاتف', () {
+    // حارسُ المسح نفسه: مسحٌ «ناجح» لصفحاتٍ لم تُبنَ أصلًا لا يكشف شيئًا. فإن
+    // لم تُضبط المساحة على المحروقات بقي القسم على الإمداد، ومرّت عشرون صفحةً
+    // بلا أن يُرسم منها شيء.
+    testWidgets('المساحة تتحوّل فعلًا وشاشات المحروقات تُبنى', (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      tester.view.physicalSize = const Size(360, 740);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      SharedPreferences.setMockInitialValues({
+        'imdad.space.${auth.currentUser!.id}': AppSpace.fuel,
+      });
+      await tester.pumpWidget(host());
+      await settle(tester);
+      final nav = ImdNav.of(tester.element(find.byType(Scaffold).first));
+
+      nav.go('fuelDashboard');
+      await settle(tester);
+      expect(find.byType(FuelDashboardScreen), findsOneWidget,
+          reason: 'لوحة المحروقات لم تُبنَ — المسح يمرّ على فراغ');
+
+      nav.go('fuelMoves');
+      await settle(tester);
+      expect(find.byType(FuelMovesScreen), findsOneWidget);
+      expect(find.text('لا تملك صلاحية العرض'), findsNothing);
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    testWidgets('هاتف ٣٦٠×٧٤٠: لا فيض في أي شاشة محروقات', (tester) async {
+      final bad = await sweep(tester, const Size(360, 740),
+          pages: fuelPages, space: AppSpace.fuel);
+      expect(bad, isEmpty, reason: bad.join('\n'));
+    });
+
+    testWidgets('هاتف ٣٦٠×٧٤٠ بخطٍّ أكبر ١٫٣: لا فيض في أي شاشة محروقات', (tester) async {
+      final bad = await sweep(tester, const Size(360, 740),
+          textScale: 1.3, pages: fuelPages, space: AppSpace.fuel);
+      expect(bad, isEmpty, reason: bad.join('\n'));
+    });
+
+    testWidgets('هاتف صغير ٣٢٠×٥٦٨: لا فيض في أي شاشة محروقات', (tester) async {
+      final bad = await sweep(tester, const Size(320, 568),
+          pages: fuelPages, space: AppSpace.fuel);
+      expect(bad, isEmpty, reason: bad.join('\n'));
+    });
+
+    testWidgets('هاتف أفقيّ ٧٤٠×٣٦٠: لا فيض في أي شاشة محروقات', (tester) async {
+      final bad = await sweep(tester, const Size(740, 360),
+          pages: fuelPages, space: AppSpace.fuel);
+      expect(bad, isEmpty, reason: bad.join('\n'));
+    });
   });
 
   group('تكبير الخط', () {

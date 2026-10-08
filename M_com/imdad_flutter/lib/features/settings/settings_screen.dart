@@ -171,11 +171,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final hasKey = await esign.hasKey();
     final signAt = await esign.createdAt();
     final prefs = await SettingsRepo(_db).read('prefs');
+    final signKeyId = await esign.keyId();
+    // كل الانتظار قبل الحارس: `await` بعده يُبطله، فيكتب في حالةٍ مُتلَفة.
     if (!mounted) return;
     imdSetText(_rules, '${rules['text'] ?? ''}');
     _hasSignKey = hasKey;
     _signAt = signAt;
-    _signKeyId = await esign.keyId();
+    _signKeyId = signKeyId;
     _pushEnabled = prefs['push'] == true;
     setState(() {
       _items = items.length;

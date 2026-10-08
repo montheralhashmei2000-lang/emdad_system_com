@@ -696,6 +696,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
     );
     final delete = ImdIconButton(
       icon: 'x',
+      tooltip: 'حذف السطر',
       kind: ImdBtnKind.danger,
       onPressed: () => setState(() {
         rows.remove(r);

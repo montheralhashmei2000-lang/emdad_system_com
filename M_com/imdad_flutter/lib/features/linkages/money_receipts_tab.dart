@@ -171,6 +171,7 @@ class _MoneyReceiptsTabState extends State<MoneyReceiptsTab> {
         const ImdEmptyBox('لا سندات استلام بعد')
       else
         ImdTable(
+          pageSize: 50,
           columns: const [
             ImdCol('المستلم', flex: 2),
             ImdCol('بصفته'),

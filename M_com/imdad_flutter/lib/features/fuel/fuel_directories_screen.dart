@@ -267,8 +267,9 @@ class _FuelWarehousesScreenState extends State<FuelWarehousesScreen> {
               Wrap(spacing: 4, alignment: WrapAlignment.center, children: [
                 ImdIconButton(
                     icon: 'edit', tooltip: 'تعديل', onPressed: () => _edit(w)),
-                ImdIconButton(
-                    icon: 'trash', tooltip: 'حذف', onPressed: () => _delete(w)),
+                if (Perm.of(context).canDelete('fuelWarehouses'))
+                  ImdIconButton(
+                      icon: 'trash', tooltip: 'حذف', onPressed: () => _delete(w)),
               ])
             else
               const SizedBox.shrink(),
@@ -520,10 +521,11 @@ class _FuelUnitsScreenState extends State<FuelUnitsScreen> {
                         icon: 'edit',
                         tooltip: 'تعديل',
                         onPressed: () => _edit(u)),
-                    ImdIconButton(
-                        icon: 'trash',
-                        tooltip: 'حذف',
-                        onPressed: () => _delete(u)),
+                    if (Perm.of(context).canDelete('fuelUnits'))
+                      ImdIconButton(
+                          icon: 'trash',
+                          tooltip: 'حذف',
+                          onPressed: () => _delete(u)),
                   ])
                 else
                   const SizedBox.shrink(),

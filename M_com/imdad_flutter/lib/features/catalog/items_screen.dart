@@ -20,6 +20,7 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/movements_repo.dart';
+import '../../domain/access_control.dart';
 import '../../domain/stock_alerts.dart';
 import '../../core/error_log.dart';
 
@@ -137,6 +138,10 @@ class _ItemsScreenState extends State<ItemsScreen> {
   double _qty(Item x) => _ledger[x.id] ?? 0;
 
   bool _w(BuildContext context) => Perm.of(context).writable('items');
+
+  /// صلاحية الحذف وحدها: [Perm.writable] يصدق بالإضافة أو التعديل أو
+  /// الاعتماد، فكان زرُّ الحذف يظهر لمن لا يملك الحذف.
+  bool _canDel(BuildContext context) => Perm.of(context).canDelete('items');
 
   void _switch(String t) {
     setState(() => _tab = t);
@@ -263,7 +268,8 @@ class _ItemsScreenState extends State<ItemsScreen> {
                         _switch('form');
                       },
                     ),
-                    ImdMenuItem(label: 'حذف', icon: 'trash', danger: true, onTap: () => _delete(rows[i])),
+                    if (_canDel(context))
+                      ImdMenuItem(label: 'حذف', icon: 'trash', danger: true, onTap: () => _delete(rows[i])),
                   ],
           // قيم الخلايا الخام: تصفية الأعمدة والتجميع (مثلًا حسب التصنيف).
           values: [
@@ -286,13 +292,20 @@ class _ItemsScreenState extends State<ItemsScreen> {
                   Row(mainAxisSize: MainAxisSize.min, children: [
                     ImdIconButton(
                       icon: 'edit',
+                      tooltip: 'تعديل',
                       onPressed: () {
                         _editId = x.id;
                         _switch('form');
                       },
                     ),
-                    const SizedBox(width: 4),
-                    ImdIconButton(icon: 'trash', kind: ImdBtnKind.danger, onPressed: () => _delete(x)),
+                    if (_canDel(context)) ...[
+                      const SizedBox(width: 4),
+                      ImdIconButton(
+                          icon: 'trash',
+                          tooltip: 'حذف',
+                          kind: ImdBtnKind.danger,
+                          onPressed: () => _delete(x)),
+                    ],
                   ]),
               ],
           ],
@@ -315,6 +328,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
   }
 
   Future<void> _delete(Item x) async {
+    if (!Perm.of(context).guard(context, 'items', PermAction.delete)) return;
     if (!await imdConfirm(context, 'حذف هذا الصنف نهائيًا؟ لا يمكن التراجع.', ok: 'حذف', danger: true)) return;
     try {
       await _repo.deleteItem(x.id);
@@ -472,7 +486,9 @@ class _ItemsScreenState extends State<ItemsScreen> {
               const ImdCol('م', width: 60),
               const ImdCol('الاسم', flex: 2),
               const ImdCol('الوصف', flex: 3),
-              if (w) const ImdCol('', width: 110),
+              // عمودٌ لا يحمل غير زرِّ الحذف: يتبع صلاحية الحذف نفسها، فلا
+              // يبقى ترويسةً بلا خلية (فيختلف عدد الخلايا عن عدد الأعمدة).
+              if (_canDel(context)) const ImdCol('', width: 110),
             ],
             rows: [
               for (var i = 0; i < _cats.length; i++)
@@ -480,7 +496,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                   Text(nf(i + 1)),
                   Text(_cats[i].name, style: const TextStyle(fontWeight: FontWeight.w600)),
                   Text(_cats[i].description.isEmpty ? '—' : _cats[i].description),
-                  if (w)
+                  if (_canDel(context))
                     ImdButton(
                       label: 'حذف',
                       icon: 'trash',
@@ -515,6 +531,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
   }
 
   Future<void> _deleteCat(Category cat) async {
+    if (!Perm.of(context).guard(context, 'items', PermAction.delete)) return;
     if (!await imdConfirm(context, 'حذف التصنيف؟ الأصناف المرتبطة به تحتفظ بالاسم القديم.', ok: 'حذف', danger: true)) {
       return;
     }
@@ -760,6 +777,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
         const SizedBox(width: 8),
         ImdIconButton(
           icon: 'x',
+          tooltip: 'حذف السطر',
           kind: ImdBtnKind.danger,
           onPressed: () => setState(() {
             _uRows.remove(r);

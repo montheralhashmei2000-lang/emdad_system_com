@@ -236,6 +236,9 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
   Widget build(BuildContext context) {
     // الإضافة والتعديل والحذف بصلاحية «المستودعات» نفسها (لا بالمدير وحده)، وكل إجراءٍ محروسٌ في دالته.
     final can = Perm.of(context).writable('stores');
+    // صلاحية الحذف وحدها: `writable` يصدق بالإضافة أو التعديل أو الاعتماد،
+    // فكان زرُّ الحذف يظهر لمن لا يملك الحذف.
+    final canDel = Perm.of(context).canDelete('stores');
     final cur = _items.where((x) => x.id == _editId).firstOrNull;
     final q = _q.text.trim().toLowerCase();
     final rows = _items
@@ -386,13 +389,20 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                     Row(mainAxisSize: MainAxisSize.min, children: [
                       ImdIconButton(
                         icon: 'edit',
+                        tooltip: 'تعديل',
                         onPressed: () {
                           _editId = x.id;
                           _render();
                         },
                       ),
-                      const SizedBox(width: 4),
-                      ImdIconButton(icon: 'trash', kind: ImdBtnKind.danger, onPressed: () => _delete(x)),
+                      if (canDel) ...[
+                        const SizedBox(width: 4),
+                        ImdIconButton(
+                            icon: 'trash',
+                            tooltip: 'حذف',
+                            kind: ImdBtnKind.danger,
+                            onPressed: () => _delete(x)),
+                      ],
                     ]),
                 ];
               }(),

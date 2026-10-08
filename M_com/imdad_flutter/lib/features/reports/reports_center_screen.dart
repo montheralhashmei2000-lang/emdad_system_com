@@ -6,6 +6,7 @@ import '../../core/print/document_pdf.dart';
 import '../../core/security/perm.dart';
 import '../../core/ui/imd_files.dart';
 import '../../core/ui/imd_form.dart';
+import '../../core/ui/imd_screen_actions.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_icon.dart';
 import '../../core/ui/imd_tokens.dart';
@@ -75,10 +76,14 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
   ReportInfo get _report => kReports[_idx];
   int get _sectionCount => kReports.length + _visibleTools.length;
 
+  ImdScreenActions? _screenActions;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _screenActions = ImdScreenActions.maybeOf(context)
+      ?..register(onPrint: _print, onRefresh: _load);
   }
 
   @override
@@ -97,6 +102,7 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
 
   @override
   void dispose() {
+    _screenActions?.clear();
     _q.dispose();
     super.dispose();
   }

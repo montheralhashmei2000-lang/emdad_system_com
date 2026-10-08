@@ -499,7 +499,7 @@ class _WarehouseDashboardViewState extends State<WarehouseDashboardView> {
                   fontSize: 12.5,
                   color: r.status == LimitStatus.low ? c.danger : c.muted),
             ),
-            if (can)
+            if (_canDel)
               ImdIconButton(
                   icon: 'trash',
                   tooltip: 'حذف الحد',
@@ -512,6 +512,10 @@ class _WarehouseDashboardViewState extends State<WarehouseDashboardView> {
   }
 
   /// شريط الامتلاء: الفرق بين «قارب الامتلاء» و«تجاوز» لا يظهر في رقم.
+  /// صلاحية الحذف وحدها: [Perm.writable] يصدق بالإضافة أو التعديل أو
+  /// الاعتماد، فكان زرُّ الحذف يظهر لمن لا يملك الحذف.
+  bool get _canDel => Perm.of(context).canDelete('stores');
+
   Widget _fillBar(WarehouseLimitRow r) {
     final c = context.imd;
     final ratio = r.fillRatio;

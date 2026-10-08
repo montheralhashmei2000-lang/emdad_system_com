@@ -152,7 +152,7 @@ class _PersonFormState extends State<_PersonForm> {
   Future<void> _pickPhoto() async {
     final res = await FilePicker.platform.pickFiles(type: FileType.image, withData: false);
     final path = res?.paths.first;
-    if (path == null) return;
+    if (path == null || !mounted) return;
     setState(() {
       _newPhotoSource = path;
       _photo = path; // معاينة فورية قبل النسخ النهائي عند الحفظ

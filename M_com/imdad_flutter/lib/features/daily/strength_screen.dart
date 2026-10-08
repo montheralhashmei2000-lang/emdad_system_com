@@ -402,6 +402,10 @@ class _StrengthScreenState extends State<StrengthScreen> {
     await _loadRows();
   }
 
+  /// صلاحية الحذف وحدها: [Perm.writable] يصدق بالإضافة أو التعديل أو
+  /// الاعتماد، فكان زرُّ الحذف يظهر لمن لا يملك الحذف.
+  bool get _canDel => _perm.canDelete('feeding');
+
   Future<void> _deleteArch(_ArchRow r) async {
     if (!_perm.guard(context, 'feeding', PermAction.delete)) return;
     final ok = await imdConfirm(
@@ -747,13 +751,14 @@ class _StrengthScreenState extends State<StrengthScreen> {
         if (w) ...[
           ImdButton.outline(label: 'عرض', icon: 'eye', small: true, onPressed: () => _goTo(r)),
           ImdButton(label: 'تعديل', icon: 'edit', small: true, onPressed: () => _goTo(r)),
-          ImdButton(
-            label: 'حذف',
-            icon: 'trash',
-            small: true,
-            kind: ImdBtnKind.danger,
-            onPressed: () => _deleteArch(r),
-          ),
+          if (_canDel)
+            ImdButton(
+              label: 'حذف',
+              icon: 'trash',
+              small: true,
+              kind: ImdBtnKind.danger,
+              onPressed: () => _deleteArch(r),
+            ),
         ],
       ]),
     );

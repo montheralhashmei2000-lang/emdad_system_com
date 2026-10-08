@@ -798,7 +798,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           Text(r.label, style: const TextStyle(fontWeight: FontWeight.w600)),
                           Text(r.ref),
                           Text(r.party),
-                          Text(r.date.isEmpty ? '—' : r.date),
+                          Text(r.date.isEmpty ? '—' : arDigits(r.date)),
                           ImdChip(
                             r.status.isEmpty ? 'ACTIVE' : r.status,
                             tone: const ['ORDER', 'DRAFT', 'PENDING'].contains(r.status)

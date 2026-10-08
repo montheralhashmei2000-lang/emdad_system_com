@@ -358,6 +358,7 @@ class _LinkPersonnelTabState extends State<LinkPersonnelTab> {
           action: _canCreate ? ImdButton(label: 'إضافة فرد', icon: 'plus', onPressed: _addPerson) : null)
       else
         ImdTable(
+          pageSize: 50,
           columns: [
             if (_selectMode) const ImdCol(''),
             const ImdCol('الاسم', flex: 2),

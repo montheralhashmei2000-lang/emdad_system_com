@@ -160,6 +160,9 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
   Widget build(BuildContext context) {
     // الإضافة والتعديل والحذف بصلاحية «الموردون» نفسها (لا بالمدير وحده)، وكل إجراءٍ محروسٌ في دالته.
     final can = Perm.of(context).writable('suppliers');
+    // صلاحية الحذف وحدها: `writable` يصدق بالإضافة أو التعديل أو الاعتماد،
+    // فكان زرُّ الحذف يظهر لمن لا يملك الحذف.
+    final canDel = Perm.of(context).canDelete('suppliers');
     final cur = _items.where((x) => x.id == _editId).firstOrNull;
     final q = _q.text.trim().toLowerCase();
     final rows = _items
@@ -264,7 +267,8 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                         _render();
                       },
                     ),
-                    ImdMenuItem(label: 'حذف', icon: 'trash', danger: true, onTap: () => _delete(rows[i])),
+                    if (canDel)
+                      ImdMenuItem(label: 'حذف', icon: 'trash', danger: true, onTap: () => _delete(rows[i])),
                   ],
           // قيم الخلايا الخام: تصفية الأعمدة والتجميع (مثلًا حسب المدينة).
           values: [
@@ -300,13 +304,20 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                     Row(mainAxisSize: MainAxisSize.min, children: [
                       ImdIconButton(
                         icon: 'edit',
+                        tooltip: 'تعديل',
                         onPressed: () {
                           _editId = x.id;
                           _render();
                         },
                       ),
-                      const SizedBox(width: 4),
-                      ImdIconButton(icon: 'trash', kind: ImdBtnKind.danger, onPressed: () => _delete(x)),
+                      if (canDel) ...[
+                        const SizedBox(width: 4),
+                        ImdIconButton(
+                            icon: 'trash',
+                            tooltip: 'حذف',
+                            kind: ImdBtnKind.danger,
+                            onPressed: () => _delete(x)),
+                      ],
                     ]),
                 ];
               }(),

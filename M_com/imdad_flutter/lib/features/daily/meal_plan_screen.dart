@@ -170,6 +170,21 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
     await _render();
   }
 
+  /// صلاحية الحذف وحدها: [Perm.writable] يصدق بالإضافة أو التعديل، فكان زرُّ
+  /// الحذف يظهر لمن لا يملكه.
+  bool get _canDel => Perm.of(context).canDelete('mealPlans');
+
+  /// حذف سطرٍ من الخطة — محروسٌ كحذف الخطة نفسها.
+  Future<void> _deleteEntry(MealPlanEntry e, String planId) async {
+    if (!Perm.of(context).guard(context, 'mealPlans', PermAction.delete)) return;
+    try {
+      await _repo.deleteEntry(e.id);
+      await _openPlan(planId);
+    } catch (err) {
+      if (mounted) showImdToast(context, '✖ $err', error: true);
+    }
+  }
+
   Future<void> _delete(MealPlan p) async {
     if (!Perm.of(context).guard(context, 'mealPlans', PermAction.delete)) return;
     if (!await imdConfirm(context, 'حذف خطة «${p.name}» ووجباتها؟', ok: 'حذف', danger: true)) {
@@ -550,7 +565,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
                 if (can && p.status == MealPlanStatus.active)
                   ImdIconButton(
                       icon: 'archive', tooltip: 'أرشفة', onPressed: () => _archive(p)),
-                if (can)
+                if (_canDel)
                   ImdIconButton(icon: 'trash', tooltip: 'حذف', onPressed: () => _delete(p)),
               ]),
             ],
@@ -688,14 +703,11 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
                         if (persons > 0)
                           Text('= ${nf(e.qtyPerPerson * e.factor * persons)} ${e.unitName}',
                               style: TextStyle(fontSize: 12, color: context.imd.muted)),
-                        if (can)
+                        if (_canDel)
                           ImdIconButton(
                             icon: 'trash',
                             tooltip: 'حذف',
-                            onPressed: () async {
-                              await _repo.deleteEntry(e.id);
-                              await _openPlan(open.plan.id);
-                            },
+                            onPressed: () => _deleteEntry(e, open.plan.id),
                           ),
                       ]),
                     ),

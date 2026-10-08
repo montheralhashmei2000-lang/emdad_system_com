@@ -10,6 +10,7 @@ import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/catalog_repo.dart';
+import '../../domain/access_control.dart';
 
 /// المطابخ والأفران — نقل مطابق لـ `renderKitchens()` بتبويباتها الثلاث:
 /// القائمة، بطاقة مطبخ/فرن، اشتراكات الوحدات.
@@ -136,23 +137,22 @@ class _KitchensScreenState extends State<KitchensScreen> {
               Row(mainAxisSize: MainAxisSize.min, children: [
                 ImdIconButton(
                   icon: 'edit',
+                  tooltip: 'تعديل',
                   onPressed: () {
                     _editId = f.id;
                     _switch('form');
                   },
                 ),
-                const SizedBox(width: 4),
-                ImdIconButton(
-                  icon: 'trash',
-                  kind: ImdBtnKind.danger,
-                  onPressed: () async {
-                    if (!await imdConfirm(context, 'حذف هذا المطبخ/الفرن نهائيًا؟', ok: 'حذف', danger: true)) return;
-                    await _repo.deleteFacility(f.id);
-                    if (!context.mounted) return;
-                    showImdToast(context, '✔ تم الحذف');
-                    await _fetch();
-                  },
-                ),
+                // صلاحية الحذف وحدها: `writable` يصدق بالإضافة أو التعديل.
+                if (Perm.of(context).canDelete('kitchens')) ...[
+                  const SizedBox(width: 4),
+                  ImdIconButton(
+                    icon: 'trash',
+                    tooltip: 'حذف',
+                    kind: ImdBtnKind.danger,
+                    onPressed: () => _delete(f),
+                  ),
+                ],
               ]),
           ],
       ],
@@ -237,6 +237,19 @@ class _KitchensScreenState extends State<KitchensScreen> {
         ]),
       ]),
     );
+  }
+
+  Future<void> _delete(Facility f) async {
+    if (!Perm.of(context).guard(context, 'kitchens', PermAction.delete)) return;
+    if (!await imdConfirm(context, 'حذف هذا المطبخ/الفرن نهائيًا؟', ok: 'حذف', danger: true)) return;
+    try {
+      await _repo.deleteFacility(f.id);
+      if (!mounted) return;
+      showImdToast(context, '✔ تم الحذف');
+      await _fetch();
+    } catch (e) {
+      if (mounted) showImdToast(context, '✖ $e', error: true);
+    }
   }
 
   Future<void> _save() async {

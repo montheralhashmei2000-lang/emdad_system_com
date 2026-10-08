@@ -103,6 +103,7 @@ mixin _IssueRowsView on _IssueBase, _IssueBeneficiary, _IssueRows {
     );
     final delete = ImdIconButton(
       icon: 'x',
+      tooltip: 'حذف السطر',
       kind: ImdBtnKind.danger,
       onPressed: () {
         setState(() {

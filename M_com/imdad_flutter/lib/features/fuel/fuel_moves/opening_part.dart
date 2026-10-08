@@ -40,7 +40,6 @@ mixin _FuelMovesOpening on _FuelMovesBase, _FuelMovesActions, _FuelMovesShared {
 
   List<Widget> _openingLog() {
     final c = context.imd;
-    final can = Perm.of(context).writable('fuelMoves');
     return [
       ImdPanel(
         title: 'الأرصدة الافتتاحية',
@@ -71,7 +70,8 @@ mixin _FuelMovesOpening on _FuelMovesBase, _FuelMovesActions, _FuelMovesShared {
                     style: const TextStyle(fontWeight: FontWeight.w700)),
                 Text(o.note.isEmpty ? '—' : o.note,
                     style: TextStyle(color: c.muted)),
-                if (can)
+                // صلاحية الحذف وحدها: `writable` يصدق بالإضافة أو التعديل.
+                if (Perm.of(context).canDelete('fuelMoves'))
                   ImdIconButton(
                       icon: 'trash',
                       tooltip: 'حذف',
