@@ -19,6 +19,7 @@ import '../../core/ui/imd_density.dart';
 import '../../core/ui/imd_fonts.dart';
 import '../../core/ui/imd_menu_bar.dart';
 import '../../core/ui/imd_page_tabs.dart';
+import '../../core/ui/imd_screen_actions.dart';
 import '../../core/ui/imd_status_bar.dart';
 import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_window.dart';
@@ -29,6 +30,7 @@ import '../../domain/app_space.dart';
 import '../../domain/menu_doors.dart';
 import '../../domain/section_block.dart';
 import '../../data/sync/auto_sync.dart';
+import '../search/search_modal.dart';
 import 'space_chooser_screen.dart';
 import '../fuel/fuel_allocations_screen.dart';
 import '../fuel/fuel_consumption_screen.dart';
@@ -261,7 +263,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _watchData();
     // دور المستخدم أو حجب أقسامه تغيّر (مزامنة): تُعاد الواجهة فيسري فورًا.
     _userVersion = context.read<AuthService>().userVersion..addListener(_onUserChanged);
+    // البحث العام (Ctrl+K): إجراءُ الإطار — يفتح أي شاشةٍ فلا تملكه شاشةٌ
+    // واحدة. يُسجَّل هنا مرةً، فلا يعمل الاختصار قبل الدخول.
+    _actions = ImdScreenActions.maybeOf(context)?..onSearch = _openSearch;
   }
+
+  ImdScreenActions? _actions;
+
+  void _openSearch() => showSearchModal(context, onOpenPage: _go);
 
   late final ValueNotifier<int> _userVersion;
 
@@ -382,6 +391,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _actions?.onSearch = null;
     _sessionTimer?.cancel();
     _dbSub?.cancel();
     // المرجع محفوظ منذ initState: القراءة من السياق أثناء dispose غير آمنة.

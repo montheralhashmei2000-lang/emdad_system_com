@@ -92,6 +92,8 @@ class _Topbar extends StatelessWidget {
             const SizedBox(width: 10),
             _SpacePill(space: space, canSwitch: canSwitch, onTap: onSwitchSpace, showLabel: showTitle),
             const Spacer(),
+            const _SearchButton(),
+            const SizedBox(width: 8),
             _ThemeButton(isDark: c.isDark),
             const SizedBox(width: 8),
             NotificationBell(onOpenPage: onOpenPage, space: space),
@@ -189,6 +191,8 @@ class _DesktopBar extends StatelessWidget {
             if (showMenus) ...[const ImdMenuBar(), const SizedBox(width: 8)],
             _SpacePill(space: space, canSwitch: canSwitch, onTap: onSwitchSpace, showLabel: showLabel, dense: true),
             const SizedBox(width: 8),
+            const _SearchButton(dense: true),
+            const SizedBox(width: 6),
             _ThemeButton(isDark: c.isDark, dense: true),
             const SizedBox(width: 6),
             NotificationBell(onOpenPage: onOpenPage, space: space, dense: true),
@@ -243,6 +247,27 @@ class _SpacePill extends StatelessWidget {
       ),
     );
   }
+}
+
+/// البحث العام: الزرُّ نظيرُ Ctrl+K لمن لا يحفظ الاختصار أو لا لوحة مفاتيح
+/// لديه. الإجراء نفسه المسجَّل في [ImdScreenActions.onSearch] (يسجّله الإطار)،
+/// فلا يعرف الشريط شيئًا عن اللوحة ولا عن الصفحات.
+class _SearchButton extends StatelessWidget {
+  const _SearchButton({this.dense = false});
+
+  final bool dense;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        // `ImdIconButton` لا تمرّر `tooltip` إلى زرّها، فالتلميح بالغلاف كما
+        // يفعل زرّ طيّ القائمة في هذا الشريط نفسه.
+        message: ImdShortcuts.supported ? 'البحث العام (Ctrl+K)' : 'البحث العام',
+        child: ImdIconButton(
+          icon: 'search',
+          dense: dense,
+          onPressed: () => ImdScreenActions.maybeOf(context)?.onSearch?.call(),
+        ),
+      );
 }
 
 class _ThemeButton extends StatelessWidget {

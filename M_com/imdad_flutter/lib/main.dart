@@ -331,6 +331,9 @@ class _ImdadAppState extends State<ImdadApp> with WindowListener {
                           context.read<ImdScreenActions>().onNewDoc?.call(),
                       const SingleActivator(LogicalKeyboardKey.f5): () =>
                           context.read<ImdScreenActions>().onRefresh?.call(),
+                      // البحث العام: يسجّله الإطار لا الشاشة، فلا يعمل قبل الدخول.
+                      const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
+                          context.read<ImdScreenActions>().onSearch?.call(),
                     },
                     child: Focus(autofocus: true, child: body),
                   )

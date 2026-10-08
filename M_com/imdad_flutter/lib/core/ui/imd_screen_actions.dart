@@ -19,6 +19,12 @@ class ImdScreenActions {
   VoidCallback? onNewDoc;
   VoidCallback? onRefresh;
 
+  /// البحث العام (Ctrl+K) — **إجراءُ الإطار لا الشاشة**: يسجّله `HomeShell`
+  /// مرةً واحدة لأن اللوحة تفتح أي شاشةٍ كانت. ولذلك لا تمسّه [register] ولا
+  /// [clear]: كلتاهما تُستدعى من كل شاشةٍ تُفتح، فلو شملتاه ضاع الاختصار بعد
+  /// أول شاشة.
+  VoidCallback? onSearch;
+
   /// تُستدعى في `initState` — الدوالّ غير المطلوبة تُترك `null` فلا يفعل
   /// اختصارها شيئًا، بدل أن تُفرَض دلالةٌ لا تملكها الشاشة.
   void register({

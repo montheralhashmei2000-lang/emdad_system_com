@@ -165,9 +165,18 @@ class ImdFld extends StatelessWidget {
     this.suggestions = const [],
     this.errorText,
     this.suffix,
+    this.autofocus = false,
+    this.onSubmitted,
   });
   final TextEditingController controller;
   final String? hint;
+
+  /// يأخذ التركيز عند أول بناء — لحقلٍ هو سبب فتح الحوار (كمدخل البحث العام)،
+  /// لا لحقول النماذج فيُسرق التركيز من أولها.
+  final bool autofocus;
+
+  /// ضغط Enter في الحقل (لا يُستدعى في الحقول متعددة الأسطر).
+  final ValueChanged<String>? onSubmitted;
 
   /// رسالة خطأ تظهر تحت الحقل بلون `colorScheme.error`.
   final String? errorText;
@@ -197,6 +206,8 @@ class ImdFld extends StatelessWidget {
       enabled: enabled,
       obscureText: obscure,
       onChanged: onChanged,
+      onSubmitted: onSubmitted,
+      autofocus: autofocus,
       maxLines: maxLines,
       textAlignVertical: ImdCompact.of(context) ? TextAlignVertical.center : null,
       keyboardType:
