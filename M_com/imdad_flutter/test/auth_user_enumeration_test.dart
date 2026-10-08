@@ -1,4 +1,6 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
+import 'package:imdad/core/security/pbkdf2.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/core/security/auth_service.dart';
 import 'package:imdad/data/db/app_database.dart';
@@ -38,5 +40,47 @@ void main() {
     final ok = await auth.login('admin', 'Test@12345');
     expect(ok.isOk, isTrue);
     expect(AuthService.dummyVerifications, 0);
+  });
+  _roundsGroup();
+}
+
+/// دورات الاشتقاق الوهمي تُحاكي أسرعَ حسابٍ في القاعدة لا المعيارَ الحالي.
+///
+/// حسابٌ قديم (٤٥ ألف دورة) يردّ أسرع بكثير من ٣١٠ ألفًا. فلو ثُبّت المسار
+/// الوهميُّ على المعيار لصار بطءُ الردّ قرينةً على أن الاسم **غير موجود** —
+/// وهو تسريبُ الوجود نفسه مقلوبًا.
+void _roundsGroup() {
+  group('دورات المسار الوهمي', () {
+    test('قاعدةٌ فيها حسابٌ قديم ⇒ الوهميُّ بدوراته هو', () async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      await db.into(db.users).insert(UsersCompanion.insert(
+            id: 'u1',
+            username: 'legacy',
+            saltHex: Value('aa' * 16),
+            hashHex: Value('bb' * 32),
+            iterations: const Value(Pbkdf2.legacyIterations),
+          ));
+
+      final sw = Stopwatch()..start();
+      await AuthService(db).login('لا-وجود-له', 'كلمة-مرور-طويلة');
+      final unknown = sw.elapsedMilliseconds;
+
+      sw.reset();
+      await AuthService(db).login('legacy', 'كلمة-مرور-خاطئة');
+      final wrong = sw.elapsedMilliseconds;
+
+      // النسبة لا الفرق المطلق: الآلة تتفاوت. قبل الإصلاح كانت ≈٧×.
+      expect(unknown, lessThan(wrong * 4 + 400),
+          reason: 'الاسم المجهول ($unknown م.ث) أبطأ بكثير من الخاطئ ($wrong م.ث) — يُكشف بالتوقيت');
+    }, timeout: const Timeout(Duration(minutes: 2)));
+
+    test('قاعدةٌ فارغة تعود إلى المعيار الحالي', () async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final before = AuthService.dummyVerifications;
+      await AuthService(db).login('أحد', 'كلمة-مرور-طويلة');
+      expect(AuthService.dummyVerifications, before + 1);
+    }, timeout: const Timeout(Duration(minutes: 2)));
   });
 }

@@ -373,8 +373,8 @@ class _SideTileState extends State<_SideTile> {
     late final Color bg;
     late final Color fg;
     Border? border;
-    late final EdgeInsets pad;
-    late final EdgeInsets margin;
+    late final EdgeInsetsGeometry pad;
+    late final EdgeInsetsGeometry margin;
     late final double fs;
     late final FontWeight fw;
     late final double radius;
@@ -405,8 +405,10 @@ class _SideTileState extends State<_SideTile> {
             ? c.sideBright
             : c.sideText.withValues(alpha: .86);
         iconColor = widget.on ? ImdColors.dark.accentHover : null;
-        pad = const EdgeInsets.only(left: 10, top: 11, right: 14, bottom: 11);
-        margin = const EdgeInsets.only(left: 4, top: 1, bottom: 1);
+        // اتجاهيّة لا فيزيائية: الواجهة عربية (RTL) فالبدايةُ يمينٌ لا يسار،
+        // وحشوةٌ غير متماثلة بـleft/right تنعكس فتصير على الجانب الخطأ.
+        pad = const EdgeInsetsDirectional.only(start: 10, top: 11, end: 14, bottom: 11);
+        margin = const EdgeInsetsDirectional.only(start: 4, top: 1, bottom: 1);
         fs = 13.5;
         fw = FontWeight.w500;
         radius = 8;

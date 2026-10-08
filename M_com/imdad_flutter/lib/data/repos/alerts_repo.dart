@@ -15,15 +15,42 @@ class AlertsRepo {
 
   late final MovementsRepo _moves = MovementsRepo(db);
 
+  /// الفحوص الثلاثة بتجميعِ أرصدةٍ **واحد** — ما تحتاجه شاشة التنبيهات.
+  ///
+  /// كلُّ فحصٍ منها يحتاج الأرصدة، وكان كلٌّ يحسبها لنفسه: ثلاثُ عملياتِ
+  /// `SUM/GROUP BY` على كل جداول الحركات لتحميلِ شاشةٍ واحدة. والشكلان يُشتقّان
+  /// من التجميع نفسه ([MovementsRepo.balanceViews]).
+  Future<({List<LowStockAlert> low, List<ExpiryAlert> expiry, List<StockForecast> forecast})> all({
+    List<String>? scope,
+    int withinDays = 30,
+    DateTime? today,
+  }) async {
+    final bal = await _moves.balanceViews(scope: scope);
+    return (
+      low: await lowStock(scope: scope, balances: bal.total),
+      expiry: await expiring(
+          scope: scope, withinDays: withinDays, today: today, balances: bal.byWarehouse),
+      forecast: await forecast(scope: scope, today: today, balances: bal.total),
+    );
+  }
+
   /// الأصناف تحت حدها الأدنى، على إجمالي مستودعات النطاق ([scope] null = الكل).
-  Future<List<LowStockAlert>> lowStock({List<String>? scope}) async {
+  ///
+  /// [balances] أرصدةٌ محسوبةٌ سلفًا — يمرّرها من ينادي أكثر من فحصٍ في تحميلٍ
+  /// واحد (انظر [all]) فلا يُجمَع تاريخُ الحركات مرةً لكل فحص.
+  Future<List<LowStockAlert>> lowStock({List<String>? scope, Map<String, double>? balances}) async {
     final items = await (db.select(db.items)..where((t) => t.minQty.isBiggerThanValue(0))).get();
-    final balances = await _moves.balances(scope: scope);
+    balances ??= await _moves.balances(scope: scope);
     return StockAlerts.lowStock([for (final i in items) (id: i.id, minQty: i.minQty)], balances);
   }
 
   /// دفعات تنتهي صلاحيتها خلال [withinDays] يومًا وما زال منها رصيد.
-  Future<List<ExpiryAlert>> expiring({List<String>? scope, int withinDays = 30, DateTime? today}) async {
+  Future<List<ExpiryAlert>> expiring({
+    List<String>? scope,
+    int withinDays = 30,
+    DateTime? today,
+    Map<String, Map<String, double>>? balances,
+  }) async {
     // كل الوارد المعتمد لأصناف لها دفعة مؤرَّخة واحدة على الأقل — المؤرَّخ وغيره،
     // لأن الوارد الأحدث بلا تاريخ يأخذ نصيبه من الرصيد قبل الدفعات الأقدم.
     final dated = await (db.selectOnly(db.receipts, distinct: true)
@@ -51,7 +78,7 @@ class AlertsRepo {
               refNo: r.refNo,
             ),
       ],
-      balances: await _moves.balancesByWarehouse(scope: scope),
+      balances: balances ?? await _moves.balancesByWarehouse(scope: scope),
       today: today ?? DateTime.now(),
       withinDays: withinDays,
     );
@@ -62,7 +89,12 @@ class AlertsRepo {
   /// الحاجة المقررة تخص القوة كلها، فلا تُحسب إلا لمن نطاقه كل المستودعات:
   /// مقارنتها برصيد مستودع واحد تنذر بنفاد لا وجود له. والأصناف القابلة للتعبئة
   /// أصول تدور لا تُستهلك، فلا توقّع لها.
-  Future<List<StockForecast>> forecast({List<String>? scope, int windowDays = 30, DateTime? today}) async {
+  Future<List<StockForecast>> forecast({
+    List<String>? scope,
+    int windowDays = 30,
+    DateTime? today,
+    Map<String, double>? balances,
+  }) async {
     final now = today ?? DateTime.now();
     final day = DateTime(now.year, now.month, now.day);
     final from = _iso(day.subtract(Duration(days: windowDays - 1)));
@@ -101,7 +133,7 @@ class AlertsRepo {
       }
     }
 
-    final balances = await _moves.balances(scope: scope);
+    balances ??= await _moves.balances(scope: scope);
     return StockForecasting.forecast([
       for (final it in items)
         ForecastInput(

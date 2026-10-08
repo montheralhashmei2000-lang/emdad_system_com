@@ -118,6 +118,30 @@ class SelfCheckRepo {
       );
     });
 
+    await run('dupUsernames', 'أسماء دخول مكرّرة', () async {
+      // لا قيد تفرّد على `users.username`: إضافته لجدولٍ قائم تُسقط مشغّلات
+      // المزامنة المعلّقة عليه، وقاعدةٌ فيها تكرارٌ سابق لن تُفتح بعدها أصلًا.
+      // فيُكشف التكرار هنا بدل أن يُمنع هناك. و`login` يختار بترتيبٍ محدَّد
+      // (المحلي ثم الأحدث) فلا يتنقّل بين الحسابين، لكن بقاء الاثنين يُشوّش
+      // الصلاحيات وتغييرَ كلمة المرور — فيُصلحه المدير بحذف أحدهما.
+      final seen = <String, int>{};
+      for (final usr in await db.select(db.users).get()) {
+        final key = usr.username.trim().toLowerCase();
+        if (key.isEmpty) continue;
+        seen[key] = (seen[key] ?? 0) + 1;
+      }
+      final dups = [
+        for (final e in seen.entries)
+          if (e.value > 1) '«${e.key}» ×${e.value}',
+      ];
+      return (
+        dups.isEmpty,
+        dups.isEmpty
+            ? 'كل أسماء الدخول مفردة'
+            : 'اسمٌ واحد لأكثر من حساب: ${dups.join('، ')} — احذف الزائد',
+      );
+    });
+
     await run('orphanMoves', 'حركات بأصناف محذوفة', () async {
       final ids = {for (final i in await db.select(db.items).get()) i.id};
       var orphan = 0;

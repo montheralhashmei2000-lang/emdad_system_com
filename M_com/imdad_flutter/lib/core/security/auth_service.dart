@@ -121,6 +121,16 @@ class AuthService {
   @visibleForTesting
   static int dummyVerifications = 0;
 
+  /// دورات الاشتقاق الوهمي: أقلُّ ما تحمله حسابات هذا الجهاز، فيُشبه زمنُ الردّ
+  /// على اسمٍ مجهول أسرعَ ردٍّ ممكن على اسمٍ موجود (انظر [login]).
+  Future<int> _dummyRounds() async {
+    final row = await db
+        .customSelect('SELECT MIN(iterations) AS m FROM users WHERE iterations > 0')
+        .getSingleOrNull();
+    final min = (row?.data['m'] as num?)?.toInt() ?? 0;
+    return min >= 1 ? min.clamp(Pbkdf2.legacyIterations, Pbkdf2.iterations) : Pbkdf2.iterations;
+  }
+
   static const int maxAttempts = 5;
   static const Duration lockDuration = Duration(minutes: 3); // AUTHCORE.LOCK_MS = 180000
   static const Duration sessionDuration = Duration(hours: 12);
@@ -184,6 +194,13 @@ class AuthService {
     final u = _normalizeUsername(username);
     _validateUsername(u);
     _validatePassword(password);
+    // اسمٌ يطابق حسابًا قائمًا (ولو باختلاف حالة الأحرف) يُرفض بدل أن يُنشئ
+    // قرينًا له: المطابقة في `login` غير حساسة للحالة، فحسابان بـ`admin`
+    // و`Admin` يتنازعان اسمًا واحدًا. `UsersRepo.create` يحرس هكذا، وكان هذا
+    // المسار (تهيئة أول مدير) وحده بلا حارس.
+    final q = u.toLowerCase();
+    final clash = (await db.select(db.users).get()).any((x) => x.username.toLowerCase() == q);
+    if (clash) throw ArgumentError('✖ اسم المستخدم «$u» مستعمل على هذا الجهاز');
     final ph = await PasswordHash.create(password);
     final id = 'local-$u';
     final row = UsersCompanion.insert(
@@ -233,16 +250,38 @@ class AuthService {
           .where((x) => x.username.toLowerCase() == q || x.email.toLowerCase() == u.toLowerCase())
           .toList();
     }
+    // لا قيد تفرّد على `users.username` (إضافته لجدولٍ قائم تُسقط مشغّلات
+    // المزامنة، وقاعدةٌ فيها تكرارٌ سابق لن تُفتح أصلًا). والتكرار ممكن فعلًا:
+    // جهازٌ هيّأ `local-admin` محليًّا ووصله `admin` بمعرّفٍ آخر بالمزامنة.
+    //
+    // فيُرتَّب الاختيار صراحةً بدل `matches.first` من استعلامٍ بلا `ORDER BY`:
+    // المعرّف المحلي أولًا (حسابُ هذا الجهاز أحقُّ بالدخول منه)، ثم الأحدث
+    // تعديلًا، ثم المعرّف أبجديًّا — فيكون أيُّ الحسابين يُصادَق **محدَّدًا
+    // وثابتًا** لا رهنًا بترتيب الصفوف في الملف. والتكرار يُبلَّغ في فحص السلامة.
+    if (matches.length > 1) {
+      matches.sort((a, b) {
+        final local = (b.id.startsWith('local-') ? 1 : 0) - (a.id.startsWith('local-') ? 1 : 0);
+        if (local != 0) return local;
+        final at = (b.updatedAt ?? b.createdAt).compareTo(a.updatedAt ?? a.createdAt);
+        return at != 0 ? at : a.id.compareTo(b.id);
+      });
+    }
     final found = matches.isEmpty ? null : matches.first;
     final bool ok;
     if (found != null) {
       ok = await PasswordHash.verify(password, found.saltHex, found.hashHex, found.iterations);
     } else {
-      // اسمٌ غير موجود يمرّ بالاشتقاق نفسه (ملحٌ ثابت وعدد الدورات الحالي) فيتساوى
-      // زمن الرد تقريبًا مع كلمة مرورٍ خاطئة لحسابٍ موجود، ولا يُكشف الموجود بالتوقيت.
-      // النتيجة تُهمل: البصمة الوهمية لا تطابق شيئًا.
+      // اسمٌ غير موجود يمرّ بالاشتقاق نفسه فيتساوى زمن الرد تقريبًا مع كلمة
+      // مرورٍ خاطئة لحسابٍ موجود، ولا يُكشف الموجود بالتوقيت. النتيجة تُهمل:
+      // البصمة الوهمية لا تطابق شيئًا.
+      //
+      // وعددُ الدورات يُؤخذ من **أقلّ** ما في القاعدة لا من المعيار الحالي: حسابٌ
+      // قديم (٤٥ ألف دورة) يردّ أسرع بكثير من ٣١٠ ألفًا، فلو ثُبّت الوهميُّ على
+      // المعيار لصار بطءُ الردّ نفسه قرينةً على أن الاسم **غير موجود** — وهو
+      // التسريب الذي جاء هذا المسار ليسدّه، مقلوبًا. وقاعدةٌ بلا حسابات تعود
+      // إلى المعيار.
       dummyVerifications++;
-      await PasswordHash.verify(password, _dummySaltHex, _dummyHashHex, Pbkdf2.iterations);
+      await PasswordHash.verify(password, _dummySaltHex, _dummyHashHex, await _dummyRounds());
       ok = false;
     }
 

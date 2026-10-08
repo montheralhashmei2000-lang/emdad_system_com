@@ -64,6 +64,14 @@ class LanSync {
   final NonceCache _seenNonces = NonceCache();
   int _authFailures = 0;
 
+  /// خمدُ شواهد الرفض المتكررة (انظر [_onAuthFailure]).
+  final RejectLog _rejectLog = RejectLog();
+
+  /// ساعة الخمد — تُبدَّل في الاختبار لتجاوز النافذة بلا انتظارٍ حقيقي.
+  @visibleForTesting
+  DateTime Function() clock = DateTime.now;
+  DateTime _now() => clock();
+
   bool get isReceiving => _server != null;
   String get deviceName => Platform.localHostname;
 
@@ -104,6 +112,7 @@ class LanSync {
     final session = trustedOnly ? null : await PairingOffer.create(ttl: ttl);
     _offer = session;
     _seenNonces.clear();
+    _rejectLog.clear();
     _authFailures = 0;
 
     // بلا مشاركة المنفذ: خادمان على منفذ واحد يقتسمان الطلبات عشوائيًا،
@@ -473,14 +482,35 @@ class LanSync {
     onEvent?.call('رُفض طلب من $from — $error');
     // في وضع الاقتران بالرمز الفشل محاولة اقتران بسبب مصنَّف؛ وفي وضع الموثوقين
     // رفضٌ لطلب جهاز عادي.
-    await AuditRepo(db).log(
-      action: _trustedOnly ? 'sync.reject' : 'sync.pair.failed',
-      entityType: 'مزامنة',
-      summary: _trustedOnly ? 'رُفض طلب مزامنة من $from — $error' : 'فشل اقتران من $from — $error',
-      details: _trustedOnly
-          ? {'host': from, 'reason': error, 'risk': 'sensitive'}
-          : {'host': from, 'reason': reason, 'message': error, 'role': 'receiver', 'risk': 'sensitive'},
-    );
+    //
+    // ويُخمَد التكرار **في وضع الموثوقين وحده**: صفوف `sensitive` لا تُقلَّم أبدًا
+    // (`AuditRepo.protectedRisks`)، وهذا الوضع لا يُغلق بعد المحاولات (وذاك صواب:
+    // الإغلاق حينها سلاحٌ بيد المهاجم لا حرزٌ منه). فكان من يَصِل الشبكةَ يكتب
+    // صفًّا دائمًا لكل طلبٍ مرفوض بلا حدّ، فينفخ القاعدةَ المشفّرة حتى يملأ القرص.
+    //
+    // أما وضعُ الاقتران فمحدودٌ أصلًا بـ[maxAuthFailures] ثم يُغلق، فسقفُه خمسة
+    // صفوف لا تتضخّم — وهي أنفسُ ما في السجل: محاولاتُ تخمينِ رمز الاقتران.
+    // فتُسجَّل كلُّها بلا خمد.
+    final suppressed = _trustedOnly ? _rejectLog.hit('$from|$reason', _now()) : null;
+    if (suppressed == null) {
+      await AuditRepo(db).log(
+        action: _trustedOnly ? 'sync.reject' : 'sync.pair.failed',
+        entityType: 'مزامنة',
+        summary: _trustedOnly ? 'رُفض طلب مزامنة من $from — $error' : 'فشل اقتران من $from — $error',
+        details: _trustedOnly
+            ? {'host': from, 'reason': error, 'risk': 'sensitive'}
+            : {'host': from, 'reason': reason, 'message': error, 'role': 'receiver', 'risk': 'sensitive'},
+      );
+    } else if (suppressed > 0) {
+      // نهاية نافذة الخمد: صفٌّ واحد يحمل عدد ما خُمد فيها.
+      await AuditRepo(db).log(
+        action: 'sync.reject',
+        entityType: 'مزامنة',
+        summary: 'و$suppressed طلبًا مرفوضًا آخر من $from في آخر '
+            '${RejectLog.window.inMinutes} دقائق — $error',
+        details: {'host': from, 'reason': reason, 'suppressed': suppressed, 'risk': 'sensitive'},
+      );
+    }
     await _reject(request, error, HttpStatus.unauthorized);
     // الإغلاق حارسٌ لرمز الاقتران من التخمين. في استقبال الموثوقين لا
     // رمز يُخمَّن — والإغلاق حينها يصير سلاحًا بيد المهاجم: خمس محاولات فاشلة
@@ -597,6 +627,7 @@ class LanSync {
     _server = null;
     _offer = null;
     _seenNonces.clear();
+    _rejectLog.clear();
     _beacon?.close();
     _beacon = null;
     await server?.close(force: true);
@@ -985,3 +1016,51 @@ Uint8List _sealTask((SyncSession, Map<String, dynamic>) arg) => arg.$1.sealJson(
 
 
 Map<String, dynamic> _openTask((SyncSession, List<int>) arg) => arg.$1.openJson(arg.$2);
+
+/// خمدُ شواهد التدقيق المتكررة لطلبٍ مرفوض من المصدر نفسه بالسبب نفسه.
+///
+/// صفوف `sensitive` لا تُقلَّم أبدًا، واستقبالُ الموثوقين لا يُغلق بعد محاولات
+/// فاشلة (الإغلاق حينها سلاحٌ بيد المهاجم لا حرزٌ منه). فبلا خمدٍ يكتب كلُّ من
+/// يَصِل الشبكةَ صفًّا دائمًا لكل طلبٍ مرفوض، فتنفخ القاعدةَ المشفّرة بلا حدّ.
+///
+/// السياسة: أولُ رفضٍ من مفتاحٍ يُسجَّل كاملًا، وما يليه في [window] يُعَدّ ولا
+/// يُسجَّل، فإذا انقضت النافذة سُجّل صفٌّ واحد بعدد ما خُمد. فيبقى الخبر (ومعه
+/// حجمُه) ولا يبقى التضخّم.
+class RejectLog {
+  RejectLog({DateTime Function()? clock}) : _now = clock ?? DateTime.now;
+
+  final DateTime Function() _now;
+
+  /// نافذة الخمد. دقيقتان: أقصرُ من أن تُخفي هجومًا، وأطولُ من أن يُكتب صفٌّ
+  /// لكل حزمةٍ في إغراق.
+  static const Duration window = Duration(minutes: 2);
+
+  /// سقفُ المفاتيح المتتبَّعة. مهاجمٌ يبدّل عنوانه لكل طلب لا يُنمي الخريطة بلا
+  /// حدّ: عند الامتلاء تُنسى الأقدم.
+  static const int maxKeys = 512;
+
+  final Map<String, ({DateTime first, int count})> _seen = {};
+
+  /// `null` ⇒ سجّل هذا الرفض كاملًا. رقمٌ > 0 ⇒ انقضت النافذة وهذا عددُ ما خُمد
+  /// فيها (سجّل ملخَّصًا). صفرٌ ⇒ اخمد بلا تسجيل.
+  int? hit(String key, [DateTime? at]) {
+    final now = at ?? _now();
+    final e = _seen[key];
+    if (e == null) {
+      if (_seen.length >= maxKeys) _seen.remove(_seen.keys.first);
+      _seen[key] = (first: now, count: 0);
+      return null; // أول رفضٍ من هذا المفتاح: يُسجَّل
+    }
+    if (now.difference(e.first) >= window) {
+      _seen[key] = (first: now, count: 0);
+      return e.count; // انقضت النافذة: ملخَّصٌ بما خُمد (0 ⇒ لا ملخَّص)
+    }
+    _seen[key] = (first: e.first, count: e.count + 1);
+    return 0; // داخل النافذة: اخمد
+  }
+
+  void clear() => _seen.clear();
+
+  @visibleForTesting
+  int get length => _seen.length;
+}
