@@ -64,13 +64,40 @@ class FinanceFiles {
     return FinAttachment(name: p.basename(sourcePath), path: dst.path, size: bytes.length, sha256: sha256.convert(bytes).toString());
   }
 
+  /// يحذف مرفقًا — **بشرط أن يكون داخل مجلد المرفقات**.
+  ///
+  /// المسار لا يأتي من هنا دائمًا: `attachmentsJson` في العهد و`attachPath` في
+  /// الإخلاءات عمودان **مزامَنان**، فالمسار الذي نحذفه قد يكون كتبه جهازٌ آخر.
+  /// وبلا هذا الشرط كان قرينٌ مخترَق يضع مسار أي ملفٍّ على قرص المستقبِل
+  /// فيمحوه له أولُ مشغّلٍ يُزيل المرفق من النموذج.
+  ///
+  /// والمقارنة على المسار المُسوّى (`canonicalize`) لا على النص: `…/finance/../x`
+  /// يبدأ بالمجلد نصًّا ويخرج عنه فعلًا.
   static Future<void> delete(String path) async {
     if (path.isEmpty) return;
     try {
+      if (!await _inside(path)) {
+        ErrorLogger.log('finance.fileDeleteOutside',
+            StateError('رُفض حذف مسارٍ خارج مجلد المرفقات: $path'), StackTrace.current);
+        return;
+      }
       final f = File(path);
       if (await f.exists()) await f.delete();
     } catch (err, stack) {
       ErrorLogger.log('finance.fileDelete', err, stack);
+    }
+  }
+
+  /// هل [path] ملفٌّ داخل [dir] (لا هو نفسه ولا خارجه)؟
+  static Future<bool> _inside(String path) async {
+    try {
+      final root = p.canonicalize((await dir()).path);
+      final target = p.canonicalize(p.isAbsolute(path) ? path : p.join(root, path));
+      return target != root && p.isWithin(root, target);
+    } catch (err, stack) {
+      // تعذّر تحديد المجلد ⇒ لا حذف (فشلٌ مغلق).
+      ErrorLogger.log('finance.fileScope', err, stack);
+      return false;
     }
   }
 }
