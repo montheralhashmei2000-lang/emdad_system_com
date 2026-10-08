@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../db/app_database.dart';
 
@@ -78,6 +79,12 @@ class SearchService {
 
   /// حالات المستندات التي لا تُعرض في البحث (ملغاة أو مرفوضة).
   static const String _dropped = "('CANCELLED','REJECTED')";
+
+  /// (الجدول، الصفحة، الصلاحية) لكل مَمسحٍ — يقرؤها `search_perm_test` ليثبت أن
+  /// صلاحية كل جدول هي صلاحية صفحته لا صلاحيةَ جارةٍ أوسع منها.
+  @visibleForTesting
+  static List<({String table, String page, String perm})> get scanned =>
+      [for (final t in _tables) (table: t.table, page: t.page, perm: t.perm)];
 
   /// يمسح الجداول المسموحة ويعيد حتى [perType] نتيجة لكل نوع.
   ///
@@ -305,7 +312,11 @@ class SearchService {
       type: 'الأفراد',
       table: 'link_persons',
       page: 'personnel',
-      perm: 'linkages',
+      // `personnel` صلاحيةٌ مستقلة في `PermCatalog` وليست من معادلات `linkages`
+      // (خلاف `linkFinances`/`linkArmament`). وكانت هنا `linkages` فكان من يملك
+      // المالية وحدها يقرأ بالبحث أسماءَ الأفراد وأرقامهم العسكرية ورتبهم —
+      // بياناتٌ شخصية تحجبها عنه شاشتُها.
+      perm: 'personnel',
       searchColumns: ['full_name', 'military_no', 'rank', 'sub_unit', 'camp'],
       selected: ['id', 'full_name', 'military_no', 'rank', 'sub_unit', 'camp'],
       orderBy: 'full_name',
