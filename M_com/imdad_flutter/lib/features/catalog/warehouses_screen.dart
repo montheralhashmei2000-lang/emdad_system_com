@@ -341,6 +341,7 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
       else
         ImdTable(
           minWidth: 960,
+          cards: true,
           empty: 'لا مستودعات مطابقة — أضف أول مستودع من النموذج أعلاه',
           columns: [
             const ImdCol('الكود'),
