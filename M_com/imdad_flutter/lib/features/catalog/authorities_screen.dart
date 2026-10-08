@@ -246,6 +246,7 @@ class _AuthoritiesScreenState extends State<AuthoritiesScreen> {
         child: ImdTable(
           empty: 'لا جهات بعد — أضف ركن إمداد الفرقة أولًا',
           minWidth: 560,
+          cards: true,
           columns: const [
             ImdCol('الجهة'),
             ImdCol('المسمّى'),
