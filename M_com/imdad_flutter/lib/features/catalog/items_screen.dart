@@ -238,6 +238,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
         ),
         ImdTable(
           minWidth: 720,
+          cards: true,
           empty: 'لا أصناف مطابقة — أضف أول صنف من تبويب «بطاقة الصنف»',
           columns: [
             const ImdCol('الكود'),
@@ -465,6 +466,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
           title: 'التصنيفات المسجلة',
           icon: 'folder',
           child: ImdTable(
+            cards: true,
             empty: 'لا تصنيفات بعد',
             columns: [
               const ImdCol('م', width: 60),
@@ -946,6 +948,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
       }
       _movOut = ImdTable(
         minWidth: 560,
+        cards: true,
         columns: const [
           ImdCol('التاريخ'),
           ImdCol('النوع'),
