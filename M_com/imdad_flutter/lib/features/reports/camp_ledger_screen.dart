@@ -424,6 +424,17 @@ class _CampLedgerScreenState extends State<CampLedgerScreen> {
           ImdCol('التراكمي', numeric: true),
         ],
         pageSize: 50,
+        // قيم الخلايا الخام (بصيغة العرض نفسها): تُفعّل البحث والتصفية والعدّ.
+        values: [
+          for (final d in _variance)
+            [
+              arDigits(d.date),
+              nf(d.actual),
+              nf(d.average),
+              '${d.variance > 0 ? '+' : ''}${nf(d.variance)}',
+              nf(d.cumulative),
+            ],
+        ],
         rows: [
           for (final d in _variance)
             [
