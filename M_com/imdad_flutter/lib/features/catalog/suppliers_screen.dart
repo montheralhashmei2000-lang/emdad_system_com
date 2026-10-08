@@ -239,6 +239,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
       else
         ImdTable(
           minWidth: 820,
+          cards: true,
           empty: 'لا موردين مطابقين — أضف أول مورد من النموذج أعلاه',
           columns: [
             const ImdCol('الاسم', flex: 2),
