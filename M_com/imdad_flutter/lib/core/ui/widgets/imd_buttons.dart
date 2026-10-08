@@ -227,6 +227,22 @@ class ImdIconButton extends StatelessWidget {
   final bool dense;
 
   @override
-  Widget build(BuildContext context) => ImdButton(
-      label: '', icon: icon, onPressed: onPressed, kind: kind, small: true, height: dense ? 28 : null);
+  Widget build(BuildContext context) {
+    final button = ImdButton(
+        label: '', icon: icon, onPressed: onPressed, kind: kind, small: true, height: dense ? 28 : null);
+    final hint = tooltip?.trim() ?? '';
+    if (hint.isEmpty) return button;
+    // زرٌّ بأيقونةٍ بلا نصّ: [tooltip] هو اسمُه الوحيد. كان الوسيط يُستقبَل
+    // ويُهمَل، فلا تظهر تلميحةٌ على سطح المكتب ولا يجد قارئُ الشاشة ما ينطق به
+    // في ١١٤ موضعًا من الشاشات.
+    //
+    // والاثنان لازمان لا أحدهما: `Tooltip` يُظهر النصّ عند الوقوف بالمؤشّر لكنه
+    // لا يُسمّي الزرَّ نفسه في شجرة الدلالات (الرسالة تلحق بالطبقة العائمة حين
+    // تظهر)، و`Semantics` يُسمّيه لقارئ الشاشة ولا يُظهر شيئًا للمُبصر.
+    return Semantics(
+      label: hint,
+      button: true,
+      child: Tooltip(message: hint, child: button),
+    );
+  }
 }
