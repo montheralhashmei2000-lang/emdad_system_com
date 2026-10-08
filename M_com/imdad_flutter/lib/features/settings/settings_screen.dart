@@ -555,7 +555,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(children: [
-              for (final b in buttons) Padding(padding: const EdgeInsets.only(left: 4), child: b),
+              for (final b in buttons) Padding(padding: const EdgeInsetsDirectional.only(start: 4), child: b),
             ]),
           )
         else

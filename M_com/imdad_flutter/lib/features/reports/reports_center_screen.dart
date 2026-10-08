@@ -362,7 +362,7 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
               scrollDirection: Axis.horizontal,
               child: Row(children: [
                 for (final b in buttons)
-                  Padding(padding: const EdgeInsets.only(left: 4), child: b),
+                  Padding(padding: const EdgeInsetsDirectional.only(start: 4), child: b),
               ]),
             )
           : Column(

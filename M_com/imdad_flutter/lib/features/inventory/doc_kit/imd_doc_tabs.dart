@@ -37,7 +37,7 @@ class ImdDocTabsBar<T> extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(999),
         child: Container(
-          margin: const EdgeInsets.only(left: 6),
+          margin: const EdgeInsetsDirectional.only(start: 6),
           height: ImdSizes.compactField,
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 10),
