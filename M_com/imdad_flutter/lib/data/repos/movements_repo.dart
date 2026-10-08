@@ -300,14 +300,9 @@ class MovementsRepo {
   ///
   /// الفرق يظهر مع كبر البيانات: فحص رصيد صنف واحد كان يقرأ كل سندات النظام.
   Future<Map<String, double>> balances({String? warehouse, List<String>? scope}) async {
-    final rows = await _balanceRows();
+    final rows = await _balanceRows(warehouse: warehouse, scope: scope);
     final out = <String, double>{};
-    for (final (wh, item, qty) in rows) {
-      if (warehouse != null && warehouse.isNotEmpty) {
-        if (wh != warehouse) continue;
-      } else if (scope != null && !scope.contains(wh)) {
-        continue;
-      }
+    for (final (_, item, qty) in rows) {
       out[item] = _roundQty((out[item] ?? 0) + qty);
     }
     return out;
@@ -316,11 +311,27 @@ class MovementsRepo {
   /// أرصدة كل المستودعات دفعة واحدة: المستودع ← (الصنف ← الرصيد).
   Future<Map<String, Map<String, double>>> balancesByWarehouse({List<String>? scope}) async {
     final out = <String, Map<String, double>>{};
-    for (final (wh, item, qty) in await _balanceRows()) {
-      if (scope != null && !scope.contains(wh)) continue;
+    for (final (wh, item, qty) in await _balanceRows(scope: scope)) {
       out.putIfAbsent(wh, () => {})[item] = qty;
     }
     return out;
+  }
+
+  /// الشكلان معًا — الإجمالي لكل صنف والمفصَّل بالمستودع — من **تجميعٍ واحد**.
+  ///
+  /// شاشةٌ تحتاج الشكلين (التنبيهات: الحد الأدنى والتوقّع على الإجمالي،
+  /// وانتهاء الصلاحية على المفصَّل) كانت تنادي [balances] و[balancesByWarehouse]
+  /// كلًّا على حدة، فيُجمَع تاريخُ الحركات كلُّه ثلاث مرات لتحميلٍ واحد.
+  Future<({Map<String, double> total, Map<String, Map<String, double>> byWarehouse})> balanceViews({
+    List<String>? scope,
+  }) async {
+    final total = <String, double>{};
+    final byWarehouse = <String, Map<String, double>>{};
+    for (final (wh, item, qty) in await _balanceRows(scope: scope)) {
+      total[item] = _roundQty((total[item] ?? 0) + qty);
+      byWarehouse.putIfAbsent(wh, () => {})[item] = qty;
+    }
+    return (total: total, byWarehouse: byWarehouse);
   }
 
   /// الأرصدة السالبة الآن (مستودع × صنف)، مرتَّبة بالأشدّ عجزًا أولًا. [scope] يحصرها
@@ -328,15 +339,21 @@ class MovementsRepo {
   /// بل من دمج جهازين صرف كلٌّ منهما الرصيد نفسه قبل أن يتزامنا.
   Future<List<NegativeBalance>> negativeBalances({List<String>? scope}) async {
     final out = <NegativeBalance>[
-      for (final (wh, item, qty) in await _balanceRows())
-        if (qty < 0 && wh.isNotEmpty && item.isNotEmpty && (scope == null || scope.contains(wh)))
+      for (final (wh, item, qty) in await _balanceRows(scope: scope))
+        if (qty < 0 && wh.isNotEmpty && item.isNotEmpty)
           NegativeBalance(warehouse: wh, itemId: item, qty: qty),
     ]..sort((a, b) => a.qty.compareTo(b.qty));
     return out;
   }
 
-  Future<double> balanceOf(String itemId, {String? warehouse}) async =>
-      (await balances(warehouse: warehouse))[itemId] ?? 0;
+  /// رصيد صنفٍ واحد — يُجمَع في القاعدة على ذلك الصنف وحده لا على كل الأصناف.
+  Future<double> balanceOf(String itemId, {String? warehouse}) async {
+    var total = 0.0;
+    for (final (_, _, qty) in await _balanceRows(warehouse: warehouse, itemId: itemId)) {
+      total += qty;
+    }
+    return _roundQty(total);
+  }
 
   /// فحص كفاية رصيد مستودع واحد — قواعد `StockLedger.check` نفسها، لكن على
   /// أرصدة [balances] المحسوبة في قاعدة البيانات بدل تحميل كل الحركات.
@@ -352,9 +369,34 @@ class MovementsRepo {
   }
 
   /// (المستودع، الصنف، الرصيد) لكل تركيبة لها حركة.
-  Future<List<(String, String, double)>> _balanceRows() async {
+  ///
+  /// [warehouse] و[scope] و[itemId] تُدفَع إلى SQL لا تُصفّى في Dart: طلبُ رصيد
+  /// صنفٍ واحد في مستودعٍ واحد كان يجمع تاريخَ الحركات كلَّه ثم يُهمل كلَّ شيءٍ
+  /// إلا سطرًا. والتصفية على الاسم المستعار `wh` سليمة: هو العمودُ المناسب في كل
+  /// فرعٍ من `UNION ALL` (في التحويل يكون `warehouse` للصادر و`dest_warehouse`
+  /// للوارد)، فشرطٌ واحدٌ عليه يصحّ على الفروع كلها.
+  Future<List<(String, String, double)>> _balanceRows({
+    String? warehouse,
+    List<String>? scope,
+    String? itemId,
+  }) async {
     const inactive = "('DRAFT','ORDER','CANCELLED','REJECTED')";
-    const sql = """
+    final vars = <Variable<Object>>[];
+    final extra = StringBuffer();
+    // المستودع المحدَّد يُقدَّم على النطاق — كما في [balances] حرفيًّا.
+    if (warehouse != null && warehouse.isNotEmpty) {
+      extra.write(' AND wh = ?');
+      vars.add(Variable<String>(warehouse));
+    } else if (scope != null) {
+      if (scope.isEmpty) return const []; // نطاقٌ فارغ = لا شيء (فشلٌ مغلق)
+      extra.write(' AND wh IN (${List.filled(scope.length, '?').join(', ')})');
+      vars.addAll([for (final w in scope) Variable<String>(w)]);
+    }
+    if (itemId != null && itemId.isNotEmpty) {
+      extra.write(' AND item = ?');
+      vars.add(Variable<String>(itemId));
+    }
+    final sql = """
       SELECT wh, item, ROUND(SUM(q), 3) AS total FROM (
         SELECT warehouse AS wh, item_id AS item, qty AS q FROM opening_balances
         UNION ALL
@@ -383,10 +425,10 @@ class MovementsRepo {
       )
       -- الحركة الصفرية تُتجاهل قبل الجمع، تمامًا كما يتجاهلها `StockLedger.add`،
       -- وإلا ظهر صنف لم تمسّه حركة حقيقية برصيد صفر.
-      WHERE wh <> '' AND item <> '' AND q <> 0
+      WHERE wh <> '' AND item <> '' AND q <> 0$extra
       GROUP BY wh, item
     """;
-    final rows = await db.customSelect(sql).get();
+    final rows = await db.customSelect(sql, variables: vars).get();
     return [
       for (final r in rows)
         (

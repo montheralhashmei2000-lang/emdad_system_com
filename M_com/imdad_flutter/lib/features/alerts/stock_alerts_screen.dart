@@ -44,16 +44,15 @@ class _StockAlertsScreenState extends State<StockAlertsScreen> {
     setState(() => _loading = true);
     final scope = Perm.of(context).scope;
     final items = {for (final i in await CatalogRepo(_db).items()) i.id: i};
-    final low = await _repo.lowStock(scope: scope);
-    final expiry = await _repo.expiring(scope: scope, withinDays: _days);
-    final forecast = await _repo.forecast(scope: scope);
+    // نداءٌ واحد: الفحوص الثلاثة تتقاسم تجميعَ أرصدةٍ واحدًا بدل ثلاثة.
+    final alerts = await _repo.all(scope: scope, withinDays: _days);
     if (!mounted) return;
     setState(() {
-      _forecast = forecast;
+      _forecast = alerts.forecast;
       _wholeForce = scope == null;
       _items = items;
-      _low = low;
-      _expiry = expiry;
+      _low = alerts.low;
+      _expiry = alerts.expiry;
       _loading = false;
     });
   }
