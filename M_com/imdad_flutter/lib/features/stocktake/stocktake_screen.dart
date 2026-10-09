@@ -18,6 +18,8 @@ import '../../domain/stocktake_scan.dart';
 import '../inventory/doc_kit.dart';
 import '../../core/ui/imd_layout.dart';
 import '../../domain/print_forms.dart';
+import '../../data/migration/excel_templates/excel_templates.dart' show TemplateKind;
+import '../excel_templates/excel_templates_dialog.dart';
 
 part 'stocktake/stocktake_consts.dart';
 part 'stocktake/stocktake_analysis_tab.dart';
@@ -552,6 +554,9 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
         subtitle: widget.standalone
             ? null
             : 'أوامر الجرد، العد الفعلي بالوحدات، تحليل الفروقات، واعتماد التسوية',
+        actions: _tab == 'count'
+            ? [ExcelTemplatesButton(kind: TemplateKind.stocktakeCount, sessionId: _cur, onImported: _loadLines)]
+            : null,
       ),
       if (!widget.standalone)
         ImdItabs(

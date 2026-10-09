@@ -13,6 +13,8 @@ import '../../domain/access_control.dart';
 import '../../domain/fuel.dart';
 import 'fuel_plan_row.dart';
 import 'fuel_report_docs.dart';
+import '../../data/migration/excel_templates/excel_templates.dart' show TemplateKind;
+import '../excel_templates/excel_templates_dialog.dart';
 
 /// تفريدة المحروقات: خطة توزيع الاستحقاق الأسبوعي والشهري لكل وحدة.
 ///
@@ -283,6 +285,14 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
         icon: 'clipboard',
         subtitle: 'خطة توزيع الاستحقاق — بترول لجميع الوحدات وديزل لجميع '
             'الوحدات',
+        actions: [
+          ExcelTemplatesButton(
+            kind: TemplateKind.fuelAllocations,
+            // الفلتر «الكل» لا يحدّد نوعًا: يُصدَّر البترول وللمستخدم تبديله من الفلتر.
+            fuelType: _filter.isEmpty ? FuelType.petrol : _filter,
+            onImported: _load,
+          ),
+        ],
         trailing: ImdButton.outline(
             label: 'طباعة الخطة', icon: 'printer', onPressed: _printPlan),
       ),

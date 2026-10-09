@@ -19,6 +19,8 @@ import '../../domain/access_control.dart';
 import '../../domain/line_consolidation.dart';
 import '../../core/ui/imd_layout.dart';
 import '../../domain/print_forms.dart';
+import '../../data/migration/excel_templates/excel_templates.dart' show TemplateKind;
+import '../excel_templates/excel_templates_dialog.dart';
 
 /// الأرصدة الافتتاحية:
 /// بحث + طباعة كشف + جدول (الكود، الصنف، الحالة، الرصيد الافتتاحي، إجراء).
@@ -274,10 +276,13 @@ class _OpeningScreenState extends State<OpeningScreen> {
     final rows = _rows();
 
     return ImdPage(children: [
-      const ImdPageTitle(
+      ImdPageTitle(
         title: 'الأرصدة الافتتاحية',
         icon: 'clipboard',
         subtitle: 'تسجيل واعتماد الأرصدة الأولية للمخازن أو الأصناف الجديدة كنقطة انطلاق دفترية',
+        actions: [
+          ExcelTemplatesButton(kind: TemplateKind.openingBalances, warehouse: _warehouse, onImported: _refresh),
+        ],
       ),
       ImdICard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

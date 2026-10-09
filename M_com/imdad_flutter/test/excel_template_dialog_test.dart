@@ -8,6 +8,8 @@ import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/migration/excel_templates/excel_templates.dart';
 import 'package:imdad/data/migration/excel_templates/template_writer.dart';
 import 'package:imdad/data/repos/catalog_repo.dart';
+import 'package:imdad/data/repos/fuel_repo.dart';
+import 'package:imdad/data/repos/stocktake_repo.dart';
 import 'package:imdad/features/excel_templates/excel_templates_dialog.dart';
 
 /// نافذة تقرير الاستيراد: القالب المكتشَف، والتقرير قبل الكتابة، وحجب الاستبدال
@@ -35,6 +37,10 @@ void main() {
     bool canDelete = true,
     List<BeneficiaryUnit> camps = const [],
     String campId = '',
+    List<String> warehouses = const [],
+    List<Stocktake> orders = const [],
+    String orderId = '',
+    bool canEditCounted = false,
   }) async {
     tester.view.physicalSize = const Size(900, 1400);
     tester.view.devicePixelRatio = 1;
@@ -63,6 +69,11 @@ void main() {
                           initialDate: '2026-10-01',
                           canDelete: canDelete,
                           actor: 'tester',
+                          warehouses: warehouses,
+                          initialWarehouse: warehouses.isEmpty ? '' : warehouses.first,
+                          orders: orders,
+                          initialOrderId: orderId,
+                          canEditCounted: canEditCounted,
                         ),
                       ),
                     ),
@@ -158,5 +169,84 @@ void main() {
     expect(find.text('تاريخ التفريدة'), findsOneWidget);
     expect(find.textContaining('ناجح'), findsOneWidget);
     expect(find.textContaining('فاشل'), findsOneWidget);
+  });
+
+  testWidgets('الأرصدة الافتتاحية: المستودع والتاريخ في النافذة ويُفحص الملف عليهما', (tester) async {
+    final cat = CatalogRepo(db);
+    await cat.saveWarehouse(code: 'W', name: 'المخزن', manager: '', location: '', feedsAllCamps: true, campIds: const []);
+    await cat.saveItem(code: '1', name: 'أرز', baseUnit: 'حبة', units: const [ItemUnit(name: 'حبة', factor: 1, isBase: true)]);
+    final bytes = Uint8List.fromList(TemplateWriter.build(TemplateSpec.openingBalances, [
+      ['1', 'أرز', 'حبة', 5, null, null, null, null],
+    ]));
+
+    final result = await pump(tester, bytes: bytes, kind: TemplateKind.openingBalances, warehouses: const ['المخزن']);
+
+    expect(find.text('القالب المكتشَف: الأرصدة الافتتاحية'), findsOneWidget);
+    expect(find.text('المستودع'), findsOneWidget);
+    expect(find.text('تاريخ الرصيد الافتتاحي'), findsOneWidget);
+    expect(find.text('ناجح ١'), findsOneWidget);
+    expect((await (db.select(db.openingBalances)).get()), isEmpty, reason: 'التقرير لا يكتب');
+
+    await tester.tap(find.text('تنفيذ الاستيراد'));
+    await tester.pump();
+    await settle(tester);
+    await tester.pumpAndSettle();
+    expect(result.value?.created, 1);
+    expect((await db.select(db.openingBalances).get()).single.qty, 5);
+  });
+
+  testWidgets('العد الفعلي: اختيار الأمر، ودمجٌ فقط بلا اختيار نمط', (tester) async {
+    final cat = CatalogRepo(db);
+    await cat.saveWarehouse(code: 'W', name: 'المخزن', manager: '', location: '', feedsAllCamps: true, campIds: const []);
+    await cat.saveItem(code: '1', name: 'أرز', baseUnit: 'حبة', units: const [ItemUnit(name: 'حبة', factor: 1, isBase: true)]);
+    final id = await StocktakeRepo(db).createOrder(warehouse: 'المخزن', date: '2026-10-01');
+    final orders = await StocktakeRepo(db).sessions(status: StocktakeRepo.counting);
+    final bytes = Uint8List.fromList(TemplateWriter.build(TemplateSpec.stocktakeCount, [
+      ['1', 'أرز', 'حبة', 5, null, null, null, null],
+    ]));
+
+    final result = await pump(
+      tester,
+      bytes: bytes,
+      kind: TemplateKind.stocktakeCount,
+      orders: orders,
+      orderId: id,
+      canEditCounted: true,
+    );
+
+    expect(find.text('القالب المكتشَف: العد الفعلي للجرد'), findsOneWidget);
+    expect(find.text('أمر الجرد (المفتوح للعد)'), findsOneWidget);
+    expect(find.text('نمط الاستيراد'), findsNothing, reason: 'لا استبدال في الجرد');
+    expect(find.textContaining('دمجٌ فقط'), findsOneWidget);
+    expect(find.text('ناجح ١'), findsOneWidget);
+
+    await tester.tap(find.text('تنفيذ الاستيراد'));
+    await tester.pump();
+    await settle(tester);
+    await tester.pumpAndSettle();
+    expect(result.value?.created, 1);
+    expect((await StocktakeRepo(db).lines(id)).single.countedQty, 5);
+  });
+
+  testWidgets('تفريدة المحروقات: نوع الوقود وتاريخ البداية في النافذة', (tester) async {
+    await FuelRepo(db).saveUnit(name: 'وحدة أ', code: 'U1');
+    final bytes = Uint8List.fromList(TemplateWriter.build(TemplateSpec.fuelAllocations, [
+      ['U1', 'وحدة أ', 'الشمال', 100, null],
+    ]));
+
+    final result = await pump(tester, bytes: bytes, kind: TemplateKind.fuelAllocations);
+
+    expect(find.text('القالب المكتشَف: تفريدة المحروقات'), findsOneWidget);
+    expect(find.text('نوع الوقود'), findsOneWidget);
+    expect(find.text('تاريخ بداية التفريدة (للجديدة فقط)'), findsOneWidget);
+    expect(find.text('ناجح ١'), findsOneWidget);
+
+    await tester.tap(find.text('تنفيذ الاستيراد'));
+    await tester.pump();
+    await settle(tester);
+    await tester.pumpAndSettle();
+    expect(result.value?.created, 1);
+    final a = (await FuelRepo(db).allocations()).single.allocation;
+    expect((a.fuelType, a.startDate, a.monthlyLiters), ('petrol', '2026-10-01', 400));
   });
 }

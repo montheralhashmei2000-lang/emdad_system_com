@@ -34,6 +34,9 @@ class TemplateReport {
   /// سجلات كان يُراد حذفها فبقيت لأن لها حركات أو ارتباطات.
   int kept = 0;
 
+  /// صفوف سليمة لا تُغيّر شيئًا (القيمة المسجَّلة هي نفسها) فلم تُكتب.
+  int unchanged = 0;
+
   final List<RowIssue> failed = [];
   final List<String> warnings = [];
 
@@ -43,6 +46,7 @@ class TemplateReport {
   String get summary {
     final b = StringBuffer('ناجح $ok');
     if (created > 0 || updated > 0) b.write(' (جديد $created · محدَّث $updated)');
+    if (unchanged > 0) b.write(' · بلا تغيير $unchanged');
     b.write(' · فاشل $failedCount');
     if (mode == ImportMode.replace) {
       b.write(' · حُذف $deleted · بقي $kept (له ارتباطات)');

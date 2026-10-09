@@ -42,12 +42,29 @@ class TemplateTable {
     return TemplateTable._(sheet.name, sheet.rows, cols);
   }
 
-  /// القالب الذي تطابق عناوينه الملف، أو `null`.
+  /// كل القوالب التي تطابق عناوين الملف.
+  ///
+  /// قالبٌ مفاتيحه مجموعةٌ جزئية صِرفة من مفاتيح قالبٍ آخر مطابق يسقط: ملف
+  /// الأرصدة الافتتاحية يحوي كل عناوين الأصناف (كود، اسم، وحدة 1) وزيادة، فهو
+  /// ليس ملف أصناف. وقالبا الأرصدة الافتتاحية والعد الفعلي عناوينهما واحدة
+  /// فيبقيان معًا — تحسمهما الشاشة التي فُتح منها الاستيراد.
+  List<TemplateKind> detectAll() {
+    final hits = [
+      for (final spec in TemplateSpec.all)
+        if (spec.detectKeys.every((h) => _columns.containsKey(normalizeHeader(h)))) spec,
+    ];
+    Set<String> keys(TemplateSpec s) => {for (final h in s.detectKeys) normalizeHeader(h)};
+    return [
+      for (final a in hits)
+        if (!hits.any((b) => !identical(a, b) && keys(b).length > keys(a).length && keys(b).containsAll(keys(a))))
+          a.kind,
+    ];
+  }
+
+  /// القالب إن لم يلتبس غيره به، وإلا `null` (لا قالب، أو عدّة قوالب متطابقة).
   TemplateKind? detect() {
-    for (final spec in TemplateSpec.all) {
-      if (spec.detectKeys.every((h) => _columns.containsKey(normalizeHeader(h)))) return spec.kind;
-    }
-    return null;
+    final all = detectAll();
+    return all.length == 1 ? all.first : null;
   }
 
   /// رقم عمود [header]، أو `null` إن لم يوجد.
