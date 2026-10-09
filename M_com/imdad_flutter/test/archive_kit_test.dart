@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/core/print/cable_print.dart';
 import 'package:imdad/data/db/app_database.dart';
+import 'package:imdad/data/files/attachment_crypto.dart';
 import 'package:imdad/data/repos/archive_auto.dart';
 import 'package:imdad/data/repos/archive_repo.dart';
 import 'package:imdad/data/repos/cable_repo.dart';
@@ -24,9 +25,13 @@ void main() {
       const MethodChannel('plugins.flutter.io/path_provider'),
       (call) async => tmp.path,
     );
+    // المرفقات تُكتب مشفَّرةً بمفتاحٍ مشتقٍّ من مفتاح القاعدة، ومخزنُ
+    // الاعتمادات لا يعمل في الاختبارات.
+    AttachmentCrypto.debugKeyHex = 'ab' * 32;
   });
 
   tearDown(() async {
+    AttachmentCrypto.debugKeyHex = null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(const MethodChannel('plugins.flutter.io/path_provider'), null);
     await db.close();
@@ -58,7 +63,8 @@ void main() {
       expect(rows.single.source, 'auto');
       expect(rows.single.opType, 'issue');
       expect(rows.single.docRef, 'ص-1');
-      expect(await File(rows.single.storedPath).readAsBytes(), pdf);
+      // المحتوى يُقرأ عبر المستودع: الملف مشفَّر على القرص (`attachment_crypto_test`).
+      expect(await ArchiveRepo(db).bytesOf(rows.single), pdf);
       expect(await ArchiveRepo(db).verifyIntegrity(rows.single), isTrue);
 
       // إعادة طباعة السند نفسه تحدّث النسخة ولا تضيف أخرى.
@@ -66,7 +72,7 @@ void main() {
       await auto.onDocumentPrinted(op: 'issue', title: 'سند صرف', docRef: 'ص-1', pdfBytes: pdf2);
       rows = await db.select(db.archiveFiles).get();
       expect(rows, hasLength(1));
-      expect(await File(rows.single.storedPath).readAsBytes(), pdf2);
+      expect(await ArchiveRepo(db).bytesOf(rows.single), pdf2);
 
       // عملية أخرى غير مفعّلة لا تُؤرشف.
       expect(await auto.onDocumentPrinted(op: 'receipt', title: 'سند', docRef: 'ص-1', pdfBytes: pdf), isFalse);

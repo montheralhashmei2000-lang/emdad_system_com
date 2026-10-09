@@ -92,12 +92,7 @@ class _ViewBody extends StatelessWidget {
           child: InteractiveViewer(
             maxScale: 5,
             child: Center(
-              child: Image.file(
-                File(f.storedPath),
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) =>
-                    const ImdNote('تعذّر عرض الصورة — نزّل نسخةً وافتحها خارجيًّا.'),
-              ),
+              child: ArchiveImage(repo: repo, file: f, fit: BoxFit.contain),
             ),
           ),
         )
@@ -109,7 +104,7 @@ class _ViewBody extends StatelessWidget {
             borderRadius: BorderRadius.circular(10),
           ),
           child: PdfPreview(
-            build: (_) async => File(f.storedPath).readAsBytes(),
+            build: (_) async => repo.bytesOf(f),
             canChangeOrientation: false,
             canChangePageFormat: false,
           ),

@@ -214,7 +214,7 @@ class _CablesScreenState extends State<CablesScreen> {
     if (!ok && mounted) {
       showImdToast(context, '⚠ تحذير: بصمة الملف لا تطابق المخزّن', error: true);
     }
-    final bytes = await f.readAsBytes();
+    final bytes = await _repo.attachmentBytes(c);
     if (!mounted) return;
     await showImdModal<void>(
       context,

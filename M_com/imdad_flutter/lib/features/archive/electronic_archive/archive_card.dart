@@ -52,10 +52,10 @@ class _ArchiveCardState extends State<_ArchiveCard> {
                   width: double.infinity,
                   color: c.bg,
                   child: isImage
-                      ? Image.file(
-                          File(f.storedPath),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _typeBadge(fg, icon),
+                      ? ArchiveImage(
+                          repo: widget.state._repo,
+                          file: f,
+                          onError: (_) => _typeBadge(fg, icon),
                         )
                       : _typeBadge(fg, icon),
                 ),

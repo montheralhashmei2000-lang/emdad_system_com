@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:imdad/data/files/attachment_crypto.dart';
 import 'package:imdad/data/repos/finance_files.dart';
 import 'package:path/path.dart' as p;
 
@@ -22,9 +23,13 @@ void main() {
       const MethodChannel('plugins.flutter.io/path_provider'),
       (call) async => tmp.path,
     );
+    // المرفقات تُكتب مشفَّرةً بمفتاحٍ مشتقٍّ من مفتاح القاعدة، ومخزنُ
+    // الاعتمادات لا يعمل في الاختبارات.
+    AttachmentCrypto.debugKeyHex = 'ab' * 32;
   });
 
   tearDown(() async {
+    AttachmentCrypto.debugKeyHex = null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(const MethodChannel('plugins.flutter.io/path_provider'), null);
     await tmp.delete(recursive: true);

@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../../core/error_log.dart';
+import '../files/attachment_crypto.dart';
 
 /// مرفقٌ ماليّ محفوظ على قرص هذا الجهاز (صورة أو PDF).
 class FinAttachment {
@@ -60,9 +62,13 @@ class FinanceFiles {
     if (!await src.exists()) throw StateError('الملف غير موجود: $sourcePath');
     final bytes = await src.readAsBytes();
     final dst = File(p.join((await dir()).path, '${prefix}_${DateTime.now().microsecondsSinceEpoch}$ext'));
-    await dst.writeAsBytes(bytes, flush: true);
+    // مشفَّرًا على القرص؛ والحجم والبصمة للأصل الصريح كما كانا.
+    await AttachmentCrypto.write(dst, bytes);
     return FinAttachment(name: p.basename(sourcePath), path: dst.path, size: bytes.length, sha256: sha256.convert(bytes).toString());
   }
+
+  /// محتوى مرفقٍ ماليٍّ صريحًا — مشفَّرًا كان أو صريحًا قديمًا.
+  static Future<Uint8List> bytesOf(FinAttachment a) => AttachmentCrypto.read(File(a.path));
 
   /// يحذف مرفقًا — **بشرط أن يكون داخل مجلد المرفقات**.
   ///

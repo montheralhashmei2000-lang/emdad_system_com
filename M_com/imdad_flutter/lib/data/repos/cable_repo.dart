@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../db/app_database.dart';
+import '../files/attachment_crypto.dart';
 import 'audit_repo.dart';
 import '../../core/error_log.dart';
 
@@ -312,7 +313,8 @@ class CableRepo {
 
     final dir = await storageDir();
     final dst = File(p.join(dir.path, '${c.id}.pdf'));
-    await dst.writeAsBytes(bytes, flush: true);
+    // البرقية قد تكون مصنَّفة: تُكتب مشفَّرةً على القرص.
+    await AttachmentCrypto.write(dst, bytes);
 
     await (db.update(db.cables)..where((t) => t.id.equals(c.id))).write(
       CablesCompanion(
@@ -371,9 +373,17 @@ class CableRepo {
     if (c.attachPath.isEmpty || c.attachSha256.isEmpty) return true;
     final f = File(c.attachPath);
     if (!await f.exists()) return false;
-    final dig = sha256.convert(await f.readAsBytes()).toString();
-    return dig == c.attachSha256;
+    // البصمة على المحتوى الصريح، فيُفكّ التشفير قبل المقارنة (والصريح القديم
+    // يُقرأ كما هو).
+    try {
+      return sha256.convert(await AttachmentCrypto.read(f)).toString() == c.attachSha256;
+    } on AttachmentCryptoError {
+      return false;
+    }
   }
+
+  /// محتوى مرفق البرقية صريحًا — المدخل الوحيد لعرضه.
+  Future<Uint8List> attachmentBytes(Cable c) => AttachmentCrypto.read(File(c.attachPath));
 
   Future<void> delete(Cable c, {String actor = ''}) async {
     if (c.attachPath.isNotEmpty) {

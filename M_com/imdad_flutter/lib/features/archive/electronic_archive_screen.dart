@@ -21,6 +21,7 @@ import '../../data/repos/archive_repo.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../domain/access_control.dart';
 import 'archive_auto_settings.dart';
+import 'electronic_archive/archive_image.dart';
 
 part 'electronic_archive/archive_card.dart';
 part 'electronic_archive/archive_view_body.dart';
@@ -261,7 +262,8 @@ class _ElectronicArchiveScreenState extends State<ElectronicArchiveScreen> {
   /// حفظ نسخةٍ من الملف خارج الأرشيف — عبر منتقي حفظ النظام.
   Future<void> _saveCopy(ArchiveFile f) async {
     try {
-      final bytes = await File(f.storedPath).readAsBytes();
+      // صريحةً بعد فكّ التشفير: النسخة المنزَّلة تُفتح خارج النظام.
+      final bytes = await _repo.bytesOf(f);
       final path = await FilePicker.platform.saveFile(fileName: f.fileName, bytes: bytes);
       if (path == null) return;
       // على بعض المنصات يعيد المسار بلا كتابةٍ — نضمن الملف مكتوبًا.

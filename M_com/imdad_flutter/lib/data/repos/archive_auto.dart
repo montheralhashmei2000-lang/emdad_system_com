@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../../core/ids.dart';
 import '../db/app_database.dart';
+import '../files/attachment_crypto.dart';
 import 'archive_repo.dart';
 import 'audit_repo.dart';
 import 'settings_repo.dart';
@@ -109,7 +110,7 @@ class ArchiveAuto {
           t.opType.equals(op) & t.docRef.equals(docRef) & t.source.equals('auto'))).get();
       if (old.isNotEmpty) {
         final f = old.first;
-        await File(f.storedPath).writeAsBytes(pdfBytes, flush: true);
+        await AttachmentCrypto.write(File(f.storedPath), pdfBytes);
         await (db.update(db.archiveFiles)..where((t) => t.id.equals(f.id))).write(
           ArchiveFilesCompanion(
             sizeBytes: Value(pdfBytes.length),
@@ -125,7 +126,7 @@ class ArchiveAuto {
     final dir = await repo.storageDir();
     final id = Ids.next('ar');
     final dst = File(p.join(dir.path, '$id.pdf'));
-    await dst.writeAsBytes(pdfBytes, flush: true);
+    await AttachmentCrypto.write(dst, pdfBytes);
 
     await db.into(db.archiveFiles).insert(ArchiveFilesCompanion.insert(
           id: id,

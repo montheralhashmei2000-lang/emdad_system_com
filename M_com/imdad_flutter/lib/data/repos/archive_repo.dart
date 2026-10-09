@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../core/ids.dart';
 import '../db/app_database.dart';
+import '../files/attachment_crypto.dart';
 import 'audit_repo.dart';
 
 /// ترميز وسوم الأرشيف — قائمة JSON نصية تحتوي عناصرها فحسب.
@@ -168,7 +169,8 @@ class ArchiveRepo {
     final id = Ids.next('ar');
     final dir = await storageDir();
     final dst = File(p.join(dir.path, '$id${p.extension(sourcePath)}'));
-    await dst.writeAsBytes(bytes, flush: true);
+    // مشفَّرًا على القرص؛ والبصمة على الأصل الصريح فتبقى قابلةً للمقارنة.
+    await AttachmentCrypto.write(dst, bytes);
 
     await db.into(db.archiveFiles).insert(ArchiveFilesCompanion.insert(
           id: id,
@@ -261,6 +263,15 @@ class ArchiveRepo {
     if (f.sha256.isEmpty) return true; // نسخةٌ أُرشفت قبل بصمةٍ — لا حكم عليها
     final file = File(f.storedPath);
     if (!await file.exists()) return false;
-    return sha256.convert(await file.readAsBytes()).toString() == f.sha256;
+    // البصمة على المحتوى الصريح: تُقرأ عبر فاكّ التشفير فتصحّ على المشفَّر
+    // والصريح القديم معًا.
+    try {
+      return sha256.convert(await AttachmentCrypto.read(file)).toString() == f.sha256;
+    } on AttachmentCryptoError {
+      return false;
+    }
   }
+
+  /// محتوى ملفٍ مؤرشف صريحًا — المدخل الوحيد للعرض والتنزيل.
+  Future<Uint8List> bytesOf(ArchiveFile f) => AttachmentCrypto.read(File(f.storedPath));
 }
