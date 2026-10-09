@@ -23,6 +23,8 @@ import '../../data/repos/movements_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/stock_alerts.dart';
 import '../../core/error_log.dart';
+import '../../data/migration/excel_templates/excel_templates.dart' show TemplateKind;
+import '../excel_templates/excel_templates_dialog.dart';
 
 /// إدارة الأصناف بتبويباتها الست:
 /// القائمة، التصنيفات، بطاقة الصنف، الأرصدة، حركة الصنف، الباركودات.
@@ -162,10 +164,11 @@ class _ItemsScreenState extends State<ItemsScreen> {
       onFile: (path) => _import(path: path),
       child: ImdPage(
       children: [
-        const ImdPageTitle(
+        ImdPageTitle(
           title: 'إدارة الأصناف',
           icon: 'package',
           subtitle: 'بطاقات الأصناف والتصنيفات والوحدات والأرصدة وحركة الصنف والباركودات',
+          actions: [ExcelTemplatesButton(kind: TemplateKind.items, onImported: _fetch)],
         ),
         ImdItabs(
           value: _tab,

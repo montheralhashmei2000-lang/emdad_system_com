@@ -10,6 +10,8 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/movements_repo.dart';
+import '../../data/migration/excel_templates/excel_templates.dart' show TemplateKind;
+import '../excel_templates/excel_templates_dialog.dart';
 
 /// الوحدات المستفيدة — نقل مطابق لـ `renderUnits()`: الشجرة التنظيمية (معسكرات ووحدات تابعة)
 /// مع الترقيم التلقائي من `imdad-upgrade-v4.js`، وسجل الصرف الاستهلاكي للوحدة.
@@ -110,10 +112,11 @@ class _UnitsScreenState extends State<UnitsScreen> {
   @override
   Widget build(BuildContext context) {
     return ImdPage(children: [
-      const ImdPageTitle(
+      ImdPageTitle(
         title: 'الوحدات المستفيدة',
         icon: 'users',
         subtitle: 'شجرة المعسكرات والوحدات التابعة + سجل الصرف الاستهلاكي',
+        actions: [ExcelTemplatesButton(kind: TemplateKind.units, onImported: _fetch)],
       ),
       ImdItabs(
         value: _tab,

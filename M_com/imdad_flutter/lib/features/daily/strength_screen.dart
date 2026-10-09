@@ -16,6 +16,8 @@ import '../../domain/access_control.dart';
 import '../inventory/doc_kit.dart';
 import '../../core/ui/imd_layout.dart';
 import '../../domain/print_forms.dart';
+import '../../data/migration/excel_templates/excel_templates.dart' show TemplateKind;
+import '../excel_templates/excel_templates_dialog.dart';
 
 /// التفريدة اليومية — نقل `renderTafreeda()`:
 /// تبويبان (تسجيل التفريدة / أرشيف التفريدات)، وطريقتا إدخال لا تُجمعان:
@@ -426,10 +428,21 @@ class _StrengthScreenState extends State<StrengthScreen> {
   @override
   Widget build(BuildContext context) {
     return ImdPage(children: [
-      const ImdPageTitle(
+      ImdPageTitle(
         title: 'التفريدة اليومية',
         icon: 'calendar',
         subtitle: 'حصر القوة اليومي بالمعسكرات + أرشيف التفريدات السابقة',
+        actions: [
+          ExcelTemplatesButton(
+            kind: TemplateKind.strength,
+            campId: _campId,
+            date: _date,
+            onImported: () async {
+              await _load();
+              await _loadRows();
+            },
+          ),
+        ],
       ),
       ImdItabs(
         value: _tab,

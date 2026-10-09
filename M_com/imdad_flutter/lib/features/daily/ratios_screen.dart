@@ -15,6 +15,8 @@ import '../../data/repos/daily_repo.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/print_forms.dart';
+import '../../data/migration/excel_templates/excel_templates.dart' show TemplateKind;
+import '../excel_templates/excel_templates_dialog.dart';
 
 /// ضبط الاستحقاقات والمقررات — نقل `renderRatios()`:
 /// إدخال شبكي مباشر لكل صنف (المقرر الشهري للفرد + وحدة القياس + ملاحظات)،
@@ -278,11 +280,12 @@ class _RatiosScreenState extends State<RatiosScreen> {
     final visible = _visible();
 
     return ImdPage(children: [
-      const ImdPageTitle(
+      ImdPageTitle(
         title: 'ضبط الاستحقاقات والمقررات (إدخال شبكي مباشر)',
         icon: 'scale',
         subtitle: 'المقرر الشهري للفرد لكل صنف بوحدة القياس المختارة — '
             'يُحتسب تلقائيًا في الصرف والتحويل: (المقرر ÷ ٣٠) × القوة × الأيام',
+        actions: [ExcelTemplatesButton(kind: TemplateKind.entitlements, onImported: _load)],
       ),
       ImdICard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
