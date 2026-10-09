@@ -242,9 +242,22 @@ void main() {
           .write(UsersCompanion(ownerSig: Value(OwnerSignature.encode({...OwnerSignature.parse(signed.ownerSig), 'r': 'ROLESIG'}))));
 
       await repo.setSectionBlocked(id: 'u1', blocked: {SectionBlock.supply}, actorRole: UserRole.owner, activation: act);
-      final sigs = OwnerSignature.parse((await user('u1')).ownerSig);
+      final after = await user('u1');
+      final sigs = OwnerSignature.parse(after.ownerSig);
       expect(sigs.containsKey(OwnerSignature.sectionsKey), isFalse, reason: 'غطّى محتوىً قديمًا');
-      expect(sigs['r'], 'ROLESIG');
+      // توقيع الدور باقٍ — بل مُجدَّدٌ صالحًا: الصفّ الذي حمل `r` كان مميَّزًا،
+      // و`resign` يجدّد توقيعه على حاله الجديد ليقبل الأقرانُ خفضَه.
+      expect(sigs['r'], isNot(anyOf(isNull, 'ROLESIG')));
+      expect(
+        OwnerSignature.verifyRole(
+          sigB64: sigs['r']!,
+          userId: 'u1',
+          role: after.role,
+          updatedAtSec: OwnerSignature.seconds(after.updatedAt!),
+          publicKey: ownerPub,
+        ),
+        isTrue,
+      );
     });
   });
 

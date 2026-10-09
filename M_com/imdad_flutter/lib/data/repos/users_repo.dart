@@ -241,14 +241,19 @@ class UsersRepo {
     final sigs = OwnerSignature.parse(row.ownerSig);
     final purposes = <String>[];
 
-    if (OwnerSignature.rank(row.role) > 0) {
+    // الحساب المميَّز **أو الذي كان مميَّزًا** (يحمل توقيع `r` سابقًا — والتوقيع لا
+    // يُسحب). الأجهزة الأخرى ما زالت تراه مديرًا، وحارسها يشترط توقيع المالك على
+    // خفضه وعلى ما يتغيّر فيه معه؛ فبلا هذا لا ينتشر خفضٌ شرعيٌّ أجراه المالك.
+    final vouched = OwnerSignature.rank(row.role) > 0 || sigs.containsKey(OwnerSignature.roleKey);
+
+    if (vouched) {
       final r = await OwnerSignature.signRole(act, userId: id, role: row.role, updatedAtSec: sec);
       if (r != null) {
         sigs[OwnerSignature.roleKey] = r;
         purposes.add('role');
       }
     }
-    if (OwnerSignature.rank(row.role) > 0) {
+    if (vouched) {
       final c = await OwnerSignature.signCreds(
         act,
         userId: id,
@@ -408,7 +413,17 @@ class UsersRepo {
       ));
 
   /// لا يجوز حذف آخر مدير نظام حتى لا يُغلق النظام على نفسه.
-  Future<bool> deleteUser(String id, {String? actorRole}) async {
+  ///
+  /// **المدير لا يُحذف من أول مرة بل يُقاعَد:** يُعطَّل ويُخفض إلى `user` بتوقيع
+  /// المالك ويبقى صفُّه، ويُعاد `true`. السبب أن الأجهزة الأخرى ترفض شاهدَ حذفِ
+  /// حسابٍ مميَّز عندها (`LegacyImporter._tombstoneRejection`)، والحذف لا يحمل
+  /// إلا شاهده — فلو حُذف الصفُّ مباشرة لبقي المدير فعّالًا في كل فرع. أما
+  /// المُقاعَد فيصلها صفًّا موقَّعًا فيتعطّل فيها، و**الحذف الثاني** بعد المزامنة
+  /// يحذفه حسابًا عاديًّا ينتشر شاهده كأي حذف.
+  ///
+  /// بلا مفتاح المالك على هذا الجهاز يتعطّل الحساب هنا وحده (كتغيير كلمة مرور
+  /// مدير على جهازٍ غير جهاز المالك، CLAUDE.md §4).
+  Future<bool> deleteUser(String id, {String? actorRole, String actorEmail = ''}) async {
     _requireActor(actorRole, owner: true, why: 'حذف المستخدمين');
     final rows = await db.select(db.users).get();
     final target = rows.where((u) => u.id == id).toList();
@@ -417,6 +432,24 @@ class UsersRepo {
     if (UserRole.isOwner(target.first.role)) return false;
     if (UserRole.isAdmin(target.first.role) && rows.where((u) => UserRole.isAdmin(u.role)).length <= 1) {
       return false;
+    }
+    if (UserRole.isAdmin(target.first.role)) {
+      await (db.update(db.users)..where((t) => t.id.equals(id))).write(UsersCompanion(
+        role: const Value(UserRole.user),
+        active: const Value(false),
+        updatedAt: Value(DateTime.now()),
+      ));
+      final signed = await resign(id, actorEmail: actorEmail);
+      await AuditRepo(db).log(
+        action: 'USER_RETIRED',
+        entityType: 'مستخدم',
+        summary: 'تقاعد حساب المدير «${target.first.username}»: عُطِّل وخُفض${signed ? '' : ' (هنا وحده — لا مفتاح مالك على الجهاز)'}؛ '
+            'يُحذف نهائيًّا بحذفه مرة ثانية بعد المزامنة',
+        details: {'userId': id, 'username': target.first.username, 'signed': signed},
+        risk: AuditRepo.riskHigh,
+        actorEmail: actorEmail,
+      );
+      return true;
     }
     await (db.delete(db.users)..where((t) => t.id.equals(id))).go();
     return true;

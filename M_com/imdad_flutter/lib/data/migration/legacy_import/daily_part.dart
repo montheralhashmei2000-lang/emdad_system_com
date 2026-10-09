@@ -104,21 +104,58 @@ mixin _LegacyDaily on _LegacyBase {
     _count(res, 'entitlements', rows.length);
   }
 
+  /// الإعدادات المزامَنة.
+  ///
+  /// **صيغتان:** التصدير يكتب قائمةً من `{key, value}` (`DataExporter`)، ونسخة
+  /// الويب القديمة خريطةً `{key: value}`. كان هذا لا يقبل إلا الخريطة فيعود من
+  /// أول سطر، فلم يصل إعدادٌ واحد بالمزامنة ولا بالاستعادة منذ أول إصدار —
+  /// والاختباران (تصديرٌ بقائمة واستيرادٌ بخريطة) لم يلتقيا قط.
   Future<void> _importSettings(Object? raw, LegacyImportResult res) async {
-    if (raw is! Map) return;
-    final map = raw.cast<String, dynamic>();
-    for (final entry in map.entries) {
+    final incoming = <String, Object?>{};
+    if (raw is Map) {
+      raw.forEach((k, v) => incoming['$k'] = v);
+    } else if (raw is List) {
+      for (final e in raw.whereType<Map>()) {
+        final key = '${e['key'] ?? ''}';
+        if (key.isNotEmpty) incoming[key] = e['value'];
+      }
+    } else {
+      return;
+    }
+    final local = {for (final s in await db.select(db.appSettings).get()) s.key: s.value};
+    for (final entry in incoming.entries) {
       // خاصٌّ بالجهاز: لا يُكتب فوقه من نسخةٍ واردة.
       if (SettingsRepo.localOnlyKeys.contains(entry.key)) continue;
       if (!_accept('app_settings', entry.key)) continue;
+      final value = _json(entry.value, '{}');
+      if (local[entry.key] == value) continue;
+      if (_losesSettingsTie(entry.key, value, local[entry.key])) {
+        _rejectedMarks.add('app_settings/${entry.key}');
+        continue;
+      }
       await db
           .into(db.appSettings)
           .insertOnConflictUpdate(AppSettingsCompanion.insert(
             key: entry.key,
-            value: Value(_json(entry.value, '{}')),
+            value: Value(value),
             updatedAt: Value(DateTime.now()),
           ));
     }
-    _count(res, 'settings', map.length);
+    _count(res, 'settings', incoming.length);
+  }
+
+  /// تعادل الختمين على قيمتين مختلفتين: يفوز الأكبر نصًّا، على الجهازين معًا.
+  ///
+  /// القاعدة العامة «عند التساوي يفوز الوارد» تصحّ حين تتطابق القيمتان. لكن
+  /// الاستيراد المعطوب كان يثبّت ختمَ القرين (`_settleMarks`) على صفٍّ لم يكتبه،
+  /// فصار عند الأجهزة القائمة ختمان متساويان على قيمتين مختلفتين — وبقاعدة
+  /// «الوارد يفوز» يتبادل الجهازان قيمتيهما في كل دورة إلى الأبد. مقارنةٌ ثابتة
+  /// لا تتعلق بمن أرسل تجعلهما يلتقيان من أول دورة.
+  bool _losesSettingsTie(String key, String value, String? localValue) {
+    if (localValue == null) return false;
+    final mine = _local['app_settings/$key'];
+    final theirs = _incoming['app_settings/$key'];
+    if (mine == null || theirs == null || mine.stamp != theirs.stamp) return false;
+    return value.compareTo(localValue) < 0;
   }
 }

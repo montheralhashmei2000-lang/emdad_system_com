@@ -179,11 +179,65 @@ void main() {
       expect(r.rejectedUsers, isEmpty);
     });
 
-    test('الخفض بلا توقيع مقبول (مالك/مدير ← مستخدم)', () async {
-      await db.into(db.users).insert(UsersCompanion.insert(id: 'a1', username: 'a1', role: const Value('admin')));
+    // كان الخفض حرًّا («لا يمنح شيئًا») — لكنه كان يحمل معه في الصف نفسه بصمةً
+    // وصلاحياتٍ لا يحرسها شيء، فيُخفض المالك ويُدخل باسمه بكلمة مرور المرسِل.
+    test('الخفض بلا توقيع يُرفض (مدير ← مستخدم) ويبقى الدور', () async {
+      await db.into(db.users).insert(UsersCompanion.insert(
+          id: 'a1', username: 'a1', role: const Value('admin'), saltHex: const Value('aa'), hashHex: const Value('bb')));
       final r = await importer().importJson({'users': [row('a1', 'user')], 'syncMarks': marks(['a1'])});
+      expect(r.rejectedUsers.single.kind, 'role');
+      expect((await user('a1'))!.role, 'admin');
+    });
+
+    test('خفض المالك مع تبديل بصمته وصلاحياته بلا توقيع ⇒ يُرفض كله', () async {
+      await db.into(db.users).insert(UsersCompanion.insert(
+          id: 'o1', username: 'boss', role: const Value('owner'), saltHex: const Value('aa'), hashHex: const Value('bb')));
+      final r = await importer().importJson({
+        'users': [
+          {
+            ...row('o1', 'user'),
+            'username': 'boss',
+            'saltHex': 'cc',
+            'hashHex': 'dd',
+            'permissions': {'items': {'view': true, 'create': true, 'edit': true, 'delete': true}},
+          },
+        ],
+        'syncMarks': marks(['o1']),
+      });
+      expect(r.rejectedUsers, hasLength(1));
+      final after = (await user('o1'))!;
+      expect(after.role, 'owner');
+      expect((after.saltHex, after.hashHex), ('aa', 'bb'), reason: 'بصمة المالك استُبدلت بلا توقيع');
+      expect(await audits('sync.role_rejected'), hasLength(1));
+    });
+
+    test('بقاء الدور المميَّز مع تبديل البصمة بلا توقيع ⇒ يُرفض (كما كان)', () async {
+      await db.into(db.users).insert(UsersCompanion.insert(
+          id: 'a1', username: 'a1', role: const Value('admin'), saltHex: const Value('aa'), hashHex: const Value('bb')));
+      final r = await importer().importJson({
+        'users': [
+          {...row('a1', 'admin'), 'saltHex': 'cc'},
+        ],
+        'syncMarks': marks(['a1']),
+      });
+      expect(r.rejectedUsers.single.kind, 'credentials');
+    });
+
+    test('الخفض بتوقيع المالك على الدور والبيانات ⇒ يُقبل', () async {
+      await db.into(db.users).insert(UsersCompanion.insert(
+          id: 'a1', username: 'a1', role: const Value('admin'), saltHex: const Value('aa'), hashHex: const Value('bb')));
+      final r = await importer().importJson({
+        'users': [
+          {
+            ...row('a1', 'user', sigs: {'r': roleSig('a1', 'user', sec), 'c': credsSig('a1', 'user', sec, active: false)}),
+            'active': false,
+          },
+        ],
+        'syncMarks': marks(['a1']),
+      });
       expect(r.rejectedUsers, isEmpty);
-      expect((await user('a1'))!.role, 'user');
+      final after = (await user('a1'))!;
+      expect((after.role, after.active), ('user', false));
     });
 
     test('مستخدم عادي يُرفع إلى مدير بلا توقيع ⇒ يُرفض ويبقى مستخدمًا', () async {

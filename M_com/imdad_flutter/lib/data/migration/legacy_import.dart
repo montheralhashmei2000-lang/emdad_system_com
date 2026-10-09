@@ -108,6 +108,7 @@ class LegacyImporter
 
     await db.transaction(() async {
       _local = await marks.snapshot();
+      _rejectedMarks = {};
       _incoming = {
         for (final m in _rows(data['syncMarks']).map(SyncMark.fromMap))
           if (m != null) m.key: m,

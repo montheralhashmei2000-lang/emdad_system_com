@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/core/security/device_activation.dart';
+import 'package:imdad/core/security/esign.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/migration/data_export.dart';
 import 'package:imdad/data/migration/legacy_import.dart';
@@ -52,6 +55,46 @@ void main() {
     });
 
     expect((await SettingsRepo(branch).read('device'))['id'], 'LOCAL234');
+  });
+
+  group('مفتاح التوقيع الإلكتروني الخاص', () {
+    test('مفتاح الإعدادات معلَنٌ محليًّا (يربط ESign بالقائمة)', () {
+      expect(SettingsRepo.localOnlyKeys, contains(ESign.settingsKey),
+          reason: 'المفتاح مكتوبٌ حرفًا في localOnlyKeys لتفادي حلقة استيراد — هذا ما يربطهما');
+    });
+
+    test('لا يخرج في التصدير ولا في النسخة الاحتياطية', () async {
+      final esign = ESign(master);
+      await esign.ensureKey();
+      final priv = '${((await SettingsRepo(master).read(ESign.settingsKey))['commander'] as Map)['priv']}';
+      expect(priv, hasLength(64), reason: 'المفتاح الحقيقي لم يُهيَّأ — الاختبار لا يختبر شيئًا');
+
+      for (final includeUsers in [false, true]) {
+        final out = await DataExporter(master).toMap(includeUsers: includeUsers);
+        final keys = [for (final s in out['settings'] as List) (s as Map)['key']];
+        expect(keys, isNot(contains(ESign.settingsKey)));
+        expect(jsonEncode(out), isNot(contains(priv)), reason: 'المفتاح الخاص للقائد غادر الجهاز');
+      }
+    });
+
+    test('حمولةٌ قديمة تحمل esign لا تكتب فوق المفتاح المحلي', () async {
+      await ESign(branch).ensureKey();
+      final before = await SettingsRepo(branch).read(ESign.settingsKey);
+
+      await LegacyImporter(branch).importJson({
+        'settings': {
+          ESign.settingsKey: {
+            'commander': {'priv': 'ab' * 32, 'pub': 'غريب', 'kid': 'XXXX'},
+          },
+        },
+        // ختمٌ بعيد في المستقبل: لولاه لرفض «الأحدث يفوز» الصفَّ قبل حارس المحلي.
+        'syncMarks': [
+          {'entity': 'app_settings', 'rowId': ESign.settingsKey, 'updatedAt': 4000000000000},
+        ],
+      });
+
+      expect(await SettingsRepo(branch).read(ESign.settingsKey), before);
+    });
   });
 
   test('إلغاء جهاز يصل بالمزامنة ويُمحى برفعه', () async {

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:imdad/core/security/esign.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/migration/data_export.dart';
 import 'package:imdad/data/migration/legacy_import.dart';
@@ -36,6 +37,9 @@ void main() {
       pulledUpTo: 1700000000000,
       pushedUpTo: 1700000000001,
     ));
+    // ومفتاح توقيع القائد الخاص (hex بطول ٦٤): كان يخرج مع الحمولة ولم يمسكه
+    // صيدُ الأسرار أدناه لأن هذه البيانات لم تحمله قط. الصيد يصدق بقدر ما يُطعَم.
+    await ESign(db).ensureKey();
   }
 
   test('مفتاح إعدادات المزامنة معلَنٌ محليًّا (يربط SyncTrust بالقائمة)', () {

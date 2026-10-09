@@ -27,6 +27,11 @@ class ESign {
 
   static const String _key = 'esign';
 
+  /// مفتاح الإعدادات الذي تُحفظ فيه المفاتيح — **محليٌّ** في
+  /// `SettingsRepo.localOnlyKeys` (مكتوبٌ هناك حرفًا لتفادي حلقة استيراد،
+  /// ويربطهما `device_sync_isolation_test`).
+  static const String settingsKey = _key;
+
   /// بادئة رمز التحقق المطبوع — رقم النسخة يسمح بتغيير الصيغة لاحقًا.
   static const String qrPrefix = 'IMD1';
 

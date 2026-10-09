@@ -91,9 +91,12 @@ mixin _LegacyDocs on _LegacyBase {
     final rows = _rows(raw);
     for (final a in rows) {
       if (!_accept('audit_logs', _id(a))) continue;
+      // إدراجٌ لا تحديث: صفُّ التدقيق يُكتب مرة ولا يتغيّر. كان `insertOnConflictUpdate`
+      // مع «الأحدث ختمًا يفوز» — والختم بيد المرسِل — يتيح لجهازٍ مقترن أن يعيد كتابة
+      // تاريخ التدقيق هنا بختمٍ من المستقبل.
       await db
           .into(db.auditLogs)
-          .insertOnConflictUpdate(AuditLogsCompanion.insert(
+          .insert(AuditLogsCompanion.insert(
             id: _id(a),
             action: _s(a, 'action'),
             entityType: Value(_s(a, 'entityType')),
@@ -111,7 +114,7 @@ mixin _LegacyDocs on _LegacyBase {
             itemCount: Value(_i(a, 'itemCount')),
             qty: Value(_d(a, 'qty')),
             createdAt: Value(_created(a)),
-          ));
+          ), mode: InsertMode.insertOrIgnore);
     }
     if (rows.isNotEmpty) _count(res, 'سجل التدقيق', rows.length);
   }
