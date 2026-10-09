@@ -16,14 +16,34 @@ mixin _LegacyUsers on _LegacyBase {
   ///    `userId|section_blocked|updatedAt`. إضافة حجب لا تلزمه.
   ///
   /// وبلا مفتاح مالكٍ مضبوط (وضع تطوير) لا تُفرض القاعدتان — كحال تفعيل الأجهزة.
-  ({String kind, String reason})? _userRejection(Map<String, dynamic> u, User? local) {
+  ({String kind, String reason})? _userRejection(Map<String, dynamic> u, User? local, Iterable<User> existing) {
     if (_ownerKey.isEmpty) return null;
     final id = _id(u);
     final role = _s(u, 'role', 'user');
     final updatedSec = u['updatedAt'] is num ? (u['updatedAt'] as num).toInt() : null;
     final sigs = OwnerSignature.parse(u['ownerSig'] is String ? u['ownerSig'] as String : null);
+    final inRank = OwnerSignature.rank(role);
+    final localRank = OwnerSignature.rank(local?.role);
 
-    if (OwnerSignature.rank(role) > OwnerSignature.rank(local?.role)) {
+    // **انتزاع اسم الدخول:** حسابٌ عاديٌّ وارد يحمل اسم حسابٍ مميَّز قائم بمعرّفٍ
+    // آخر. `login` يطابق الاسم بلا حساسية للحالة ويفضّل `local-` ثم الأحدث تعديلًا
+    // (والختم بيد المرسِل)، فيُصادَق الدخيلُ بكلمة مرورٍ يعرفها ويُردّ المدير
+    // الحقيقي بـ«كلمة مرور خاطئة». المميَّز الوارد بتوقيعٍ صحيح لا يُمسّ هنا:
+    // يحرسه شرط الرفع أدناه، والتكرار الشرعي (جهازٌ هيّأ مديره محليًّا) يبقى ممكنًا.
+    if (inRank == 0) {
+      final name = _s(u, 'username', _s(u, 'email').split('@').first).toLowerCase();
+      final clash = existing.any(
+          (x) => x.id != id && OwnerSignature.rank(x.role) > 0 && x.username.toLowerCase() == name);
+      if (name.isNotEmpty && clash) {
+        return (kind: 'username', reason: 'حسابٌ عاديٌّ باسم حسابٍ مميَّز قائم («$name») بمعرّفٍ آخر');
+      }
+    }
+
+    // تغيير الدور يلزمه توقيع `r` على الدور الوارد: **رفعًا** في أي حساب، و**خفضًا**
+    // في حسابٍ مميَّز محليًّا. كان الخفض حرًّا، فيُخفض المالك إلى `user` ومعه تُستبدل
+    // بصمته وصلاحياته في الصف نفسه بلا توقيع — لأن حارس `c` أدناه كان يشترط أن يبقى
+    // الدور الوارد مميَّزًا.
+    if (inRank > localRank || (localRank > 0 && inRank < localRank)) {
       final ok = updatedSec != null &&
           OwnerSignature.verifyRole(
             sigB64: sigs[OwnerSignature.roleKey] ?? '',
@@ -32,14 +52,17 @@ mixin _LegacyUsers on _LegacyBase {
             updatedAtSec: updatedSec,
             publicKey: _ownerKey,
           );
-      if (!ok) return (kind: 'role', reason: 'رفع الدور إلى «$role» بلا توقيع مالكٍ صحيح');
+      if (!ok) {
+        return inRank > localRank
+            ? (kind: 'role', reason: 'رفع الدور إلى «$role» بلا توقيع مالكٍ صحيح')
+            : (kind: 'role', reason: 'خفض حسابٍ مميَّز إلى «$role» بلا توقيع مالكٍ صحيح');
+      }
     }
 
-    // **حسابٌ مميَّز قائم** (مدير/مالك محليًّا ومديرٌ/مالك واردًا): أي تغيير في
-    // بصمة كلمة المرور أو الصلاحيات أو النطاق أو التفعيل يلزمه توقيع المالك `c` على
-    // القيم الواردة نفسها. وإلا استبدل جهازٌ مقترن هاش المدير بهاشٍ يعرفه فدخل
-    // بالإدارة بلا رفع دورٍ يُرفض. خفضُ الدور لا يلزمه (لا يمنح شيئًا).
-    if (local != null && OwnerSignature.rank(local.role) > 0 && OwnerSignature.rank(role) > 0) {
+    // **حسابٌ مميَّز محليًّا** (مدير/مالك)، أيًّا كان الدور الوارد: أي تغيير في بصمة
+    // كلمة المرور أو الصلاحيات أو النطاق أو التفعيل يلزمه توقيع المالك `c` على القيم
+    // الواردة نفسها. وإلا استبدل جهازٌ مقترن هاش المدير بهاشٍ يعرفه فدخل باسمه.
+    if (local != null && localRank > 0) {
       // بصمةٌ غائبة أو فارغة لا تُكتب (انظر `_importUsers`): تبقى القائمة محليًّا.
       final hasSecret = _s(u, 'saltHex').isNotEmpty && _s(u, 'hashHex').isNotEmpty;
       final inSalt = hasSecret ? _s(u, 'saltHex') : local.saltHex;
@@ -106,8 +129,11 @@ mixin _LegacyUsers on _LegacyBase {
       }
 
       final local = existing[_id(u)];
-      final rejection = trusted ? null : _userRejection(u, local);
+      final rejection = trusted ? null : _userRejection(u, local, existing.values);
       if (rejection != null) {
+        // علامة الصف المرفوض لا تُثبَّت (`_settleMarks`): لو أخذ الصفُّ المحلي ختمَ
+        // الوارد لبدا أحدثَ مما هو، فيُدهس به تعديلٌ أحدث على جهازٍ ثالث.
+        _rejectedMarks.add('users/${_id(u)}');
         final username = _s(u, 'username', _s(u, 'email').split('@').first);
         res.rejectedUsers.add(RejectedUser(id: _id(u), username: username, kind: rejection.kind, reason: rejection.reason));
         await AuditRepo(db).log(

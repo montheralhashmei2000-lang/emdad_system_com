@@ -16,6 +16,10 @@ mixin _LegacyBase {
   Map<String, SyncMark> _local = const {};
   Map<String, SyncMark> _incoming = const {};
 
+  /// علامات (`entity/rowId`) رُفض سجلُّها أو شاهدُ حذفها في هذا الاستيراد: لا
+  /// يُثبَّت ختمُها الوارد في `_settleMarks`، فيبقى الختم المحلي على القيمة المحلية.
+  Set<String> _rejectedMarks = {};
+
   /// هل يُقبل السجل الوارد؟ يفوز الأحدث ختمًا؛ وعند تساوي الختم يفوز الوارد
   /// (السجلان متطابقان عمليًا، والترجيح الثابت يمنع تذبذب الأجهزة).
   bool _accept(String entity, String rowId) {
