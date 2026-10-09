@@ -6,6 +6,7 @@ import '../../domain/fuel.dart';
 import '../../domain/fuel_daily_report.dart';
 import '../../domain/fuel_report.dart';
 import 'fuel_plan_row.dart';
+import '../../domain/print_forms.dart';
 
 /// أوراق تقارير المحروقات المطبوعة.
 ///
@@ -44,7 +45,7 @@ class FuelReportDocs {
     required FuelSettingsRow settings,
   }) async =>
       DocumentPdf.printDoc(
-        layout: await SettingsRepo(db).printLayout(),
+        layout: await SettingsRepo(db).printLayoutFor(PrintForms.fuelOfficial),
         doc: official(report, settings),
       );
 
@@ -233,7 +234,7 @@ class FuelReportDocs {
     required FuelSettingsRow settings,
   }) async =>
       DocumentPdf.printDoc(
-        layout: await SettingsRepo(db).printLayout(),
+        layout: await SettingsRepo(db).printLayoutFor(PrintForms.fuelDaily),
         doc: daily(report, settings),
       );
 
@@ -475,7 +476,7 @@ class FuelReportDocs {
     List<String> rules = const [],
   }) async =>
       DocumentPdf.printDoc(
-        layout: await SettingsRepo(db).printLayout(),
+        layout: await SettingsRepo(db).printLayoutFor(PrintForms.fuelPlan),
         doc: plan(
             settings: settings, petrol: petrol, diesel: diesel, rules: rules),
       );

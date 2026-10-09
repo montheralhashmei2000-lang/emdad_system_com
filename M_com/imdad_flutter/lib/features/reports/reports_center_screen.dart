@@ -18,6 +18,7 @@ import 'actual_entitlement_screen.dart';
 import 'camp_ledger_screen.dart';
 import 'camp_settlement_screen.dart';
 import '../../core/ui/imd_layout.dart';
+import '../../domain/print_forms.dart';
 
 /// مركز التقارير — نقل `reports-center.js`: قائمة جانبية بتسعة تقارير،
 /// فلاتر مخصصة لكل تقرير، ملخّص برقائق، جدول قابل للفرز بسطر إجمالي،
@@ -270,7 +271,7 @@ class _ReportsCenterScreenState extends State<ReportsCenterScreen> {
   Future<void> _print() async {
     if (!Perm.of(context).guard(context, 'reports', 'print')) return;
     if (!_hasRows()) return;
-    final layout = await SettingsRepo(_db).printLayout();
+    final layout = await SettingsRepo(_db).printLayoutFor(PrintForms.reportsCenter);
     final totals = _totalTexts(_rows());
     await DocumentPdf.printDoc(
       doc: PrintDoc(

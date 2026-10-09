@@ -20,6 +20,7 @@ import '../../domain/access_control.dart';
 import '../../domain/line_consolidation.dart';
 import '../../domain/ration_order.dart';
 import 'doc_kit.dart';
+import '../../domain/print_forms.dart';
 
 part 'ration_order/ration_approve_sheet.dart';
 
@@ -626,7 +627,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
   Future<void> _print(RationOrderFull full) async {
     if (!Perm.of(context).guard(context, 'rationOrders', PermAction.print)) return;
     final o = full.order;
-    final layout = await SettingsRepo(_db).printLayout();
+    final layout = await SettingsRepo(_db).printLayoutFor(PrintForms.rationOrder);
     if (!mounted) return;
     var i = 1;
     await DocumentPdf.printDoc(

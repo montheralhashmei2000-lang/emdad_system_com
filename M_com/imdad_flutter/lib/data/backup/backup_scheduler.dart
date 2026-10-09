@@ -216,6 +216,16 @@ class BackupScheduler extends ChangeNotifier {
   static Future<String> _documentsBackupDir() async =>
       p.join((await getApplicationDocumentsDirectory()).path, 'imdad_backups');
 
+  /// هل يملك هذا الجهاز أن يكتب في مجلدٍ يختاره المستخدم؟
+  ///
+  /// على أندرويد: لا. منذ Android 10 لا يكتب التطبيق خارج مجلداته الخاصة إلا
+  /// بصلاحية «إدارة كل الملفات» (وهي غير معلنة هنا عن قصد)، ومنتقي المجلدات
+  /// يُرجع مسارًا مثل `/storage/emulated/0/Download` تفشل الكتابة فيه بـ
+  /// EACCES — فيبدو النسخ الاحتياطي مفعَّلًا وهو لا يكتب شيئًا. فيُخفى
+  /// المنتقي هناك ويُحفظ في مجلد التطبيق، ويُصدَّر الملف بمنتقي **الحفظ**
+  /// (SAF) حين يُراد نقله خارج الجهاز.
+  static bool get canChooseDirectory => !Platform.isAndroid && !Platform.isIOS;
+
   // ───────────────────────── الإعداد
 
   Future<BackupScheduleConfig> config() async =>
@@ -274,7 +284,16 @@ class BackupScheduler extends ChangeNotifier {
         throw const _BackupSetupError('لا كلمة مرور للنسخ المجدولة — اضبطها من الإعدادات');
       }
       final dir = Directory(await effectiveDirectory(cfg));
-      await dir.create(recursive: true);
+      try {
+        await dir.create(recursive: true);
+      } on FileSystemException catch (e) {
+        // المجلد المختار لم يعد قابلًا للكتابة (قرصٌ مفصول، مسار أندرويد
+        // محجوب، مجلدٌ حُذف). الرسالة تقول ما يُفعل بدل أن تُعرض لغةُ النظام.
+        throw _BackupSetupError(
+          'تعذّر الكتابة في مجلد النسخ «${dir.path}» — اختر مجلدًا آخر '
+          '(${e.osError?.message ?? e.message})',
+        );
+      }
 
       final name = fileName(started);
       final finalPath = p.join(dir.path, name);
@@ -309,6 +328,18 @@ class BackupScheduler extends ChangeNotifier {
       _running = false;
       notifyListeners();
     }
+  }
+
+  /// آخر نسخةٍ مكتوبة على القرص، أو `null` إن لم تكن ثمّ نسخة أو حُذف ملفها.
+  ///
+  /// تُستعمل في «حفظ آخر نسخة إلى ملف»: على الهاتف يكون المجلد داخليًّا لا
+  /// يراه مدير الملفات، فالنسخة لا تنفع في كارثةٍ حتى تخرج من الجهاز.
+  Future<({String name, Uint8List bytes})?> lastBackupBytes() async {
+    final cfg = await config();
+    if (cfg.lastFile.isEmpty) return null;
+    final file = File(cfg.lastFile);
+    if (!await file.exists()) return null;
+    return (name: p.basename(file.path), bytes: await file.readAsBytes());
   }
 
   /// اسم ملف النسخة: `imdad-auto-YYYYMMDD-HHMM.imdbk`.

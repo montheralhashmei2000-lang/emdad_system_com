@@ -22,6 +22,8 @@ import 'link_finances.dart';
 import 'link_person_sheets.dart';
 import 'roster_picker.dart';
 import 'roster_tables.dart';
+import '../../data/repos/settings_repo.dart';
+import '../../domain/print_forms.dart';
 
 String _d(String iso) {
   final dt = DateTime.tryParse(iso);
@@ -240,8 +242,13 @@ class _LinkPersonnelTabState extends State<LinkPersonnelTab> {
     if (chosen == null || chosen.isEmpty || !mounted) return;
     const signatures = ['امضاء مسؤول الشاشة\n....................', 'قائد الوحدة\n....................'];
     final note = 'عدد الأفراد: ${nf(list.length)} · ${arDate(DateTime.now())}';
+    // كان الكشف يُطبع بـ`PrintLayout.defaults`: ترويسةٌ مثبَّتة في الكود لا
+    // تتبع «رأس وتذييل النماذج» ولا يملك أحدٌ تعديلها.
+    final layout = await SettingsRepo(context.read<AppDatabase>()).printLayoutFor(PrintForms.roster);
+    if (!mounted) return;
     try {
       await DocumentPdf.printDoc(
+        layout: layout,
         doc: chosen.length == 1 && chosen.contains(rosterFullKey)
             // الكشف وحده: الجدول الأصلي كما كان.
             ? PrintDoc(

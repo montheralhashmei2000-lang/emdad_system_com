@@ -12,6 +12,7 @@ import 'military_print.dart';
 import 'print_format.dart';
 import 'voucher_print.dart';
 import '../../core/error_log.dart';
+import '../../domain/print_forms.dart';
 
 /// طباعة «سند استلام مالي» على نموذج الجهة المعتمد.
 ///
@@ -124,7 +125,7 @@ class MoneyReceiptPrint {
 
   /// يبني PDF السند. [receipt] `null` ⇒ نموذجٌ فارغ.
   static Future<Uint8List> build(AppDatabase db, LinkMoneyReceipt? receipt) async {
-    final engine = await VoucherPrint.engineOf(db);
+    final engine = await VoucherPrint.engineOf(db, form: PrintForms.moneyReceipt);
     Uint8List? logo = engine.logoBytes;
     if (logo == null) {
       try {

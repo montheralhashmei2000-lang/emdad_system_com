@@ -9,6 +9,8 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/repos/linkage_repo.dart';
 import 'link_export.dart';
 import '../../domain/finance.dart';
+import '../../data/repos/settings_repo.dart';
+import '../../domain/print_forms.dart';
 
 String _d(String iso) {
   final dt = DateTime.tryParse(iso);
@@ -94,7 +96,11 @@ class _FinanceStatementState extends State<FinanceStatement> {
 
   Future<void> _print(PartyStatement st) async {
     try {
+      // التخطيط المحفوظ لا الافتراضي المثبَّت في الكود: كان هذا الكشف يُطبع
+      // بترويسة `PrintLayout.defaults` فلا تظهر فيه أسطر الجهة ولا تذييلها
+      // ولا يملك أحدٌ تغييره من المصمم.
       await DocumentPdf.printDoc(
+        layout: await SettingsRepo(widget.repo.db).printLayoutFor(PrintForms.financeStatement),
         doc: PrintDoc(
           title: 'كشف حساب مالية — ${st.party}',
           headers: const ['التاريخ', 'النوع', 'البيان', 'المدين (−)', 'الدائن (+)', 'العملة'],

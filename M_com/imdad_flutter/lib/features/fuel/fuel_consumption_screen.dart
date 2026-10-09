@@ -14,6 +14,7 @@ import '../../data/repos/fuel_repo.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../domain/fuel.dart';
 import 'fuel_print.dart';
+import '../../domain/print_forms.dart';
 
 /// تقرير استهلاك المحروقات — من يشرب، وكم، وبأي نسبة.
 ///
@@ -126,7 +127,7 @@ class _FuelConsumptionScreenState extends State<FuelConsumptionScreen> {
       return;
     }
     final total = FuelConsumption.total(_filtered);
-    final layout = await SettingsRepo(_db).printLayout();
+    final layout = await SettingsRepo(_db).printLayoutFor(PrintForms.fuelConsumption);
     if (!mounted) return;
     var i = 1;
     await DocumentPdf.printDoc(

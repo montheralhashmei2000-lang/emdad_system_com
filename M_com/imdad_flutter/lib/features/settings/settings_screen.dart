@@ -587,14 +587,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ]);
   }
 
-  /// قائمة التنقل بين أقسام الإعدادات — رأسيّةٌ على سطح المكتب وأفقيّةٌ على الجوال.
+  /// قائمة التنقل بين أقسام الإعدادات — رأسيّةٌ على سطح المكتب ومنتقٍ على الجوال.
+  ///
+  /// **لماذا منتقٍ لا شريطٌ أفقي:** الأقسام ستة عشر، وكانت على الهاتف صفًّا
+  /// أفقيًّا واحدًا يُسحب بلا عناوين مجموعات ولا دليلٍ على أنه يُسحب — فبندٌ
+  /// مثل «النسخ الاحتياطي» (الرابع عشر) لا يُرى إلا بعد سَحبِ ثلاثةَ عشرَ
+  /// بندًا، فيظنّ المستخدم أن الإعداد غير موجود على الهاتف أصلًا. و[ImdSelect]
+  /// حوارٌ كبير قابل للبحث يعرض القائمة كلها دفعةً — وهو مكوّن البيت لاختيار
+  /// واحدٍ من كثير.
   Widget _nav({required bool horizontal}) {
     final c = context.imd;
     final sections = _visibleSections;
     final buttons = <Widget>[];
-    if (horizontal) {
-      buttons.addAll([for (final s in sections) _navButton(s, horizontal: true)]);
-    } else {
+    if (!horizontal) {
       // رأسيًّا: عنوانُ المجموعة فوق بنودها، فلا تُقرأ القائمةُ كلّها بحثًا عن بند.
       var lastGroup = ' ';
       for (final s in sections) {
@@ -603,7 +608,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           final g = _groups.where((x) => x.id == s.group).firstOrNull;
           if (g != null) buttons.add(_navGroupTitle(g.name));
         }
-        buttons.add(_navButton(s, horizontal: false));
+        buttons.add(_navButton(s));
       }
     }
     return Container(
@@ -624,17 +629,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         if (horizontal)
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: [
-              for (final b in buttons) Padding(padding: const EdgeInsetsDirectional.only(start: 4), child: b),
-            ]),
+          ImdSelect<String>(
+            title: 'قسم الإعدادات',
+            hint: 'قسم الإعدادات',
+            items: [
+              for (final s in sections)
+                (s.id, s.group.isEmpty ? s.name : '${s.name} — ${_groupName(s.group)}'),
+            ],
+            value: sections.any((s) => s.id == _section) ? _section : sections.first.id,
+            onChanged: (v) => setState(() {
+              if (v != null) _section = v;
+              _search.clear();
+            }),
           )
         else
           ...buttons,
       ]),
     );
   }
+
+  String _groupName(String id) =>
+      _groups.where((g) => g.id == id).map((g) => g.name).firstOrNull ?? id;
 
   Widget _navGroupTitle(String name) => Padding(
         padding: const EdgeInsets.fromLTRB(10, 12, 10, 4),
@@ -649,7 +664,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
 
-  Widget _navButton(_Section s, {required bool horizontal}) {
+  Widget _navButton(_Section s) {
     final c = context.imd;
     final on = s.id == _section && _search.text.trim().isEmpty;
     return MouseRegion(
@@ -674,13 +689,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(width: 10),
             ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: horizontal ? 190 : 200),
+              constraints: const BoxConstraints(maxWidth: 200),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                 Text(s.name,
                     style: TextStyle(
                         fontSize: 13.5, fontWeight: FontWeight.w600, color: on ? c.accentHover : c.text)),
-                if (!horizontal)
-                  Text(s.desc, style: TextStyle(fontSize: 11.5, color: c.muted, height: 1.5)),
+                Text(s.desc, style: TextStyle(fontSize: 11.5, color: c.muted, height: 1.5)),
               ]),
             ),
           ]),
@@ -1265,28 +1279,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ImdChip('سندات الصرف: ${nf(_issues)}', tone: ImdTone.code),
             ]),
             const SizedBox(height: 10),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              if (_backupOwner)
+            // بلا `sys.backup` كان القسم يعرض التحذير والشارات ثم لا شيء:
+            // لا زرَّ ولا سببًا — فيظنّ المستخدم أن الإعداد غائب عن جهازه
+            // (وعلى الهاتف خاصةً، حيث يدخل مديرُ الفرع لا المالك).
+            if (!_backupOwner)
+              const ImdNote('👁 التصدير والاستعادة وجدولة النسخ المشفّرة للمالك '
+                  'وحده (صلاحية sys.backup) — ادخل بحساب المالك على هذا الجهاز، '
+                  'أو اطلب من الإدارة أخذ النسخة.'),
+            if (_backupOwner)
+              Wrap(spacing: 8, runSpacing: 8, children: [
                 ImdButton(
                   label: 'تصدير نسخة احتياطية كاملة',
                   icon: 'download',
                   small: true,
                   onPressed: _exportBackup,
                 ),
-              if (_backupOwner)
                 ImdButton.outline(
                   label: 'استعادة من ملف نسخة',
                   icon: 'upload',
                   small: true,
                   onPressed: _restoreBackup,
                 ),
-            ]),
-            const SizedBox(height: 10),
-            ImdCheckbox(
-              value: _includeUsersInBackup,
-              label: 'تضمين حسابات المستخدمين وبصمات كلمات مرورهم في النسخة',
-              onChanged: (v) => setState(() => _includeUsersInBackup = v),
-            ),
+              ]),
+            if (_backupOwner) ...[
+              const SizedBox(height: 10),
+              ImdCheckbox(
+                value: _includeUsersInBackup,
+                label: 'تضمين حسابات المستخدمين وبصمات كلمات مرورهم في النسخة',
+                onChanged: (v) => setState(() => _includeUsersInBackup = v),
+              ),
+            ],
           ]),
         ),
       ),

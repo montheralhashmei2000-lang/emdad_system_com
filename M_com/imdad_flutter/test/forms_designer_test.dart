@@ -5,6 +5,7 @@ import 'package:imdad/core/security/auth_service.dart';
 import 'package:imdad/core/ui/imd_widgets.dart';
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/repos/settings_repo.dart';
+import 'package:imdad/domain/print_forms.dart';
 import 'package:imdad/domain/print_layout.dart';
 import 'package:imdad/features/home/home_shell.dart';
 import 'package:imdad/features/settings/forms_designer_screen.dart';
@@ -77,7 +78,7 @@ void main() {
     // أول زر «تحريك لأسفل» يخص السطر الأول من الترويسة.
     await tester.tap(buttonsByTip('تحريك لأسفل').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('حفظ التخطيط').first);
+    await tester.tap(find.text('حفظ الافتراضي العام').first);
     await tester.pumpAndSettle();
 
     final after = (await saved()).right.map((l) => l.text).toList();
@@ -106,7 +107,7 @@ void main() {
     // أزرار الحذف مرتبة: الترويسة ثم الحقول — نحذف آخر حقل في الشاشة.
     await tester.tap(buttonsByTip('حذف').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('حفظ التخطيط').first);
+    await tester.tap(find.text('حفظ الافتراضي العام').first);
     await tester.pumpAndSettle();
 
     final after = await saved();
@@ -137,7 +138,7 @@ void main() {
     // التبديل الفعلي عبر أيقونة «عريض» الأخيرة (مفتاح الجدول).
     await tester.tap(buttonsByTip('عريض').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('حفظ التخطيط').first);
+    await tester.tap(find.text('حفظ الافتراضي العام').first);
     await tester.pumpAndSettle();
 
     expect((await saved()).table.headBold, isNot(before));
@@ -151,7 +152,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('تغييرات غير محفوظة'), findsWidgets);
 
-    await tester.tap(find.text('حفظ التخطيط').first);
+    await tester.tap(find.text('حفظ الافتراضي العام').first);
     await tester.pumpAndSettle();
     expect(find.text('تغييرات غير محفوظة'), findsNothing);
   });
@@ -168,6 +169,86 @@ void main() {
     // يظهر تأكيد بدل المغادرة الصامتة، ولا تنتقل الشاشة قبل الإجابة.
     expect(find.text('الخروج بلا حفظ'), findsOneWidget);
     expect(navigated, isEmpty);
+  });
+
+  group('تفريد المطبوعات', () {
+    /// الفهرس كله في منتقٍ واحد، والحفظ يسري على المطبوعة المختارة وحدها بعد
+    /// إفرادها. كان المصمم يحرّر تخطيطًا واحدًا للنظام كله، ومنتقي شريطه لا
+    /// يبدّل إلا بياناتِ المعاينة.
+    /// منتقي المطبوعة بعينه: الشاشة فيها منتقٍ آخر (خط الطباعة).
+    final formPicker = find.byWidgetPredicate(
+        (w) => w is ImdSelect<String> && w.title == 'المطبوعة');
+
+    Future<void> openForm(WidgetTester tester, String label) async {
+      await tester.tap(formPicker);
+      await tester.pumpAndSettle();
+      final search = find.descendant(
+        of: find.byType(ImdPickerBody<String>),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(search, label);
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining(label).last);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('المنتقي يحمل مطبوعات القسمين والبرقيات والارتباطات', (tester) async {
+      await pumpScreen(tester);
+      await tester.tap(formPicker);
+      await tester.pumpAndSettle();
+      final search = find.descendant(
+        of: find.byType(ImdPickerBody<String>),
+        matching: find.byType(TextField),
+      );
+      for (final label in ['سجل البرقيات', 'كشف القوة البشرية', 'سند صرف محروقات', 'أمر صرف']) {
+        await tester.enterText(search, label);
+        await tester.pumpAndSettle();
+        expect(find.textContaining(label), findsWidgets, reason: label);
+      }
+    });
+
+    testWidgets('إفراد «سجل البرقيات» يحفظ تصميمه وحده', (tester) async {
+      await pumpScreen(tester);
+      // التخطيط العام أولًا بقيمةٍ مميزة.
+      await tester.enterText(find.byType(TextField).at(1), '19');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('حفظ الافتراضي العام').first);
+      await tester.pumpAndSettle();
+
+      await openForm(tester, 'سجل البرقيات');
+      // غير مُفردة بعد: الشريط يعرض الإفراد ويقول إنها تتبع العام.
+      expect(find.text('إفراد هذه المطبوعة بتصميم'), findsOneWidget);
+      expect(find.textContaining('تتبع الافتراضي العام'), findsWidgets);
+
+      await tester.tap(find.text('إفراد هذه المطبوعة بتصميم'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).at(1), '7');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('حفظ تصميم المطبوعة').first);
+      await tester.pumpAndSettle();
+
+      // المطبوعة أُفردت، والعام لم يُمسّ.
+      final repo = SettingsRepo(db);
+      expect(await repo.customizedPrintForms(), contains(PrintForms.cableLog));
+      expect((await repo.printLayoutFor(PrintForms.cableLog)).right.first.size, 7);
+      expect((await repo.printLayout()).right.first.size, 19);
+      expect((await repo.printLayoutFor(PrintForms.receipt)).right.first.size, 19);
+    });
+
+    testWidgets('«إعادتها إلى العام» تحذف التصميم الخاص', (tester) async {
+      await tester.runAsync(() => SettingsRepo(db)
+          .savePrintLayoutFor(PrintForms.roster, PrintLayout.defaults.copyWith(titleSize: 8)));
+      await pumpScreen(tester);
+      await openForm(tester, 'كشف القوة البشرية');
+
+      expect(find.text('إعادتها إلى العام'), findsOneWidget);
+      await tester.tap(find.text('إعادتها إلى العام'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('إعادة إلى العام').last);
+      await tester.pumpAndSettle();
+
+      expect(await SettingsRepo(db).customizedPrintForms(), isEmpty);
+    });
   });
 
   testWidgets('«استعادة الافتراضي» تحدّث حقول الأرقام المعروضة', (tester) async {

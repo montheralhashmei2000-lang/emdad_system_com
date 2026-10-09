@@ -3,6 +3,7 @@ import '../../core/ui/imd_format.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/fuel_repo.dart';
 import '../../data/repos/settings_repo.dart';
+import '../../domain/print_forms.dart';
 import '../../domain/print_layout.dart';
 import '../../domain/fuel.dart';
 
@@ -13,13 +14,15 @@ import '../../domain/fuel.dart';
 /// يعمل في الميدان مهما صحّت أرقامه.
 ///
 /// والتخطيط مشترك مع بقية سندات النظام (الترويسة والتواقيع والشعار من
-/// [SettingsRepo.printLayout])، فتخرج أوراق المحروقات بهيئة أوراق الإعاشة
-/// نفسها — لا نظامان في مظهرٍ واحد.
+/// [SettingsRepo.printLayoutFor])، فتخرج أوراق المحروقات بهيئة أوراق الإعاشة
+/// نفسها — لا نظامان في مظهرٍ واحد. ولكلٍّ منها مفتاحُه في [PrintForms] فمن
+/// أراد إفراد سندٍ بترويسةٍ أو تواقيعَ تخصّه فعل، وإلا تبعت كلها الافتراضي
+/// العام.
 class FuelPrint {
   const FuelPrint._();
 
-  static Future<PrintLayout> _layout(AppDatabase db) =>
-      SettingsRepo(db).printLayout();
+  static Future<PrintLayout> _layout(AppDatabase db, String form) =>
+      SettingsRepo(db).printLayoutFor(form);
 
   /// سند صرف محروقات — يُسلَّم للسائق.
   ///
@@ -31,7 +34,7 @@ class FuelPrint {
     FuelAllocationRow? allocation,
   }) async =>
       DocumentPdf.printDoc(
-        layout: await _layout(db),
+        layout: await _layout(db, PrintForms.fuelIssue),
         doc: issueDoc(issue, allocation: allocation),
       );
 
@@ -82,7 +85,7 @@ class FuelPrint {
   /// سند توريد محروقات.
   static Future<void> supplyVoucher(AppDatabase db, FuelSupply supply) async =>
       DocumentPdf.printDoc(
-          layout: await _layout(db), doc: supplyDoc(supply));
+          layout: await _layout(db, PrintForms.fuelSupply), doc: supplyDoc(supply));
 
   static PrintDoc supplyDoc(FuelSupply supply) {
     return PrintDoc(
@@ -117,7 +120,7 @@ class FuelPrint {
   static Future<void> transferVoucher(
           AppDatabase db, FuelTransfer transfer) async =>
       DocumentPdf.printDoc(
-          layout: await _layout(db), doc: transferDoc(transfer));
+          layout: await _layout(db, PrintForms.fuelTransfer), doc: transferDoc(transfer));
 
   static PrintDoc transferDoc(FuelTransfer transfer) {
     return PrintDoc(
@@ -155,7 +158,7 @@ class FuelPrint {
     List<FuelStocktakeLine> lines,
   ) async =>
       DocumentPdf.printDoc(
-          layout: await _layout(db), doc: stocktakeDoc(take, lines));
+          layout: await _layout(db, PrintForms.fuelStocktake), doc: stocktakeDoc(take, lines));
 
   static PrintDoc stocktakeDoc(
       FuelStocktake take, List<FuelStocktakeLine> lines) {
@@ -204,7 +207,7 @@ class FuelPrint {
     String to = '',
   }) async =>
       DocumentPdf.printDoc(
-          layout: await _layout(db),
+          layout: await _layout(db, PrintForms.fuelIssuesReport),
           doc: issuesDoc(issues, from: from, to: to));
 
   static PrintDoc issuesDoc(List<FuelIssue> issues,
@@ -254,7 +257,7 @@ class FuelPrint {
   static Future<void> stocksReport(
           AppDatabase db, List<FuelStock> stocks) async =>
       DocumentPdf.printDoc(
-          layout: await _layout(db), doc: stocksDoc(stocks));
+          layout: await _layout(db, PrintForms.fuelStocksReport), doc: stocksDoc(stocks));
 
   static PrintDoc stocksDoc(List<FuelStock> stocks) {
     return PrintDoc(

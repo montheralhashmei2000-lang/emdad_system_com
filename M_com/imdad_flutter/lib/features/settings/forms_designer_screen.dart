@@ -11,8 +11,10 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../domain/access_control.dart';
+import '../../domain/print_forms.dart';
 import '../../domain/print_layout.dart';
 import '../home/home_shell.dart';
+import '../../core/ui/imd_format.dart';
 import '../inventory/doc_kit.dart';
 import '../../core/ui/imd_layout.dart';
 
@@ -35,9 +37,18 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
   bool _loading = true;
   bool _dirty = false;
 
-  /// نوع المستند المعروض في المعاينة — التخطيط واحد لكن الأعمدة والعناوين
-  /// تختلف، فرؤية أثر التعديل على النوع المقصود أصدق من نموذج واحد ثابت.
-  String _previewKind = 'receipt';
+  /// المطبوعة التي يُحرَّر تخطيطها الآن — `''` هي الافتراضي العام.
+  ///
+  /// كان المصمم يحرّر تخطيطًا واحدًا للنظام كله، والمنتقي في شريطه لا يبدّل
+  /// إلا بياناتِ المعاينة. فمن أراد لسجل البرقيات ترويسةً تخالف سندَ المخزن،
+  /// أو لكشف العهدة تواقيعَ تخصّه، لم يجد إلى ذلك سبيلًا.
+  String _form = '';
+
+  /// المطبوعات المُفردة بتخطيطٍ خاص — تُوسَم في المنتقي بعلامة.
+  Set<String> _customized = const {};
+
+  /// هل المطبوعة المختارة مُفردةٌ بتخطيطٍ خاص؟
+  bool get _isCustom => _form.isNotEmpty && _customized.contains(_form);
 
   @override
   void initState() {
@@ -46,14 +57,62 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
   }
 
   Future<void> _load() async {
-    final layout = await _settings.printLayout();
+    final custom = await _settings.customizedPrintForms();
+    final layout = await _settings.printLayoutFor(_form);
     if (!mounted) return;
     setState(() {
+      _customized = custom;
       _layout = layout;
       _loading = false;
       _dirty = false;
     });
   }
+
+  /// يبدّل المطبوعة المحرَّرة — بعد إنذارٍ إن كانت ثمّ تغييرات غير محفوظة.
+  Future<void> _selectForm(String key) async {
+    if (key == _form) return;
+    if (!await _confirmLeave()) return;
+    if (!mounted) return;
+    setState(() {
+      _form = key;
+      _loading = true;
+    });
+    await _load();
+  }
+
+  /// يُفرد المطبوعة بتخطيطٍ خاص، بدايتُه نسخةٌ من التخطيط المعروض الآن.
+  Future<void> _makeCustom() async {
+    if (_form.isEmpty || !_perm.guard(context, 'settings', PermAction.edit)) return;
+    await _settings.savePrintLayoutFor(_form, _layout);
+    await _load();
+    if (!mounted) return;
+    showImdToast(context, '✔ أُفردت «${PrintForms.labelOf(_form)}» بتصميمٍ خاص');
+  }
+
+  /// يُعيد المطبوعة إلى الافتراضي العام (يحذف تخطيطها الخاص).
+  Future<void> _dropCustom() async {
+    if (!_isCustom || !_perm.guard(context, 'settings', PermAction.edit)) return;
+    final ok = await imdConfirm(
+      context,
+      'سيُحذف التصميم الخاص لـ«${PrintForms.labelOf(_form)}» فتعود إلى الافتراضي العام.',
+      ok: 'إعادة إلى العام',
+      danger: true,
+    );
+    if (!ok || !mounted) return;
+    await _settings.clearPrintLayoutFor(_form);
+    await _load();
+    if (!mounted) return;
+    showImdToast(context, '✔ عادت «${PrintForms.labelOf(_form)}» إلى الافتراضي العام');
+  }
+
+  /// عناصر منتقي المطبوعات: الافتراضي العام أولًا، ثم الفهرس بمجموعاته.
+  List<(String, String)> get _formItems => [
+        ('', 'الافتراضي العام — لكل المطبوعات'),
+        for (final g in PrintForms.groups)
+          for (final f in PrintForms.all)
+            if (f.group == g)
+              (f.key, '${_customized.contains(f.key) ? '● ' : ''}${f.label} — $g'),
+      ];
 
   bool get _editable => _perm.admin || _perm.has('settings', PermAction.edit);
 
@@ -82,17 +141,24 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
 
   Future<void> _save() async {
     if (!_perm.guard(context, 'settings', PermAction.edit)) return;
-    await _settings.savePrintLayout(_layout);
+    if (_isCustom) {
+      await _settings.savePrintLayoutFor(_form, _layout);
+    } else {
+      // مطبوعةٌ غير مُفردة: الحفظ يسري على الافتراضي العام وتتبعه كلُّ
+      // المطبوعات غير المُفردة — وهذا ما يقوله الشريط صريحًا.
+      await _settings.savePrintLayout(_layout);
+    }
+    await _load();
     if (!mounted) return;
-    setState(() => _dirty = false);
-    showImdToast(context, '✔ حُفظ تخطيط النماذج المطبوعة');
+    showImdToast(context, _isCustom
+        ? '✔ حُفظ تصميم «${PrintForms.labelOf(_form)}»'
+        : '✔ حُفظ التخطيط الافتراضي العام');
   }
 
   /// نماذج المعاينة لكل نوع مستند.
-  static const Map<String, ({String label, String title, List<String> headers, List<int> flex, List<List<String>> rows, Map<String, String> fields})> _previews = {
+  static const Map<String, ({String label, List<String> headers, List<int> flex, List<List<String>> rows, Map<String, String> fields})> _previews = {
     'receipt': (
       label: 'سند استلام',
-      title: 'نموذج معاينة — سند استلام',
       headers: ['م', 'الصنف', 'الوحدة', 'الكمية'],
       flex: [1, 6, 2, 2],
       rows: [
@@ -104,7 +170,6 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
     ),
     'issue': (
       label: 'أمر صرف',
-      title: 'نموذج معاينة — أمر صرف',
       headers: ['م', 'الصنف', 'الوحدة', 'الكمية', 'الجهة المستفيدة'],
       flex: [1, 5, 2, 2, 4],
       rows: [
@@ -115,7 +180,6 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
     ),
     'transfer': (
       label: 'إذن تحويل',
-      title: 'نموذج معاينة — إذن تحويل مخزني',
       headers: ['م', 'الصنف', 'الوحدة', 'الكمية'],
       flex: [1, 6, 2, 2],
       rows: [
@@ -126,7 +190,6 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
     ),
     'return': (
       label: 'سند مرتجع',
-      title: 'نموذج معاينة — سند مرتجع',
       headers: ['م', 'الصنف', 'الوحدة', 'الكمية', 'الحالة'],
       flex: [1, 5, 2, 2, 3],
       rows: [
@@ -136,7 +199,6 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
     ),
     'report': (
       label: 'تقرير',
-      title: 'نموذج معاينة — تقرير أرصدة',
       headers: ['م', 'الصنف', 'التصنيف', 'الرصيد', 'الوحدة'],
       flex: [1, 5, 3, 2, 2],
       rows: [
@@ -147,12 +209,30 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
     ),
   };
 
-  /// معاينة بنموذج من النوع المختار.
+  /// بياناتُ المعاينة للمطبوعة المختارة.
+  ///
+  /// السندات لها نماذجها (أعمدةٌ وعناوينُ تخصّها)، وما سواها يُعاين بنموذج
+  /// تقرير — المقصود رؤيةُ أثر التخطيط لا محاكاةُ كل مطبوعة.
+  static const Map<String, String> _previewOf = {
+    PrintForms.receipt: 'receipt',
+    PrintForms.fuelSupply: 'receipt',
+    PrintForms.opening: 'receipt',
+    PrintForms.issue: 'issue',
+    PrintForms.fuelIssue: 'issue',
+    PrintForms.rationOrder: 'issue',
+    PrintForms.transfer: 'transfer',
+    PrintForms.fuelTransfer: 'transfer',
+    PrintForms.returnFromUnit: 'return',
+    PrintForms.returnToSupplier: 'return',
+  };
+
+  /// معاينة بنموذج المطبوعة المختارة.
   Future<void> _preview() async {
-    final p = _previews[_previewKind]!;
+    final p = _previews[_previewOf[_form] ?? (_form.isEmpty ? 'receipt' : 'report')]!;
+    final name = _form.isEmpty ? p.label : PrintForms.labelOf(_form);
     await DocumentPdf.printDoc(
       doc: PrintDoc(
-        title: p.title,
+        title: 'نموذج معاينة — $name',
         headers: p.headers,
         columnFlex: p.flex,
         rows: p.rows,
@@ -183,16 +263,32 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
       child: ImdStickyPage(
       sticky: ImdStickyActions(children: [
         ImdFit(
-          width: 170,
+          width: 260,
           child: ImdSelect<String>(
             dense: true,
-            items: [for (final e in _previews.entries) (e.key, e.value.label)],
-            value: _previewKind,
-            onChanged: (v) => setState(() => _previewKind = v ?? 'receipt'),
+            title: 'المطبوعة',
+            hint: 'المطبوعة',
+            items: _formItems,
+            value: _form,
+            onChanged: (v) => _selectForm(v ?? ''),
           ),
         ),
         ImdButton.outline(label: 'معاينة النموذج', icon: 'printer', onPressed: _preview),
-        if (w) ImdButton(label: 'حفظ التخطيط', icon: 'save', onPressed: _save),
+        if (w)
+          ImdButton(
+            label: _isCustom ? 'حفظ تصميم المطبوعة' : 'حفظ الافتراضي العام',
+            icon: 'save',
+            onPressed: _save,
+          ),
+        if (w && _form.isNotEmpty && !_isCustom)
+          ImdButton.outline(label: 'إفراد هذه المطبوعة بتصميم', icon: 'copy', onPressed: _makeCustom),
+        if (w && _isCustom)
+          ImdButton(
+            label: 'إعادتها إلى العام',
+            icon: 'rotate-ccw',
+            kind: ImdBtnKind.danger,
+            onPressed: _dropCustom,
+          ),
         ImdButton.outline(
           label: 'استعادة الافتراضي',
           icon: 'rotate-ccw',
@@ -205,10 +301,11 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
         ImdPageTitle(
           title: 'مصمم النماذج المطبوعة',
           icon: 'printer',
-          subtitle: 'الرأس والتذييل وخانات التوقيع وتنسيق جدول الأصناف '
-              'لسندات الاستلام والصرف والتحويل والمرتجعات والتقارير',
+          subtitle: 'الرأس والتذييل وخانات التوقيع وتنسيق جدول الأصناف — '
+              'لكل مطبوعة في القسمين تصميمُها الخاص إن أُفردت، وإلا تبعت الافتراضي العام',
           trailing: _dirty ? const ImdChip('تغييرات غير محفوظة', tone: ImdTone.pend) : null,
         ),
+        _scopeNote(),
         ImdICard(
           title: 'ترويسة المستندات — يمين الصفحة',
           icon: 'file',
@@ -445,6 +542,29 @@ class _FormsDesignerScreenState extends State<FormsDesignerScreen> {
     );
   }
 
+
+  /// سطرٌ يقول صراحةً أيَّ تخطيطٍ يُحرَّر الآن وأين يسري.
+  ///
+  /// بلا هذا السطر يحرّر المستخدمُ الافتراضي العام وهو يحسب أنه يحرّر
+  /// المطبوعة المختارة — وأثر الحفظ يظهر على مطبوعاتٍ لم يقصدها.
+  Widget _scopeNote() {
+    if (_form.isEmpty) {
+      final n = _customized.length;
+      return ImdNote('تُحرِّر الآن «التخطيط الافتراضي العام»: تتبعه كل مطبوعة لم '
+          'تُفرد بتصميم${n == 0 ? '' : ' (المُفردة الآن: ${nf(n)})'}. '
+          'لإفراد مطبوعةٍ بعينها اخترها من منتقي «المطبوعة» أعلى الشاشة.');
+    }
+    final f = PrintForms.find(_form);
+    final where = f == null ? '' : ' — تُطبع من شاشة «${f.screen}»';
+    if (_isCustom) {
+      return ImdNote('تُحرِّر تصميم «${PrintForms.labelOf(_form)}» وحدها$where. '
+          'الحفظ لا يمسّ بقية المطبوعات.');
+    }
+    return ImdNote('«${PrintForms.labelOf(_form)}» تتبع الافتراضي العام$where. '
+        'المعروض أدناه هو التخطيط العام: اضغط «إفراد هذه المطبوعة بتصميم» ليصير '
+        'لها تخطيطٌ خاصٌّ تبدأ من نسخةٍ منه، وإلا فالحفظ يسري على العام وعلى كل '
+        'ما يتبعه.');
+  }
 
   /// المفاتيح التي تُغذّيها طبقة الطباعة فعلًا (`doc.leftValues` و
   /// `doc.fieldValues`). مفتاح خارج هذه القائمة يُطبع **فارغًا** بلا أي خطأ،

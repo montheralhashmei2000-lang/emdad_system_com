@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/ui/imd_files.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
 import '../../core/ui/imd_tokens.dart';
@@ -117,6 +118,22 @@ class _BackupScheduleCardState extends State<BackupScheduleCard> {
     await _update(_cfg!.copyWith(directory: dir));
   }
 
+  /// يُخرج آخر نسخة من الجهاز بمنتقي الحفظ (SAF على أندرويد).
+  ///
+  /// على الهاتف المجلدُ داخليٌّ لا يراه مدير الملفات ويُمسح بإزالة التطبيق،
+  /// فنسخةٌ لا تخرج من الجهاز لا تحمي من فقده — وهو عين ما تحذّر منه البطاقة.
+  Future<void> _exportLast() async {
+    final last = await _scheduler.lastBackupBytes();
+    if (!mounted) return;
+    if (last == null) {
+      showImdToast(context, '✖ لا توجد نسخة محفوظة بعد — اضغط «نسخة الآن»', error: true);
+      return;
+    }
+    final saved = await ImdFiles.saveBytes(context, last.name, last.bytes);
+    if (!mounted || saved == null) return;
+    showImdToast(context, '✔ حُفظت النسخة خارج التطبيق');
+  }
+
   Future<void> _runNow() async {
     final res = await _scheduler.run();
     if (!mounted) return;
@@ -174,10 +191,22 @@ class _BackupScheduleCardState extends State<BackupScheduleCard> {
                 'مجلد الحفظ',
                 Row(children: [
                   Expanded(child: ImdFld(controller: _dirCtl, readOnly: true)),
-                  const SizedBox(width: 8),
-                  ImdButton.outline(label: 'اختيار المجلد', icon: 'folder', small: true, onPressed: _pickDir),
+                  if (BackupScheduler.canChooseDirectory) ...[
+                    const SizedBox(width: 8),
+                    ImdButton.outline(label: 'اختيار المجلد', icon: 'folder', small: true, onPressed: _pickDir),
+                  ],
                 ]),
               ),
+              if (!BackupScheduler.canChooseDirectory)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'على الهاتف تُحفظ النسخة في مجلد التطبيق (لا يملك التطبيق الكتابة '
+                    'خارجه)، وهو يُمسح بإزالة التطبيق. فأخرِج النسخة بزر «حفظ آخر نسخة '
+                    'إلى ملف» إلى بطاقة الذاكرة أو السحابة.',
+                    style: TextStyle(fontSize: 12, height: 1.7, color: c.muted),
+                  ),
+                ),
               const SizedBox(height: 10),
               Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
                 ImdChip(
@@ -206,6 +235,12 @@ class _BackupScheduleCardState extends State<BackupScheduleCard> {
                   small: true,
                   busy: _scheduler.running,
                   onPressed: _hasPassword && !_scheduler.running ? _runNow : null,
+                ),
+                ImdButton.outline(
+                  label: 'حفظ آخر نسخة إلى ملف',
+                  icon: 'upload',
+                  small: true,
+                  onPressed: cfg.lastFile.isEmpty ? null : _exportLast,
                 ),
                 if (cfg.lastSuccessAt != null)
                   Text('آخر نسخة ناجحة: ${arDate(cfg.lastSuccessAt!)}',

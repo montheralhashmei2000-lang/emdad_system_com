@@ -21,6 +21,8 @@ import '../../domain/access_control.dart';
 import '../../data/repos/cable_repo.dart';
 import '../../domain/free_table.dart';
 import 'cable_form.dart';
+import '../../data/repos/settings_repo.dart';
+import '../../domain/print_forms.dart';
 
 /// شاشة البرقيات الرسمية — واردة وصادرة مع مرفق PDF اختياري.
 
@@ -515,8 +517,13 @@ class _CablesScreenState extends State<CablesScreen> {
       return showImdToast(context, '✖ لا تملك صلاحية الطباعة', error: true);
     }
     final list = _items ?? const <Cable>[];
+    // كان السجل يُطبع بـ`PrintLayout.defaults` وحده: نموذجُ البرقية نفسه يقرأ
+    // التخطيط المحفوظ، وسجلُّها لا — ورقتان من نظامٍ واحد بهيئتين.
+    final layout = await SettingsRepo(context.read<AppDatabase>()).printLayoutFor(PrintForms.cableLog);
+    if (!mounted) return;
     try {
       await DocumentPdf.printDoc(
+        layout: layout,
         doc: PrintDoc(
           title: 'سجل البرقيات',
           landscape: true,

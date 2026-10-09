@@ -20,6 +20,7 @@ import '../../data/repos/settings_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/camp_ledger.dart';
 import '../../domain/variance_tracker.dart';
+import '../../domain/print_forms.dart';
 
 /// سجل حساب المعسكر — رصيد الاستحقاق ورصيد المخزون، شهرًا بشهر.
 class CampLedgerScreen extends StatefulWidget {
@@ -163,7 +164,7 @@ class _CampLedgerScreenState extends State<CampLedgerScreen> {
       showImdToast(context, '✖ لا توجد بيانات للطباعة', error: true);
       return;
     }
-    final layout = await SettingsRepo(_db).printLayout();
+    final layout = await SettingsRepo(_db).printLayoutFor(PrintForms.campLedger);
     final t = CampLedgerCalc.totals([for (final r in _rows) r.amounts]);
     if (!mounted) return;
     await DocumentPdf.printDoc(

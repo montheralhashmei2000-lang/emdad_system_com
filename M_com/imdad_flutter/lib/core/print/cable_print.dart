@@ -13,6 +13,7 @@ import 'military_print.dart';
 import 'print_format.dart';
 import 'voucher_print.dart';
 import '../../core/error_log.dart';
+import '../../domain/print_forms.dart';
 
 /// طباعة نموذج «برقية صادرة/واردة» المعتمد.
 ///
@@ -137,7 +138,7 @@ class CablePrint {
 
   /// يبني ملف PDF للبرقية بترويسة الجهة والشعار من إعدادات الهوية، على النموذج المعتمد.
   static Future<Uint8List> build(AppDatabase db, Cable c) async {
-    final engine = await VoucherPrint.engineOf(db);
+    final engine = await VoucherPrint.engineOf(db, form: PrintForms.cableForm);
     // شعار الهوية المحفوظ في الإعدادات، وإلا الشعار المضمَّن مع التطبيق.
     Uint8List? logo = engine.logoBytes;
     if (logo == null) {

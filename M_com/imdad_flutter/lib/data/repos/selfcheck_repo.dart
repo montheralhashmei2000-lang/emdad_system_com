@@ -63,9 +63,14 @@ class SelfCheckRepo {
     });
 
     await run('printLayout', 'تخطيط النماذج المطبوعة', () async {
-      final layout = await SettingsRepo(db).printLayout();
+      final repo = SettingsRepo(db);
+      final layout = await repo.printLayout();
       final ok = layout.right.isNotEmpty || layout.info.isNotEmpty;
-      return (ok, ok ? 'محفوظ وجاهز' : 'لم يُضبط بعد — ستُستخدم القيم الافتراضية');
+      // عددُ المطبوعات المُفردة بتصميمٍ خاص: يجعل الميزة مرئيةً في الفحص،
+      // فمن وجد مطبوعةً تخرج بهيئة غير المتوقَّعة عرف من هنا أنها مُفردة.
+      final custom = (await repo.customizedPrintForms()).length;
+      final tail = custom == 0 ? '' : ' · ${nf(custom)} مطبوعة بتصميم خاص';
+      return (ok, (ok ? 'محفوظ وجاهز' : 'لم يُضبط بعد — ستُستخدم القيم الافتراضية') + tail);
     });
 
     await run('campLink', 'اتساق ربط المستودعات بالمعسكرات', () async {

@@ -15,6 +15,7 @@ import '../../data/repos/settings_repo.dart';
 import '../../domain/access_control.dart';
 import '../inventory/doc_kit.dart';
 import '../../core/ui/imd_layout.dart';
+import '../../domain/print_forms.dart';
 
 /// التفريدة اليومية — نقل `renderTafreeda()`:
 /// تبويبان (تسجيل التفريدة / أرشيف التفريدات)، وطريقتا إدخال لا تُجمعان:
@@ -345,7 +346,7 @@ class _StrengthScreenState extends State<StrengthScreen> {
       showImdToast(context, '⚠ الجدول فارغ أو التفريدة صفرية');
       return;
     }
-    final layout = await SettingsRepo(_db).printLayout();
+    final layout = await SettingsRepo(_db).printLayoutFor(PrintForms.strength);
     await DocumentPdf.printDoc(
       doc: PrintDoc(
         title: 'استمارة التفريدة وحصر القوة اليومية',

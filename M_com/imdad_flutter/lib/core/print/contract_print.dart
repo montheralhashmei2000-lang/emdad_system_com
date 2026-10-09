@@ -12,6 +12,7 @@ import 'military_print.dart';
 import 'print_format.dart';
 import 'voucher_print.dart';
 import '../../core/error_log.dart';
+import '../../domain/print_forms.dart';
 
 /// طباعة «عقد الشراء» على النموذج المعتمد (قائمة الكمية المستهلكة).
 ///
@@ -201,7 +202,7 @@ class ContractPrint {
 
   /// يبني ملف PDF للعقد. [forcePaged] للاختبار فقط.
   static Future<Uint8List> build(AppDatabase db, LinkPurchaseContract c, {bool? forcePaged}) async {
-    final engine = await VoucherPrint.engineOf(db);
+    final engine = await VoucherPrint.engineOf(db, form: PrintForms.purchaseContract);
     Uint8List? logo = engine.logoBytes;
     if (logo == null) {
       try {

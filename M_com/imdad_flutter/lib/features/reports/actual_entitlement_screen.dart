@@ -23,6 +23,7 @@ import '../../domain/date_span.dart';
 import '../../domain/entitlement_actual.dart';
 import '../../domain/entitlements.dart' as ent;
 import '../../domain/meal_plan.dart';
+import '../../domain/print_forms.dart';
 
 /// حساب الاستحقاق الفعلي: المستحق على مدى مقابل المصروف فعلًا.
 ///
@@ -208,7 +209,7 @@ class _ActualEntitlementScreenState extends State<ActualEntitlementScreen> {
       showImdToast(context, '✖ لا توجد بيانات للطباعة', error: true);
       return;
     }
-    final layout = await SettingsRepo(_db).printLayout();
+    final layout = await SettingsRepo(_db).printLayoutFor(PrintForms.actualEntitlement);
     final t = ActualEntitlement.totals(_rows);
     if (!mounted) return;
     await DocumentPdf.printDoc(

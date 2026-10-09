@@ -14,6 +14,7 @@ import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/daily_repo.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../domain/access_control.dart';
+import '../../domain/print_forms.dart';
 
 /// ضبط الاستحقاقات والمقررات — نقل `renderRatios()`:
 /// إدخال شبكي مباشر لكل صنف (المقرر الشهري للفرد + وحدة القياس + ملاحظات)،
@@ -241,7 +242,7 @@ class _RatiosScreenState extends State<RatiosScreen> {
       showImdToast(context, '✖ لا توجد بيانات للطباعة', error: true);
       return;
     }
-    final layout = await SettingsRepo(_db).printLayout();
+    final layout = await SettingsRepo(_db).printLayoutFor(PrintForms.ratios);
     var i = 0;
     await DocumentPdf.printDoc(
       doc: PrintDoc(

@@ -18,6 +18,7 @@ import '../../data/repos/settings_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/line_consolidation.dart';
 import '../../core/ui/imd_layout.dart';
+import '../../domain/print_forms.dart';
 
 /// الأرصدة الافتتاحية:
 /// بحث + طباعة كشف + جدول (الكود، الصنف، الحالة، الرصيد الافتتاحي، إجراء).
@@ -240,7 +241,7 @@ class _OpeningScreenState extends State<OpeningScreen> {
       showImdToast(context, '✖ لا توجد بيانات للطباعة', error: true);
       return;
     }
-    final layout = await SettingsRepo(_db).printLayout();
+    final layout = await SettingsRepo(_db).printLayoutFor(PrintForms.opening);
     var i = 0;
     await DocumentPdf.printDoc(
       doc: PrintDoc(

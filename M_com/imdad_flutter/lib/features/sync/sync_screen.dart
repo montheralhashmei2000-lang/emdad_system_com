@@ -9,6 +9,7 @@ import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_layout.dart';
 import '../../core/ui/imd_qr.dart';
 import '../../core/ui/imd_tokens.dart';
+import '../../core/ui/imd_window.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/sync/auto_sync.dart';
@@ -77,6 +78,10 @@ class _SyncScreenState extends State<SyncScreen> {
 
   Future<void> _loadTrust() async {
     final store = SyncTrust(context.read<AppDatabase>());
+    // الترميم قبل القراءة: علاقةٌ اقترنت قبل أن تُكتب الثقة في الاتجاهين كانت
+    // تظهر هنا «لم يُوثَّق جهاز بعد» على جهاز الإدارة، وزرُّ «زامن الآن»
+    // مُعطَّلًا — وعلى الجهاز قرينٌ موثوق في `accepted`.
+    await store.mirror();
     final auto = await store.isAuto();
     final peers = await store.peers();
     final last = await store.lastSyncAt();
@@ -124,9 +129,14 @@ class _SyncScreenState extends State<SyncScreen> {
       await _sync.stopReceiving();
       setState(() => _receiving = false);
       _note('أُوقف الاستقبال');
+      // المنفذ يعود إلى استقبال الموثوقين: إيقاف وضع الرمز لا يعني إسكات
+      // الجهاز عن المزامنة التلقائية.
+      await _auto0.reclaimPort();
       return;
     }
     setState(() => _busy = true);
+    // المنفذ واحد: تتنحّى المزامنة التلقائية عنه لأجل وضع رمز الاقتران وحده.
+    await _auto0.releasePort();
     try {
       final addresses = await _sync.startReceiving(onEvent: _note);
       if (!mounted) return;
@@ -323,6 +333,15 @@ class _SyncScreenState extends State<SyncScreen> {
         'زامن، والحذف ينتقل بين الأجهزة فلا يعود المحذوف — إلا إذا عُدّل في الجهاز '
         'الآخر بعد حذفه هنا.',
       ),
+      if (ImdWindow.supported) ...[
+        const SizedBox(height: 8),
+        ImdNote(
+          '🛡 جدار حماية ويندوز: أول مرة يفتح النظام منفذ المزامنة (${_sync.port}) '
+          'يسأل السماح بالاتصال — اختر «السماح» للشبكات الخاصة. وإن رُفض مرةً بقي '
+          'الجهاز غيرَ مرئيٍّ لبقية الأجهزة وهو على الشبكة نفسها، فيُصحَّح من '
+          '«إعدادات جدار الحماية ← السماح لتطبيق».',
+        ),
+      ],
     ]);
   }
 
@@ -404,8 +423,12 @@ class _SyncScreenState extends State<SyncScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         ImdChipsRow(children: [
           ImdChip(
-            _receiving ? 'يستقبل على المنفذ ${_sync.port}' : 'الاستقبال متوقف',
-            tone: _receiving ? ImdTone.ok : ImdTone.off,
+            _receiving
+                ? 'يستقبل على المنفذ ${_sync.port}'
+                : (_auto0.listening
+                    ? 'يستقبل من الموثوقين على المنفذ ${_sync.port}'
+                    : 'الاستقبال متوقف'),
+            tone: _receiving || _auto0.listening ? ImdTone.ok : ImdTone.off,
           ),
           if (_addresses.isNotEmpty) ImdChip('العنوان: $_addresses', tone: ImdTone.code),
         ]),
@@ -413,7 +436,10 @@ class _SyncScreenState extends State<SyncScreen> {
         Text(
           _receiving
               ? 'أملِ رمز الاقتران على مشغّل الجهاز الآخر، ثم دعه يرسل إليك أو يسحب منك.'
-              : 'شغّل الاستقبال على جهاز واحد فقط، ثم أرسل إليه من البقية.',
+              : (_auto0.listening
+                  ? 'المنفذ مفتوح لأجهزتك الموثوقة بلا رمز — لا تحتاج «بدء الاستقبال» '
+                      'إلا لاقتران جهاز جديد.'
+                  : 'شغّل الاستقبال على جهاز واحد فقط، ثم أرسل إليه من البقية.'),
           style: TextStyle(fontSize: 12.5, height: 1.8, color: c.muted),
         ),
         const SizedBox(height: 10),

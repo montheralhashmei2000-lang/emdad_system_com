@@ -25,6 +25,8 @@ import 'custody_form.dart';
 import 'custody_sheet_editor.dart';
 import 'link_export.dart';
 import 'money_receipts_tab.dart';
+import '../../data/repos/settings_repo.dart';
+import '../../domain/print_forms.dart';
 
 String _d(String iso) {
   final dt = DateTime.tryParse(iso);
@@ -361,6 +363,8 @@ class _LinkFinancesTabState extends State<LinkFinancesTab> {
         : CustodyDiff(type: e.diffType, amount: diffAmount).phrase(custodyKind: c?.kind ?? CustodyKind.received, counterparty: e.counterpartyName);
     try {
       await DocumentPdf.printDoc(
+        // كان يُطبع بـ`PrintLayout.defaults`: بلا ترويسة الجهة ولا تذييلها.
+        layout: await SettingsRepo(widget.repo.db).printLayoutFor(PrintForms.custodyClearance),
         doc: PrintDoc(
           title: 'إخلاء عهدة',
           headers: const ['البيان', 'القيمة'],

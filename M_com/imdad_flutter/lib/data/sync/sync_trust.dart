@@ -158,6 +158,43 @@ class SyncTrust {
 
   Future<void> remember(TrustedPeer peer) => _put('peers', peer);
 
+  /// يُجعل كل جهازٍ موثوقٍ في القائمتين، ويُعاد عددُ ما أُضيف.
+  ///
+  /// الاقتران يكتب الطرفين معًا اليوم (انظر `LanSync.trust` و`POST /trust`)،
+  /// لكن الأجهزة التي اقترنت قبل هذا التغيير تحمل سطرًا واحدًا: جهاز الإدارة
+  /// يحمل القرين في `accepted` وحدها فلا يملك أن يبدأ دورة، وجهاز الفرع يحمله
+  /// في `peers` وحدها فلا يقبل دورةً يبدؤها غيره. فتُرمَّم العلاقة مرة عند
+  /// الإقلاع بلا أن يعيد أحدٌ الاقتران.
+  ///
+  /// المفتاح واحد في الحالين (مشتقٌّ من جلسة الاقتران)، فالترميم لا يمنح سرًّا
+  /// ولا يُدخل جهازًا جديدًا: ينقل ما سبق أن مُنح بإدخال إنسانٍ للرمز.
+  /// علامات الماء لا تُنقل — لكل اتجاه علاماته، وصفرٌ يعني دورةً أولى كاملة.
+  Future<int> mirror() async {
+    final map = await _read();
+    var added = 0;
+    for (final (from, to) in [('accepted', 'peers'), ('peers', 'accepted')]) {
+      final src = map[from];
+      if (src is! Map) continue;
+      final dst = map[to] is Map ? Map<String, dynamic>.from(map[to] as Map) : <String, dynamic>{};
+      for (final e in src.entries) {
+        if (dst.containsKey('${e.key}')) continue;
+        final peer = TrustedPeer.fromMap('${e.key}', e.value);
+        if (peer == null) continue;
+        dst['${e.key}'] = TrustedPeer(
+          deviceId: peer.deviceId,
+          key: peer.key,
+          name: peer.name,
+          host: peer.host,
+          at: peer.at,
+        ).toMap();
+        added++;
+      }
+      map[to] = dst;
+    }
+    if (added > 0) await _write(map);
+    return added;
+  }
+
   /// تُصفَّر علامات السحب وحدها، فتكون المزامنة القادمة كاملة من كل جهاز
   /// موثوق. الثقة والمفاتيح تبقى — المقصود إعادة جلب البيانات لا قطع العلاقة.
   Future<void> resetPullWatermarks() async {

@@ -45,6 +45,21 @@ class LanSync {
   /// «خارج الشبكة» وهو متصل.
   static const Duration wanTimeout = Duration(seconds: 20);
 
+  /// مهلة بطاقة الترحيب على الشبكة المحلية.
+  ///
+  /// `/hello` طلبٌ لا حمولة له، وغرضه أن يُعرف: هل الجهاز على هذا العنوان
+  /// الآن؟ وجهازُ الشبكة المحلية يردّ في أجزاء الثانية أو لا يردّ.
+  static const Duration helloTimeout = Duration(seconds: 4);
+
+  /// مهلة ترحيب العنوان **المحفوظ** في سطر الثقة.
+  ///
+  /// أطولُ من [helloTimeout] لأن هذا العنوان قد يكون لفرعٍ بعيد كُتب يدويًا
+  /// على شبكةٍ افتراضية (VPN)، وأقصرُ كثيرًا من [wanTimeout] لأن العنوان
+  /// المحفوظ غالبًا بائتٌ (DHCP يبدّله): عشرون ثانيةً لكل قرينٍ قبل الالتفات
+  /// إلى الاكتشاف تجعل «زامن الآن» يبدو معلَّقًا ثم يفشل، والجهاز على الشبكة
+  /// نفسها. وما فات هنا يُدركه الاكتشافُ بعده.
+  static const Duration savedHostTimeout = Duration(seconds: 8);
+
   HttpServer? _server;
   RawDatagramSocket? _beacon;
   PairingOffer? _offer;
@@ -236,12 +251,22 @@ class LanSync {
               await _reject(request, 'طلب ثقة بلا معرّف جهاز', HttpStatus.badRequest);
               break;
             }
-            await SyncTrust(db).accept(TrustedPeer(
+            // الثقة تُكتب في الاتجاهين: `accepted` ليُقبل طلبه ونحن مستقبِلون،
+            // و`peers` لنطرق بابه نحن في دورة المزامنة. المفتاح واحد مشتقٌّ من
+            // جلسة الاقتران (`trustKeyFor`) فالعلاقة متكافئة بطبيعتها، ولا
+            // سرَّ جديدًا يُمنح هنا. وكتابة `accepted` وحدها كانت تُقعد جهازَ
+            // الإدارة عن المزامنة: قائمة `peers` عنده فارغة، فزرُّ «زامن الآن»
+            // مُعطَّل واللوحة تقول «لم يُوثَّق جهاز بعد» وعلى الجهاز قرينٌ
+            // موثوق. (الخلط المحذور في [SyncTrust] هو أن يصير كل من اتصل بنا
+            // قرينًا؛ وهذا المسار لا يُدخل إلا من أدخل إنسانٌ رمزَه.)
+            final granted = TrustedPeer(
               deviceId: peerId,
               key: session.trustKeyFor(peerId),
               name: '${ask['name'] ?? ''}',
               host: request.connectionInfo?.remoteAddress.address ?? '',
-            ));
+            );
+            await SyncTrust(db).accept(granted);
+            await SyncTrust(db).remember(granted);
             await AuditRepo(db).log(
               action: 'sync.trust',
               entityType: 'مزامنة',
@@ -657,7 +682,16 @@ class LanSync {
       }
     });
 
-    socket.send(utf8.encode(_hello), InternetAddress('255.255.255.255'), discoveryPort);
+    // البثّ العام (255.255.255.255) تحجبه كثيرٌ من نقاط الوصول وجدارُ ويندوز،
+    // فيُضاف إليه بثُّ كل شبكة على حدة (آخر خانة 255) — وهو ما يعبر فعلًا في
+    // شبكات الوحدات. تُجرَّب العناوين كلها: ما حُجب منها لا يضرّ، وما عبر كفى.
+    for (final target in await _broadcastTargets()) {
+      try {
+        socket.send(utf8.encode(_hello), InternetAddress(target), discoveryPort);
+      } catch (_) {
+        // عنوانٌ لا يُبثّ عليه (واجهة معطَّلة أو شبكة لا تسمح): البقية تكفي.
+      }
+    }
     await Future<void>.delayed(timeout);
     socket.close();
     return [
@@ -666,13 +700,33 @@ class LanSync {
     ];
   }
 
+  /// عناوين البثّ التي يُرسل إليها نداء الاكتشاف: العام وبثُّ كل شبكة محلية.
+  ///
+  /// يُفترض قناع /24 — وهو قناع شبكات الوحدات عمليًّا، و`NetworkInterface` في
+  /// Dart لا تُعلن القناع أصلًا. وخطأُ الافتراض لا يكسر شيئًا: حزمةٌ لا تجد
+  /// مستمعًا، والعنوان المحفوظ والبثُّ العام باقيان.
+  static Future<List<String>> _broadcastTargets() async {
+    final out = <String>{'255.255.255.255'};
+    for (final addr in await localAddresses()) {
+      final parts = addr.split('.');
+      if (parts.length == 4) out.add('${parts[0]}.${parts[1]}.${parts[2]}.255');
+    }
+    return out.toList();
+  }
+
   /// بطاقة الترحيب المفتوحة لجهاز على الشبكة — بها يُعرف معرّفه قبل أي توقيع.
-  Future<({String device, String id, String salt})?> hello(String host, {int? port}) async {
-    final client = HttpClient()..connectionTimeout = wanTimeout;
+  /// [timeout] الافتراضي [helloTimeout] — وهو ما يناسب تأكيدَ عنوانٍ جاء من
+  /// الاكتشاف على الشبكة نفسها. والعنوان المحفوظ يُمرَّر له [savedHostTimeout].
+  Future<({String device, String id, String salt})?> hello(
+    String host, {
+    int? port,
+    Duration timeout = helloTimeout,
+  }) async {
+    final client = HttpClient()..connectionTimeout = timeout;
     try {
       final req = await client.getUrl(Uri.parse('http://$host:${port ?? this.port}/hello'));
-      final res = await req.close();
-      final body = await utf8.decoder.bind(res).join();
+      final res = await req.close().timeout(timeout);
+      final body = await utf8.decoder.bind(res).join().timeout(timeout);
       if (res.statusCode != HttpStatus.ok) return null;
       final map = jsonDecode(body) as Map<String, dynamic>;
       if (map['app'] != 'imdad-sync') return null;
@@ -779,7 +833,11 @@ class LanSync {
       name: '${res['name'] ?? peer.info.deviceName}',
       host: peer.host,
     );
+    // في الاتجاهين كذلك (انظر `POST /trust`): هذا الجهاز يسحب ويدفع إلى
+    // القرين (`peers`)، ويقبل منه دورةً يبدؤها هو (`accepted`) — فمن فتح
+    // تطبيقه أولًا زامن، ولا ينتظر أحدٌ أحدًا.
     await SyncTrust(db).remember(remembered);
+    await SyncTrust(db).accept(remembered);
     return remembered;
   }
 
@@ -792,6 +850,9 @@ class LanSync {
   /// إلى جهاز الفرع بلا أن يلمسه أحد. استثناؤها يُفرغ الميزة من معناها.
   Future<SyncResult> autoSync({void Function(String message)? onEvent}) async {
     final store = SyncTrust(db);
+    // الترميم أولًا: جهازٌ اقترن قبل أن تُكتب الثقة في الاتجاهين يحمل القرين
+    // في `accepted` وحدها، فتبدو قائمة الأقران فارغةً وهو موثوق.
+    await store.mirror();
     final peers = await store.peers();
     if (peers.isEmpty) {
       return const SyncResult(ok: false, failed: false, message: 'لا يوجد جهاز موثوق — اقترن مرة واحدة يدويًا');
@@ -804,7 +865,10 @@ class LanSync {
       final label = p.name.isEmpty ? p.deviceId : p.name;
       final host = await _locate(p);
       if (host == null) {
-        problems.add('$label خارج الشبكة');
+        // الرسالة تقول ما يُفعل: أكثر ما يُوقف المزامنة أن التطبيق مغلق على
+        // الجهاز الآخر أو أن مزامنته التلقائية غير مفعَّلة — فمنفذه مغلق.
+        problems.add('$label لم يُعثر عليه (افتح التطبيق عليه وفعّل مزامنته التلقائية، '
+            'وتأكّد أن الجهازين على الشبكة نفسها)');
         continue;
       }
       final peer = SyncPeer(
@@ -851,7 +915,7 @@ class LanSync {
   /// على معرّف الجهاز لا على عنوانه — فالعنوان يُتحقق منه ولا يُوثق به.
   Future<String?> _locate(TrustedPeer peer) async {
     if (peer.host.isNotEmpty) {
-      final card = await hello(peer.host);
+      final card = await hello(peer.host, timeout: savedHostTimeout);
       if (card != null && card.id == peer.deviceId) return peer.host;
     }
     for (final d in await discover()) {

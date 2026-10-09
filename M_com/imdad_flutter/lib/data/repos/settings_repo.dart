@@ -177,12 +177,49 @@ class SettingsRepo {
             updatedAt: Value(DateTime.now()),
           ));
 
+  /// تخطيطات النماذج المُفردة: `{ "<مفتاح النموذج>": {<تخطيط>} }`.
+  ///
+  /// مفتاحٌ **مزامَن** كالتخطيط العام: صورةُ السند معيارُ الجهة كلها لا تفضيلَ
+  /// جهاز. ومفتاحٌ مستقلٌّ عن `printLayout` حتى يبقى الافتراضي العام مقروءًا
+  /// بإصدارٍ أقدم كما هو — لا يرى النماذج المُفردة فيطبع بالعام، وهو سلوك
+  /// الإصدار السابق بعينه.
+  static const String printFormsKey = 'printForms';
+
+  /// تخطيط النموذج [formKey]، أو التخطيط العام إن لم يُفرد النموذج بتصميم.
+  ///
+  /// [formKey] فارغ (أو `null`) ⇒ التخطيط العام. ومفتاحٌ غير معروف يتبع العام
+  /// كذلك: الفهرس قد ينقص مفتاحًا حُذف، فلا تتوقف الطباعة لأجله.
+  Future<PrintLayout> printLayoutFor(String? formKey) async {
+    if (formKey == null || formKey.isEmpty) return printLayout();
+    final own = (await read(printFormsKey))[formKey];
+    if (own is! Map) return printLayout();
+    return PrintLayout.fromMap(Map<String, dynamic>.from(own));
+  }
+
   Future<PrintLayout> printLayout() async {
     final map = await read(printLayoutKey);
     return map.isEmpty ? PrintLayout.defaults : PrintLayout.fromMap(map);
   }
 
   Future<void> savePrintLayout(PrintLayout layout) => write(printLayoutKey, layout.toMap());
+
+  /// يُفرد النموذج [formKey] بتخطيطٍ خاص.
+  Future<void> savePrintLayoutFor(String formKey, PrintLayout layout) async {
+    final all = await read(printFormsKey);
+    all[formKey] = layout.toMap();
+    await write(printFormsKey, all);
+  }
+
+  /// يُعيد النموذج إلى التخطيط العام (يحذف إفراده).
+  Future<void> clearPrintLayoutFor(String formKey) async {
+    final all = await read(printFormsKey);
+    if (all.remove(formKey) == null) return;
+    await write(printFormsKey, all);
+  }
+
+  /// مفاتيح النماذج المُفردة بتصميمٍ خاص — لوسمها في منتقي المصمم.
+  Future<Set<String>> customizedPrintForms() async =>
+      (await read(printFormsKey)).entries.where((e) => e.value is Map).map((e) => e.key).toSet();
 
   /// `loadAppConfig()` — هوية التطبيق والجهة.
   Future<AppIdentity> identity() async {

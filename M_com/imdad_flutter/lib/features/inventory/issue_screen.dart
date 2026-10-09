@@ -23,6 +23,7 @@ import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/daily_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../domain/line_consolidation.dart';
+import '../../domain/print_forms.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../domain/issue_rules.dart';
 import '../../domain/strength.dart';

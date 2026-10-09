@@ -4,6 +4,7 @@ import '../../data/db/app_database.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../data/repos/archive_auto.dart';
 import '../../data/repos/signatures_repo.dart';
+import '../../domain/print_forms.dart';
 import '../ui/imd_format.dart';
 import 'military_print.dart';
 import '../../core/error_log.dart';
@@ -56,7 +57,9 @@ class VoucherPrint {
     bool multiUnit = false,
     bool withReceipt = false,
   }) async {
-    final engine = await engineOf(db);
+    // تخطيطُ النموذج المقصود لا التخطيط العام: لكل نوع سندٍ مفتاحُه في
+    // [PrintForms]، فمن أفرد «أمر الصرف» بترويسةٍ لم تتبعه بقيةُ السندات.
+    final engine = await engineOf(db, form: formOf(kind));
     final master = <String, String>{
       'ref': refNo,
       'date': date,
@@ -153,11 +156,27 @@ class VoucherPrint {
     }
   }
 
+  /// مفتاح [PrintForms] لكل نوع سند.
+  static String formOf(VoucherKind kind) => switch (kind) {
+        VoucherKind.receive => PrintForms.receipt,
+        VoucherKind.issue => PrintForms.issue,
+        VoucherKind.transfer => PrintForms.transfer,
+        VoucherKind.returnFromUnit => PrintForms.returnFromUnit,
+        VoucherKind.returnToSupplier => PrintForms.returnToSupplier,
+      };
+
   /// يبني المحرك من هوية الجهة المحفوظة (الشعار والأسطر والتذييل).
-  static Future<MilitaryPrint> engineOf(AppDatabase db, {String printedBy = ''}) async {
+  ///
+  /// [form] مفتاح المطبوعة في [PrintForms]: يُقرأ به تخطيطُها الخاص إن أُفرد
+  /// بتصميم، وإلا فالتخطيط العام. فارغٌ ⇒ العام (كما كان قبل تفريد النماذج).
+  static Future<MilitaryPrint> engineOf(
+    AppDatabase db, {
+    String printedBy = '',
+    String form = '',
+  }) async {
     final settings = SettingsRepo(db);
     final id = await settings.identity();
-    final layout = await settings.printLayout();
+    final layout = await settings.printLayoutFor(form);
     final lines = id.orgLines.isNotEmpty
         ? id.orgLines
         : [for (final l in layout.right.where((l) => l.show)) l.text];

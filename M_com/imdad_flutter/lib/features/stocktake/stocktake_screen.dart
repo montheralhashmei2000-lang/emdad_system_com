@@ -17,6 +17,7 @@ import '../../domain/access_control.dart';
 import '../../domain/stocktake_scan.dart';
 import '../inventory/doc_kit.dart';
 import '../../core/ui/imd_layout.dart';
+import '../../domain/print_forms.dart';
 
 part 'stocktake/stocktake_consts.dart';
 part 'stocktake/stocktake_analysis_tab.dart';
@@ -395,7 +396,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
       showImdToast(context, '✖ اختر أمر الجرد أولًا', error: true);
       return;
     }
-    final layout = await SettingsRepo(_db).printLayout();
+    final layout = await SettingsRepo(_db).printLayoutFor(PrintForms.stocktakeSheet);
     var i = 0;
     await DocumentPdf.printDoc(
       doc: PrintDoc(
@@ -452,7 +453,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
       showImdToast(context, 'لا توجد فروقات في هذا الأمر');
       return;
     }
-    final layout = await SettingsRepo(_db).printLayout();
+    final layout = await SettingsRepo(_db).printLayoutFor(PrintForms.stocktakeDiff);
     var i = 0;
     await DocumentPdf.printDoc(
       doc: PrintDoc(

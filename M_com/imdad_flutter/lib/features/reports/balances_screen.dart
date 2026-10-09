@@ -18,6 +18,7 @@ import '../../data/repos/settings_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/stock_alerts.dart';
 import '../../core/ui/imd_layout.dart';
+import '../../domain/print_forms.dart';
 
 /// الأرصدة الحالية — نقل `renderBalances()` / `balPaint()`:
 /// كشف لحظي بأرصدة الأصناف (الافتتاحي + الوارد − المنصرف ± التحويلات) مع رقائق
@@ -135,7 +136,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
       showImdToast(context, '✖ لا توجد بيانات للطباعة', error: true);
       return;
     }
-    final layout = await _settings.printLayout();
+    final layout = await _settings.printLayoutFor(PrintForms.balances);
     await DocumentPdf.printDoc(
       doc: PrintDoc(
         title: 'كشف الأرصدة الحالية',

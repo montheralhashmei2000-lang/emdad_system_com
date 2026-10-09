@@ -73,7 +73,7 @@ mixin _IssueLog on _IssueBase {
       agg[k] = (agg[k] ?? 0) + r.qty;
     }
     var i = 1;
-    final layout = await SettingsRepo(_db).printLayout();
+    final layout = await SettingsRepo(_db).printLayoutFor(PrintForms.issueLog);
     await DocumentPdf.printDoc(
       layout: layout,
       doc: PrintDoc(

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:imdad/core/security/auth_service.dart';
 import 'package:imdad/core/theme/app_theme.dart';
+import 'package:imdad/core/ui/imd_widgets.dart' show ImdSelect, ImdPickerBody;
 import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/repos/users_repo.dart';
 import 'package:imdad/data/sync/auto_sync.dart';
@@ -113,6 +114,44 @@ void main() {
     ]) {
       expect(find.text(group), findsWidgets, reason: group);
     }
+  });
+
+  testWidgets('على الهاتف: منتقي الأقسام يحمل «النسخ الاحتياطي» ويفتحه', (tester) async {
+    // كان الهاتف يعرض ستةَ عشرَ قسمًا في صفٍّ أفقيٍّ واحد بلا عناوين مجموعات،
+    // و«النسخ الاحتياطي» رابعَ عشرَها — فلا يُرى إلا بعد سَحبِ ثلاثةَ عشرَ بندًا،
+    // ويُظنّ أن الإعداد غير موجود على الهاتف.
+    tester.view.physicalSize = const Size(360, 740);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(host('general'));
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    }
+    await tester.pump();
+
+    // المنتقي حاضر باسم القسم الحالي، لا صفٌّ من ستةَ عشرَ زرًّا.
+    final picker = find.byType(ImdSelect<String>);
+    expect(picker, findsOneWidget, reason: 'منتقي أقسام الإعدادات غائب عن الهاتف');
+    await tester.tap(picker);
+    await tester.pumpAndSettle();
+
+    // الحوار قابل للبحث: «النسخ» تكفي لبلوغ القسم بلا سَحب.
+    final search = find.descendant(
+      of: find.byType(ImdPickerBody<String>),
+      matching: find.byType(TextField),
+    );
+    expect(search, findsOneWidget, reason: 'منتقي الأقسام بلا بحث');
+    await tester.enterText(search, 'النسخ');
+    await tester.pumpAndSettle();
+    final backup = find.textContaining('النسخ الاحتياطي');
+    expect(backup, findsWidgets, reason: 'قسم النسخ الاحتياطي غائب عن منتقي الهاتف');
+    // ومعه اسم مجموعته، فلا يُقرأ البند وحده.
+    expect(find.textContaining('البيانات والمزامنة'), findsWidgets);
+    await tester.tap(backup.first);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('النسخ الاحتياطي والاستعادة'), findsWidgets);
   });
 
   testWidgets('غير المالك لا يرى قسم «تفعيل الأجهزة» ولو طلبه (sys.devices)', (tester) async {

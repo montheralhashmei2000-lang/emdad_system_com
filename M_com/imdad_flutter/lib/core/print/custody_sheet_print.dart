@@ -12,6 +12,7 @@ import 'military_print.dart';
 import 'print_format.dart';
 import 'voucher_print.dart';
 import '../../core/error_log.dart';
+import '../../domain/print_forms.dart';
 
 /// طباعة «مسير العهدة» بتنسيق ملف الـPDF المعتمد: صفحة أفقية، ترويسة من
 /// مستويين (مبلغ العهدة / مرتجع / المبلغ المنصرف)، شبكة بحدود سوداء، أسطر
@@ -151,7 +152,7 @@ class CustodySheetPrint {
 
   /// يبني ملف PDF للمسير. [rowHeightOverride] للاختبار.
   static Future<Uint8List> build(AppDatabase db, LinkCustodySheet sheet, List<LinkCustodySheetRow> rows) async {
-    final engine = await VoucherPrint.engineOf(db);
+    final engine = await VoucherPrint.engineOf(db, form: PrintForms.custodySheet);
     final theme = await engine.pdfTheme();
 
     final cur = sheet.currency;
