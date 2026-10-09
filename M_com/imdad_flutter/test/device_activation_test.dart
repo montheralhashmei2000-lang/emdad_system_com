@@ -401,12 +401,19 @@ void main() {
     });
 
     test('الدمج يأخذ الأحدث ختمًا ولا يتراجع إلى أقدم', () async {
+      // القرارات موقَّعةٌ من المالك: الوارد بلا توقيع يُرفض (`revocation_guard`).
+      String sig(String id, bool revoked, int at) => base64Url.encode(ESign.signRawWithKey(
+            privateHex: ownerPair.privateHex,
+            digest: DeviceActivation.revocationDigest(deviceId: id, revoked: revoked, atMs: at),
+          ));
+
       await branchAct.mergeRevocations({
-        'AAAA2222': {'revoked': true, 'at': 2000},
+        'AAAA2222': {'revoked': true, 'at': 2000, 'sig': sig('AAAA2222', true, 2000)},
       });
       final changed = await branchAct.mergeRevocations({
-        'AAAA2222': {'revoked': false, 'at': 1000}, // أقدم: يُهمَل
-        'BBBB3333': {'revoked': true, 'at': 500},
+        // أقدم: يُهمَل قبل أن يُنظر في توقيعه.
+        'AAAA2222': {'revoked': false, 'at': 1000, 'sig': sig('AAAA2222', false, 1000)},
+        'BBBB3333': {'revoked': true, 'at': 500, 'sig': sig('BBBB3333', true, 500)},
       });
       expect(changed, 1);
       expect(await branchAct.isRevoked('AAAA2222'), isTrue);

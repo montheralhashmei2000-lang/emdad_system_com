@@ -98,15 +98,22 @@ void main() {
   });
 
   test('إلغاء جهاز يصل بالمزامنة ويُمحى برفعه', () async {
-    final adminAct = DeviceActivation(master, ownerPublicKey: 'x');
-    final branchAct = DeviceActivation(branch, ownerPublicKey: 'x');
+    // مفتاحٌ حقيقي ومُستورَد: القرار لا ينتشر إلا موقَّعًا من المالك
+    // (`device_revocation_guard_test`)، وكان الاختبار يمرّر مفتاحًا صوريًّا.
+    final pair = ESign.generateKeyPair();
+    final adminAct = DeviceActivation(master, ownerPublicKey: pair.publicB64);
+    final branchAct = DeviceActivation(branch, ownerPublicKey: pair.publicB64);
+    expect(await adminAct.importPrivateKey(pair.privateHex), isTrue);
+
+    // المستورد يتحقق من توقيع الإلغاء بمفتاحه هو، فيُحقَن مفتاح الاختبار.
+    final importer = LegacyImporter(branch, ownerPublicKey: pair.publicB64);
 
     await adminAct.setRevoked('ABCD2345', true);
-    await LegacyImporter(branch).importJson(await DataExporter(master).toMap());
+    await importer.importJson(await DataExporter(master).toMap());
     expect(await branchAct.isRevoked('ABCD2345'), isTrue);
 
     await adminAct.setRevoked('ABCD2345', false);
-    await LegacyImporter(branch).importJson(await DataExporter(master).toMap());
+    await importer.importJson(await DataExporter(master).toMap());
     expect(await branchAct.isRevoked('ABCD2345'), isFalse);
   });
 }

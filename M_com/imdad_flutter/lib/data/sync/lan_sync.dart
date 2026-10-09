@@ -251,6 +251,47 @@ class LanSync {
               await _reject(request, 'طلب ثقة بلا معرّف جهاز', HttpStatus.badRequest);
               break;
             }
+            // المعرّف في الجسم لا بدّ أن يطابق ترويسة الطلب. كلاهما من العميل
+            // نفسه فلا يختلفان في عميلٍ سليم أبدًا، وكان الجسم وحده هو المعتبر:
+            // فمن يملك رمز الاقتران يضع فيه معرّف **جهاز الإدارة**، فيُكتب فوق
+            // سطر ثقته مفتاحٌ يعرفه المهاجم (`trustKeyFor(peerId)`) — فينتحله
+            // انتحالًا كاملًا، ويفقد جهاز الإدارة الحقيقي مفتاحه فتتوقف مزامنته
+            // بصمت لأن توقيعه لم يعد يُقبل.
+            final headerId = request.headers.value(SyncSession.headerDevice) ?? '';
+            if (headerId != peerId) {
+              await _onAuthFailure(request, 'معرّف الجهاز في الطلب لا يطابق ترويسته', onEvent,
+                  reason: 'device_id_mismatch');
+              break;
+            }
+            // **ولا يُكتب فوق مفتاح قرينٍ قائم.** مطابقةُ الترويسة بالجسم أعلاه
+            // تمنع ادّعاءً متناقضًا لا أكثر: المعرّف يُعلنه العميل عن نفسه في
+            // الموضعين، فمن يملك رمز الاقتران يضع معرّف جهاز الإدارة فيهما معًا.
+            // فالحارس الفاعل هو هذا: سطرُ قرينٍ موثوقٍ بمفتاحٍ مختلف لا يُستبدل
+            // بطلبٍ من الشبكة، بل يُنسى أولًا من الجهاز نفسه («نسيان الجهاز» في
+            // شاشة المزامنة) — فعلٌ محليٌّ صريح لا يُنتزع بالرمز وحده.
+            //
+            // وإعادةُ الاقتران المشروعة لا تتعثّر: جهازٌ أُعيد تثبيته يحمل
+            // معرّفًا جديدًا (القاعدة جديدة) فلا يصادم سطرًا قائمًا.
+            final existing = (await SyncTrust(db).accepted())[peerId];
+            final newKey = session.trustKeyFor(peerId);
+            if (existing != null && !_sameKey(existing.key, newKey)) {
+              await AuditRepo(db).log(
+                action: 'sync.trust_rejected',
+                entityType: 'مزامنة',
+                summary: 'رُفض استبدال مفتاح القرين $peerId بطلبٍ من '
+                    '${request.connectionInfo?.remoteAddress.address ?? 'جهاز'}',
+                details: {'device': peerId, 'risk': 'sensitive'},
+                risk: AuditRepo.riskHigh,
+              );
+              await _reject(
+                request,
+                'الجهاز $peerId موثوقٌ سلفًا بمفتاحٍ آخر — انسَ الجهاز على المستقبِل ثم أعد الاقتران',
+                HttpStatus.conflict,
+              );
+              onEvent?.call('رُفض استبدال مفتاح القرين $peerId — انسَ الجهاز أولًا');
+              break;
+            }
+
             // الثقة تُكتب في الاتجاهين: `accepted` ليُقبل طلبه ونحن مستقبِلون،
             // و`peers` لنطرق بابه نحن في دورة المزامنة. المفتاح واحد مشتقٌّ من
             // جلسة الاقتران (`trustKeyFor`) فالعلاقة متكافئة بطبيعتها، ولا
@@ -261,7 +302,7 @@ class LanSync {
             // قرينًا؛ وهذا المسار لا يُدخل إلا من أدخل إنسانٌ رمزَه.)
             final granted = TrustedPeer(
               deviceId: peerId,
-              key: session.trustKeyFor(peerId),
+              key: newKey,
               name: '${ask['name'] ?? ''}',
               host: request.connectionInfo?.remoteAddress.address ?? '',
             );
@@ -343,6 +384,16 @@ class LanSync {
         onEvent?.call('خطأ في طلب وارد: $e');
       }
     }
+  }
+
+  /// مقارنةُ مفتاحين بزمنٍ ثابت — لا يُستدلّ على المفتاح المحفوظ من زمن الردّ.
+  static bool _sameKey(Uint8List a, Uint8List b) {
+    if (a.length != b.length) return false;
+    var diff = 0;
+    for (var i = 0; i < a.length; i++) {
+      diff |= a[i] ^ b[i];
+    }
+    return diff == 0;
   }
 
   /// المفاتيح التي قد يكون الطلب موقَّعًا بأحدها.

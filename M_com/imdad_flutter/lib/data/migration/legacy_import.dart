@@ -148,7 +148,10 @@ class LegacyImporter
       await _importLinkage(data, res);
       await _importAuditLogs(data['auditLogs'], res);
       await _importSettings(data['settings'], res);
-      await DeviceActivation(db).mergeRevocations(data['deviceRevocations']);
+      // مفتاح المالك يُمرَّر: قرار الإلغاء الوارد يُتحقَّق منه بالمفتاح نفسه الذي
+      // يحرس الحسابات (`_ownerKey`)، لا بالمدفون — وإلا اختلف الحارسان.
+      await DeviceActivation(db, ownerPublicKey: _ownerKey)
+          .mergeRevocations(data['deviceRevocations']);
       await _applyTombstones(marks, res);
       await _settleMarks(marks);
     });

@@ -5,7 +5,9 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 
 import '../../data/db/app_database.dart';
+import '../../data/repos/audit_repo.dart';
 import '../../data/repos/settings_repo.dart';
+import '../../data/sync/sync_trust.dart';
 import 'esign.dart';
 import 'owner_key.dart';
 
@@ -422,10 +424,60 @@ class DeviceActivation {
   /// إلى الأجهزة الأخرى (آخر ختمٍ يفوز) فيتوقف الجهاز الملغى عند أول مزامنة له
   /// مع أي جهازٍ حمل الإلغاء. الرمز نفسه لا يمكن سحبه لأنه يُتحقَّق منه محليًا
   /// بلا إنترنت — فالمزامنة هي القناة الوحيدة.
-  Future<void> setRevoked(String deviceId, bool revoked) async {
+  /// يعيد `true` إن وُقِّع القرار فينتشر بالمزامنة، و`false` إن بقي محليًّا (لا
+  /// مفتاح مالكٍ على هذا الجهاز) — تقول الواجهة ذلك للمشغّل.
+  ///
+  /// والإلغاء يقطع الثقة كذلك: جهازٌ أُلغي تفعيله كان يبقى قرينًا موثوقًا،
+  /// فيُفتح له المنفذ ويُقبل منه السحب والدفع. توقّفُه عند بوابة التفعيل حمايةٌ
+  /// في واجهته لا في بابنا — ومن سُرق جهازه لا يملك واجهته.
+  Future<bool> setRevoked(String deviceId, bool revoked) async {
+    final at = DateTime.now().millisecondsSinceEpoch;
+    final raw = await signDigest(revocationDigest(deviceId: deviceId, revoked: revoked, atMs: at));
+    final sig = raw == null ? null : base64Url.encode(raw);
     final map = await _revocations();
-    map[deviceId] = {'revoked': revoked, 'at': DateTime.now().millisecondsSinceEpoch};
+    map[deviceId] = {
+      'revoked': revoked,
+      'at': at,
+      if (sig != null) 'sig': sig,
+    };
     await SettingsRepo(db).write(_revocationsKey, {'map': map});
+    if (revoked) await SyncTrust(db).forget(deviceId);
+    return sig != null;
+  }
+
+  /// بصمة قرار إلغاء تفعيل جهاز (أو إعادته).
+  ///
+  /// القرار والختم داخلان في البصمة، فلا يُنقل توقيعٌ من قرارٍ إلى نقيضه:
+  /// توقيعُ «أُلغي في ت١» لا يصلح لـ«أُعيد في ت٢».
+  ///
+  /// وهو هنا لا في [OwnerSignature] لأن ذاك يستورد هذا الملف (توقيعُه يحتاج
+  /// [signDigest])، فوضعُه هناك يُحدث حلقة استيراد. وبيانات الإلغاء كلها في هذا
+  /// الملف أصلًا، فاجتماعُها في موضعٍ واحد أسهلُ في التدقيق.
+  static Uint8List revocationDigest({
+    required String deviceId,
+    required bool revoked,
+    required int atMs,
+  }) =>
+      Uint8List.fromList(
+          sha256.convert(utf8.encode('imdad.revoke.v1|$deviceId|${revoked ? 1 : 0}|$atMs')).bytes);
+
+  /// هل [sigB64] توقيعٌ صحيح من المالك على هذا القرار بعينه؟
+  bool verifyRevocation({
+    required String sigB64,
+    required String deviceId,
+    required bool revoked,
+    required int atMs,
+  }) {
+    if (!_configured || sigB64.isEmpty) return false;
+    try {
+      return ESign.verifyRawWithKey(
+        publicKeyB64: _ownerPublicKey,
+        digest: revocationDigest(deviceId: deviceId, revoked: revoked, atMs: atMs),
+        rawSignature: Uint8List.fromList(base64Url.decode(sigB64)),
+      );
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<bool> isRevoked(String deviceId) async =>
@@ -443,23 +495,49 @@ class DeviceActivation {
   /// ما يُرسَل إلى الأجهزة الأخرى مع المزامنة.
   Future<Map<String, Map<String, dynamic>>> revocationsForSync() => _revocations();
 
-  /// يدمج إلغاءاتٍ واردة: لكل جهازٍ آخر ختمٍ يفوز. يُرجع عدد ما تغيّر.
+  /// يدمج إلغاءاتٍ واردة: لكل جهازٍ آخر ختمٍ يفوز، **بتوقيع المالك وحده**.
+  ///
+  /// كان القرار يُقبل بلا توقيع والختم بيد المرسِل، فأي قرينٍ مقترن يستطيع
+  /// شقّين: أن **يُلغي تفعيل أي جهاز** ومنه جهاز الإدارة بختمٍ من المستقبل فلا
+  /// يُنقَض أبدًا، وأن **يُحيي جهازًا مسروقًا** أُلغي تفعيله بالطريقة نفسها.
+  /// الآن يُشترط توقيعٌ على (الجهاز + القرار + الختم) معًا، فلا يُنقل توقيعٌ من
+  /// قرارٍ إلى آخر. والقرار الموقَّع يقطع الثقة هنا أيضًا كما تقطعها [setRevoked].
+  ///
+  /// وبلا مفتاح مالكٍ مضبوط (وضع التطوير) لا يُفرض التوقيع — كحال بقية الحُرّاس.
+  /// ويُرجع عدد ما تغيّر.
   Future<int> mergeRevocations(Object? incoming) async {
     if (incoming is! Map) return 0;
     final local = await _revocations();
     var changed = 0;
+    var rejected = 0;
     for (final e in incoming.entries) {
       final v = e.value;
       if (v is! Map) continue;
       final at = int.tryParse('${v['at']}') ?? 0;
       final mine = int.tryParse('${local['${e.key}']?['at']}') ?? -1;
-      if (at > mine) {
-        local['${e.key}'] = {'revoked': v['revoked'] == true, 'at': at};
-        changed++;
+      if (at <= mine) continue;
+      final revoked = v['revoked'] == true;
+      final sig = '${v['sig'] ?? ''}';
+      if (_configured && !verifyRevocation(sigB64: sig, deviceId: '${e.key}', revoked: revoked, atMs: at)) {
+        rejected++;
+        continue;
       }
+      local['${e.key}'] = {'revoked': revoked, 'at': at, if (sig.isNotEmpty) 'sig': sig};
+      if (revoked) await SyncTrust(db).forget('${e.key}');
+      changed++;
     }
     if (changed > 0) {
       await SettingsRepo(db).write(_revocationsKey, {'map': local});
+    }
+    if (rejected > 0) {
+      await AuditRepo(db).log(
+        action: 'sync.revocation_rejected',
+        entityType: 'جهاز',
+        summary: 'رُفض $rejected قرار تفعيل/إلغاء وارد بلا توقيع مالكٍ صحيح',
+        details: {'count': rejected},
+        risk: AuditRepo.riskHigh,
+        actorEmail: 'sync',
+      );
     }
     return changed;
   }

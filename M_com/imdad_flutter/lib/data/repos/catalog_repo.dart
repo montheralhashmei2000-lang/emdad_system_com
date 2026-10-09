@@ -5,7 +5,16 @@ import 'package:drift/drift.dart';
 import '../../core/ids.dart';
 import '../db/app_database.dart';
 import '../../core/error_log.dart';
+import '../../core/security/warehouse_scope.dart';
 import '../../core/ui/imd_format.dart';
+
+/// منعٌ مقصود لتعديلٍ على مستودع. رسالته عربية تُعرض للمستخدم كما هي.
+class WarehouseBlocked implements Exception {
+  const WarehouseBlocked(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
 
 /// وحدة قياس الصنف (تُحفظ JSON داخل عمود units).
 class ItemUnit {
@@ -215,6 +224,57 @@ class CatalogRepo {
     return list;
   }
 
+  /// الجداول التي تشير إلى المستودع **بالاسم** لا بالمعرّف، وعمودُ الاسم في كل
+  /// منها. سجلُّ التدقيق مستثنى: هو تاريخٌ لما جرى، لا مرجعًا يُتابَع.
+  static const Map<String, List<String>> warehouseNameRefs = {
+    'receipts': ['warehouse'],
+    'issues': ['warehouse'],
+    'transfers': ['warehouse', 'dest_warehouse'],
+    'returns': ['warehouse'],
+    'adjustments': ['warehouse'],
+    'opening_balances': ['warehouse'],
+    'stocktakes': ['warehouse'],
+    'facilities': ['warehouse'],
+    'meal_plans': ['warehouse'],
+    'assets': ['warehouse'],
+    'ration_orders': ['requesting_warehouse', 'supplying_warehouse'],
+    'archive_files': ['warehouse'],
+    'warehouse_stock_limits': ['warehouse_name'],
+  };
+
+  /// هل يشير إلى مستودعٍ بهذا الاسم سجلٌّ واحد على الأقل؟
+  ///
+  /// نظير `FuelRepo._warehouseInUse` لقسم الإمداد، وأوسعُ منه لأن المستودع هنا
+  /// تشير إليه الحركاتُ والمنشآتُ وخطط الوجبات والأصول والطلبيات والأرشيف.
+  Future<bool> warehouseInUse(String name) async {
+    final key = name.trim();
+    if (key.isEmpty) return false;
+    final parts = [
+      for (final e in warehouseNameRefs.entries)
+        for (final col in e.value) 'SELECT 1 FROM "${e.key}" WHERE TRIM("$col") = ?1',
+    ];
+    final row = await db
+        .customSelect('${parts.join(' UNION ALL ')} LIMIT 1', variables: [Variable<String>(key)])
+        .getSingleOrNull();
+    if (row != null) return true;
+    // نطاقُ مستخدمٍ مقيَّد بأسماء مستودعاته (`users.warehouse_scope`، JSON).
+    for (final u in await db.select(db.users).get()) {
+      if (parseWarehouseScope(u.warehouseScope, source: 'catalog.warehouseInUse')?.contains(key) ?? false) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// يحفظ مستودعًا. **تغيير اسم مستودعٍ مُستعمَل مرفوض** ([WarehouseBlocked]).
+  ///
+  /// كل حركةٍ وكل منشأةٍ ونطاقِ مستخدمٍ تشير إلى المستودع **بنصّ اسمه** (ثلاثة
+  /// عشر جدولًا، [warehouseNameRefs])، فتغييرُ الاسم يُيتّم ما أشار إليه: يظهر
+  /// رصيدُه صفرًا وتبقى حركاته باسمٍ لا مستودعَ له، ويفقد المستخدم المقيَّد
+  /// نطاقه. ولا تُرحَّل المراجع لأن الترحيل محليٌّ والنظام موزَّع: جهازٌ لم
+  /// يُرحِّل يُرسل صفوفه بالاسم القديم فيعيد بعضها «الأحدثُ يفوز»، و`warehouse_scope`
+  /// لا ينتقل أصلًا بلا توقيع المالك. والمحروقات حُسمت على الرفض نفسه
+  /// (`FuelRepo.saveWarehouse`).
   Future<String> saveWarehouse({
     String? id,
     required String code,
@@ -226,6 +286,13 @@ class CatalogRepo {
     String notes = '',
   }) async {
     final newId = id ?? _newId('wh');
+    if (id != null) {
+      final old = await (db.select(db.warehouses)..where((t) => t.id.equals(id))).getSingleOrNull();
+      if (old != null && old.name.trim() != name.trim() && await warehouseInUse(old.name)) {
+        throw WarehouseBlocked('لا يُغيَّر اسم «${old.name}» وعليه حركة أو ارتباط — '
+            'أنشئ مستودعًا بالاسم الجديد وحوّل إليه الرصيد');
+      }
+    }
     await db.into(db.warehouses).insertOnConflictUpdate(WarehousesCompanion.insert(
           id: newId,
           name: name,

@@ -656,9 +656,22 @@ class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
       danger: revoke,
     );
     if (!ok) return;
-    await _act.setRevoked(d.deviceId, revoke);
+    // القرار يحتاج توقيع المالك لينتشر (بقية الأجهزة ترفض غير الموقَّع)،
+    // والمفتاح الخاص على جهاز المالك وحده. فإن لم يُوقَّع فالقرار محليٌّ،
+    // ويُقال ذلك صريحًا بدل أن يبدو ناجحًا في كل مكان.
+    final signed = await _act.setRevoked(d.deviceId, revoke);
     await _load();
-    if (mounted) showImdToast(context, revoke ? '✔ أُلغي التفعيل' : '✔ أُعيد التفعيل');
+    if (!mounted) return;
+    if (signed) {
+      showImdToast(context, revoke ? '✔ أُلغي التفعيل — ينتشر بالمزامنة' : '✔ أُعيد التفعيل — ينتشر بالمزامنة');
+    } else {
+      showImdToast(
+        context,
+        '⚠ ${revoke ? 'أُلغي التفعيل' : 'أُعيد التفعيل'} على هذا الجهاز وحده — '
+        'لا مفتاح مالكٍ هنا، فلن ينتشر بالمزامنة. نفّذه من جهاز المالك.',
+        error: true,
+      );
+    }
   }
 
   Future<void> _removeDevice(IssuedDevice d) async {

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show ValueNotifier, visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/db/app_database.dart';
+import '../../data/repos/audit_repo.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../data/repos/users_repo.dart';
 import '../../domain/access_control.dart';
@@ -142,6 +143,16 @@ class AuthService {
   // مفاتيح قاعدة البيانات (جدول الإعدادات، محلية فقط: SettingsRepo.localOnlyKeys).
   static const String _sessionKey = 'authSession';
   static const String _locksKey = 'authLocks';
+
+  /// علامة «الجلسة مفتوحة» داخل صفّ الجلسة.
+  ///
+  /// تُكتب عند فتح الجلسة وتُمحى بالخروج الصريح (`logout`، وهو ما يُنادى من
+  /// `_shutdown` عند إغلاق النافذة أو الخروج بزر الرجوع). فوجودُها عند الإقلاع
+  /// يعني أن التطبيق **لم يُغلق إغلاقًا نظيفًا**: قُتل من مدير المهام، أو سُحب
+  /// من قائمة تطبيقات أندرويد، أو انقطعت الكهرباء، أو انهار.
+  @visibleForTesting
+  static const String sessionOpenKey = 'open';
+  static const String _sessionOpen = sessionOpenKey;
 
   User? _current;
   User? get currentUser => _current;
@@ -443,15 +454,19 @@ class AuthService {
     await prefs.remove('$_kLockPrefix$user');
   }
 
-  /// الجلسة المحفوظة: (المعرّف، وقت البدء بالمللي ثانية) أو `null`.
-  /// إن لم توجد في القاعدة وُجدت قديمةً في SharedPreferences فتُنقل (ترحيلٌ
-  /// لمرةٍ واحدة يُبقي الجلسات القائمة صالحة).
-  Future<(String, int)?> _readSession() async {
+  /// الجلسة المحفوظة، أو `null`.
+  ///
+  /// [open] تعني أن الجلسة **ما زالت مفتوحة** في نظر التطبيق: تُكتب مع الجلسة
+  /// وتُمحى بالخروج (انظر [_startSession] و[restoreSession]). وجلسةٌ كتبها
+  /// إصدارٌ أقدم لا تحملها، فتُعدّ مُغلَقةً إغلاقًا نظيفًا — توافقٌ لمرةٍ واحدة.
+  Future<({String id, int startedAt, bool open})?> _readSession() async {
     final repo = SettingsRepo(db);
     final map = await repo.read(_sessionKey);
     final id = map['userId'];
     final at = map['startedAt'];
-    if (id is String && id.isNotEmpty && at is num) return (id, at.toInt());
+    if (id is String && id.isNotEmpty && at is num) {
+      return (id: id, startedAt: at.toInt(), open: map[_sessionOpen] == true);
+    }
 
     final prefs = await SharedPreferences.getInstance();
     final legacyId = prefs.getString(_kSessionUser);
@@ -459,7 +474,7 @@ class AuthService {
     if (legacyId == null || legacyAt == null) return null;
     await repo.write(_sessionKey, {'userId': legacyId, 'startedAt': legacyAt});
     await _clearLegacySession(prefs);
-    return (legacyId, legacyAt);
+    return (id: legacyId, startedAt: legacyAt, open: false);
   }
 
   Future<void> _clearLegacySession(SharedPreferences prefs) async {
@@ -473,18 +488,32 @@ class AuthService {
     if (_current == null) return true;
     final session = await _readSession();
     if (session == null) return true;
-    final started = DateTime.fromMillisecondsSinceEpoch(session.$2);
+    // العلامة لا تُقاس هنا: الجلسة مفتوحةٌ فعلًا والتطبيق يعمل.
+    final started = DateTime.fromMillisecondsSinceEpoch(session.startedAt);
     if (DateTime.now().difference(started) >= sessionDuration) return true;
     final rows = await (db.select(db.users)..where((t) => t.id.equals(_current!.id))).get();
     return rows.isEmpty || !rows.first.active;
   }
 
+  /// يستعيد جلسةً سارية، أو `null` فتُطلب كلمة المرور.
+  ///
+  /// **الإنهاء القسري يُسقط الجلسة.** كان المعيار عمرَ الجلسة وحده (أقل من ١٢
+  /// ساعة)، وكل مسارات الخروج المقصود تُنهي الجلسة قبل أن تُغلق النافذة
+  /// (`_shutdown` ← [logout]) — فلم يكن يبلغ هذا الموضعَ إلا تطبيقٌ **لم يُغلق**:
+  /// قُتل من مدير المهام، أو سُحب من قائمة تطبيقات أندرويد، أو انهار، أو
+  /// انقطعت كهرباؤه. فمن أخذ الجهاز في تلك الحال فتح النظام بلا كلمة مرور،
+  /// وبدأ عدّاد الخمول من الصفر. الآن تُمحى الجلسة ويُسجَّل الحدث.
   Future<User?> restoreSession() async {
     await _promoteOwnerIfDue();
     final session = await _readSession();
     if (session == null) return null;
-    final id = session.$1;
-    final started = DateTime.fromMillisecondsSinceEpoch(session.$2);
+    final id = session.id;
+    final started = DateTime.fromMillisecondsSinceEpoch(session.startedAt);
+    if (session.open) {
+      await logout();
+      await _auditUncleanExit(id, started);
+      return null;
+    }
     if (DateTime.now().difference(started) >= sessionDuration) {
       await logout();
       return null;
@@ -507,12 +536,32 @@ class AuthService {
     await _clearLegacySession(await SharedPreferences.getInstance());
   }
 
+  /// جلسةٌ أُسقطت لأن التطبيق لم يُغلق إغلاقًا نظيفًا. الحدث يُسجَّل لأنه قد
+  /// يكون انهيارًا متكررًا أو جهازًا أُخذ وهو مفتوح. وفشلُ التسجيل لا يمنع
+  /// الإقلاع: الجلسة مُحيت قبله، وهي المقصود.
+  Future<void> _auditUncleanExit(String userId, DateTime startedAt) async {
+    try {
+      final row = await (db.select(db.users)..where((t) => t.id.equals(userId))).getSingleOrNull();
+      await AuditRepo(db).log(
+        action: 'auth.session.unclean',
+        entityType: 'جلسة',
+        summary: 'أُسقطت جلسة «${row?.username ?? userId}» لأن التطبيق أُنهي بلا إغلاق نظيف — تُطلب كلمة المرور',
+        details: {'userId': userId, 'startedAt': startedAt.toIso8601String()},
+        actorEmail: row?.email ?? '',
+      );
+    } catch (err, stack) {
+      ErrorLogger.log('auth.uncleanExitAudit', err, stack);
+    }
+  }
+
   Future<void> _startSession(User user) async {
     _current = user;
     _watchCurrent();
     await SettingsRepo(db).write(_sessionKey, {
       'userId': user.id,
       'startedAt': DateTime.now().millisecondsSinceEpoch,
+      // تبقى ما دامت الجلسة مفتوحة؛ يمحوها الخروج الصريح وحده.
+      _sessionOpen: true,
     });
     await _clearLegacySession(await SharedPreferences.getInstance());
   }
