@@ -7,6 +7,7 @@ import '../db/app_database.dart';
 import '../../core/error_log.dart';
 import '../../core/security/warehouse_scope.dart';
 import '../../core/ui/imd_format.dart';
+import '../../domain/item_barcode.dart';
 
 /// منعٌ مقصود لتعديلٍ على مستودع. رسالته عربية تُعرض للمستخدم كما هي.
 class WarehouseBlocked implements Exception {
@@ -429,6 +430,27 @@ class CatalogRepo {
 
   Future<void> setItemBarcode(String id, String barcode) =>
       (db.update(db.items)..where((t) => t.id.equals(id))).write(ItemsCompanion(barcode: Value(barcode)));
+
+  Future<bool> barcodeTaken(String barcode) async =>
+      (await (db.select(db.items)..where((t) => t.barcode.equals(barcode))..limit(1)).get()).isNotEmpty;
+
+  /// مولّد باركود نظامي يبدأ بعد أكبر تسلسل محفوظ في دقيقة [now].
+  Future<ItemBarcode> barcodeGenerator([DateTime? now]) async {
+    final t = now ?? DateTime.now();
+    final prefix = ItemBarcode.prefixOf(t);
+    final rows = await (db.selectOnly(db.items)
+          ..addColumns([db.items.barcode])
+          ..where(db.items.barcode.like('$prefix%')))
+        .map((r) => r.read(db.items.barcode) ?? '')
+        .get();
+    return ItemBarcode.startingAt(t, rows.map((b) => ItemBarcode.seqOf(b, prefix)).whereType<int>());
+  }
+
+  /// باركود نظامي جديد غير مكرر (فحص القاعدة + [reserved] الممنوحة في الدفعة نفسها).
+  Future<String> newItemBarcode({ItemBarcode? generator, Set<String> reserved = const {}}) async {
+    final g = generator ?? await barcodeGenerator();
+    return g.nextFree((bc) async => reserved.contains(bc) || await barcodeTaken(bc));
+  }
 
   /// يفرّغ وحدات الصنف (استيراد صنفٍ بلا وحدة): `saveItem` يضيف وحدةً افتراضية.
   Future<void> clearItemUnits(String id) =>

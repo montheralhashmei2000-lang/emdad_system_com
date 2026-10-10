@@ -493,7 +493,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
               ImdF2(children: [
                 ImdLabeled('الكود (فريد) *', ImdFld(controller: _iCode, readOnly: cur != null)),
                 ImdLabeled(
-                  'الباركود (نظامي 104 / مصنعي)',
+                  'الباركود',
                   Row(children: [
                     Expanded(child: ImdFld(controller: _iBC)),
                     const SizedBox(width: 6),
@@ -503,10 +503,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                       label: 'توليد',
                       icon: 'settings',
                       small: true,
-                      onPressed: () {
-                        final ms = DateTime.now().millisecondsSinceEpoch.toString();
-                        imdSetText(_iBC, '104${ms.substring(ms.length - 9)}');
-                      },
+                      onPressed: _genOne,
                     ),
                   ]),
                 ),
@@ -1008,18 +1005,26 @@ class _ItemsScreenState extends State<ItemsScreen> {
     );
   }
 
+  /// زر «توليد» في بطاقة الصنف: يملأ الحقل بباركود نظامي غير مكرر (لا يحفظ).
+  Future<void> _genOne() async {
+    try {
+      final bc = await _repo.newItemBarcode();
+      if (mounted) imdSetText(_iBC, bc);
+    } on StateError catch (e) {
+      if (mounted) showImdToast(context, '✖ ${e.message}', error: true);
+    }
+  }
+
   /// `itmGenMissing()`
   Future<void> _genMissing() async {
     final miss = _items.where((x) => x.barcode.isEmpty).toList();
     if (miss.isEmpty) return showImdToast(context, '✔ جميع الأصناف لديها باركود');
     if (!await imdConfirm(context, 'توليد باركود نظامي لـ ${miss.length} صنف؟')) return;
     var n = 0;
-    final rnd = math.Random();
+    final gen = await _repo.barcodeGenerator();
     for (final x in miss) {
-      final ms = DateTime.now().millisecondsSinceEpoch.toString();
-      final bc = '104${ms.substring(ms.length - 9)}${rnd.nextInt(90) + 10}';
       try {
-        await _repo.setItemBarcode(x.id, bc);
+        await _repo.setItemBarcode(x.id, await _repo.newItemBarcode(generator: gen));
         n++;
       } catch (err, stack) {
         ErrorLogger.log('items.barcodeGenerate', err, stack);

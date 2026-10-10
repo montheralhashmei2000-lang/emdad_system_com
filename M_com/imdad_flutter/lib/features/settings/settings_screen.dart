@@ -51,6 +51,7 @@ import '../../domain/section_block.dart';
 import '../../domain/rules_engine.dart';
 import '../home/home_shell.dart';
 import '../archive/archive_auto_settings.dart';
+import 'label_size_panel.dart';
 
 /// رقم إصدار التطبيق — **يطابق `version` في `pubspec.yaml`**.
 ///
@@ -986,6 +987,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ]),
+        ),
+      ),
+      (
+        'print',
+        'ملصقات الباركود حجم الملصق مقاس الملصق 35×25 مخصص',
+        const ImdPanel(
+          title: 'ملصقات الباركود',
+          icon: 'printer',
+          child: LabelSizePanel(),
         ),
       ),
       (
