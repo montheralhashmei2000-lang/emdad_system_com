@@ -12,6 +12,7 @@ import '../../data/repos/fuel_repo.dart';
 import '../../domain/fuel.dart';
 import '../../domain/fuel_report.dart';
 import 'fuel_report_docs.dart';
+import '../inventory/doc_kit/imd_sticky_page.dart';
 
 /// التقارير الرسمية — البرقية اليومية والأسبوعية والشهرية.
 ///
@@ -142,14 +143,49 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
     }
     final r = _report;
 
-    return ImdPage(children: [
-      ImdPageTitle(
+    // كشاشات الإمداد: أزرار التقرير في شريطٍ ملتصق بالأسفل، والنتائج تمرّ تحته.
+    return ImdStickyPage(
+      sticky: ImdStickyActions(children: [
+        ImdButton.outline(label: 'تحديث', icon: 'refresh', small: true, onPressed: _load),
+        ImdButton(label: 'طباعة التقرير', icon: 'printer', onPressed: _print),
+      ]),
+      after: [
+        const SizedBox(height: 14),
+      ImdKpis(children: [
+        ImdKpi(
+            label: 'وارد توريدًا',
+            value: '${nf(r.grandSupplied)} ${Fuel.unit}'),
+        ImdKpi(label: 'صادر بترول', value: nf(r.grandPetrol)),
+        ImdKpi(label: 'صادر ديزل', value: nf(r.grandDiesel)),
+        ImdKpi(
+          label: 'محوَّل بين المعسكرات',
+          value: nf(r.grandTransferredOut),
+          extra: r.grandTransferredOut == 0
+              ? null
+              : const ImdChip('لا يزيد وقود الفرقة', tone: ImdTone.off),
+        ),
+        ImdKpi(
+            label: 'إجمالي الصادر',
+            value: '${nf(r.grandTotal + r.grandTransferredOut)} ${Fuel.unit}'),
+      ]),
+      ImdNote(
+        'العنوان المطبوع: **${r.title} ${r.range.label} م**. '
+        'والترويسة والشعار والتواقيع تُؤخذ من «إعدادات المحروقات» وتظهر في '
+        'الورقة المطبوعة.',
+      ),
+      const SizedBox(height: 16),
+      if (r.isEmpty)
+        const ImdEmptyBox('لا حركة في هذه الفترة')
+      else
+        for (final s in r.sections) _camp(s, r.range.label),
+      if (r.showSummary) _summary(r),
+      ],
+      children: [
+      const ImdPageTitle(
         title: 'التقارير الرسمية',
         icon: 'chart',
         subtitle: 'تقرير الحركة اليومية والأسبوعية والشهرية لجميع المعسكرات '
             '— بنفس نموذج البرقية',
-        trailing: ImdButton(
-            label: 'طباعة التقرير', icon: 'printer', onPressed: _print),
       ),
       ImdICard(
         title: 'نوع التقرير والفترة',
@@ -201,35 +237,8 @@ class _FuelOfficialReportScreenState extends State<FuelOfficialReportScreen> {
           ]),
         ]),
       ),
-      ImdKpis(children: [
-        ImdKpi(
-            label: 'وارد توريدًا',
-            value: '${nf(r.grandSupplied)} ${Fuel.unit}'),
-        ImdKpi(label: 'صادر بترول', value: nf(r.grandPetrol)),
-        ImdKpi(label: 'صادر ديزل', value: nf(r.grandDiesel)),
-        ImdKpi(
-          label: 'محوَّل بين المعسكرات',
-          value: nf(r.grandTransferredOut),
-          extra: r.grandTransferredOut == 0
-              ? null
-              : const ImdChip('لا يزيد وقود الفرقة', tone: ImdTone.off),
-        ),
-        ImdKpi(
-            label: 'إجمالي الصادر',
-            value: '${nf(r.grandTotal + r.grandTransferredOut)} ${Fuel.unit}'),
-      ]),
-      ImdNote(
-        'العنوان المطبوع: **${r.title} ${r.range.label} م**. '
-        'والترويسة والشعار والتواقيع تُؤخذ من «إعدادات المحروقات» وتظهر في '
-        'الورقة المطبوعة.',
-      ),
-      const SizedBox(height: 16),
-      if (r.isEmpty)
-        const ImdEmptyBox('لا حركة في هذه الفترة')
-      else
-        for (final s in r.sections) _camp(s, r.range.label),
-      if (r.showSummary) _summary(r),
-    ]);
+      ],
+    );
   }
 
   // ───────────────────────── المعسكر

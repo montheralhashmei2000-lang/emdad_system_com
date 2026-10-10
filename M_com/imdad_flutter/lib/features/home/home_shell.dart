@@ -333,7 +333,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       });
 
   static String _titleOf(String page) {
-    if (page == 'dash') return 'الرئيسية';
+    if (_canonical(page) == 'dash') return 'الرئيسية';
     final id = _menuPageOf(page);
     for (final sec in _menu) {
       for (final it in sec.items) {
@@ -344,7 +344,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   static String? _iconOf(String page) {
-    if (page == 'dash') return 'home';
+    if (_canonical(page) == 'dash') return 'home';
     final id = _menuPageOf(page);
     for (final sec in _menu) {
       for (final it in sec.items) {
@@ -420,7 +420,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     await widget.onSignOut();
   }
 
+  /// صفحات تُفتح باسمٍ آخر. «لوحة المحروقات» هي «الرئيسية» في قسم المحروقات
+  /// (`_pageBody('dash', fuel)`)، فلا تُفتح تبويبةً مستقلة باسمها الكودي.
+  static String _canonical(String page) => page == 'fuelDashboard' ? 'dash' : page;
+
   void _go(String page) {
+    // TODO(security): enforce fuelDashboard.view after role migration
+    //                    review with admin roles.
+    page = _canonical(page);
     setState(() {
       if (!_open.contains(page)) {
         _open.add(page);
@@ -822,9 +829,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             _scaffoldKey.currentState?.closeEndDrawer();
             return;
           }
-          final home = _space == AppSpace.fuel ? 'fuelDashboard' : 'dash';
-          if (_page != home && _page != 'dash') {
-            _go(home);
+          if (_page != 'dash') {
+            _go('dash');
             return;
           }
           if (await imdConfirm(context, 'إغلاق النظام؟', ok: 'خروج')) {

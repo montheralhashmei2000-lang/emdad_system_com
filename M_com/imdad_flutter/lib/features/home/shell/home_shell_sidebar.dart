@@ -89,14 +89,13 @@ class _Sidebar extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                   // الرئيسية بندٌ مستقلٌّ دائمًا في القسمين — لا قائمة فرعية
-                  // تحته؛ وجهتها تتبع القسم النشط (`dash` أو `fuelDashboard`).
+                  // تحته؛ `dash` نفسها تعرض لوحة القسم النشط (إمداد أو محروقات).
                   _SideTile(
                     icon: 'home',
                     label: 'الرئيسية',
                     kind: _SideKind.home,
-                    on: page == (space == AppSpace.fuel ? 'fuelDashboard' : 'dash'),
-                    onTap: () =>
-                        onGo(space == AppSpace.fuel ? 'fuelDashboard' : 'dash'),
+                    on: page == 'dash',
+                    onTap: () => onGo('dash'),
                   ),
                   // قسمٌ بقائمةٍ واحدة يُعرض مسطّحًا: رأسُ قسمٍ يُطوى على كل
                   // ما في الشاشة ليس تصنيفًا، بل نقرةٌ تُدفع قبل كل شيء.
@@ -193,8 +192,8 @@ class _Sidebar extends StatelessWidget {
         _RailTile(
           icon: 'home',
           label: 'الرئيسية',
-          on: page == (space == AppSpace.fuel ? 'fuelDashboard' : 'dash'),
-          onTap: () => onGo(space == AppSpace.fuel ? 'fuelDashboard' : 'dash'),
+          on: page == 'dash',
+          onTap: () => onGo('dash'),
         ),
         Expanded(
           child: SingleChildScrollView(

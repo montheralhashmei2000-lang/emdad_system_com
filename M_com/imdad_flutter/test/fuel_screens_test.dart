@@ -19,6 +19,7 @@ import 'package:imdad/features/fuel/fuel_vehicles_screen.dart';
 import 'package:imdad/features/fuel/fuel_settings_screen.dart';
 import 'package:imdad/features/fuel/fuel_moves_screen.dart';
 import 'package:imdad/features/fuel/fuel_stocktake_screen.dart';
+import 'package:imdad/features/inventory/doc_kit/imd_sticky_page.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -320,5 +321,46 @@ void main() {
         .stock;
     expect(diesel.bookLiters, expected,
         reason: 'الرصيد الدفتري لم يُلتقط وقت الفتح');
+  });
+
+  group('أزرار ثابتة كشاشات الإمداد (ImdStickyPage)', () {
+    Finder inBar(String label) => find.descendant(
+        of: find.byType(ImdStickyActions), matching: find.text(label), skipOffstage: false);
+
+    testWidgets('الحركة: الحفظ وسند جديد في الشريط لا في العنوان', (tester) async {
+      await seed();
+      await show(tester, const FuelMovesScreen());
+      expect(tester.takeException(), isNull);
+      expect(find.byType(ImdStickyPage), findsOneWidget);
+      expect(inBar('حفظ الصرف'), findsWidgets);
+      expect(inBar('سند جديد'), findsWidgets);
+    });
+
+    testWidgets('التفريدة: الحفظ والطباعة في الشريط', (tester) async {
+      await seed();
+      await show(tester, const FuelAllocationsScreen());
+      expect(tester.takeException(), isNull);
+      expect(find.byType(ImdStickyPage), findsOneWidget);
+      expect(inBar('حفظ التفريدة'), findsWidgets);
+      expect(inBar('طباعة الخطة'), findsWidgets);
+    });
+
+    testWidgets('التقارير الست: شريط ثابت بالتحديث (والطباعة حيث وُجدت)', (tester) async {
+      await seed();
+      for (final (screen, printLabel) in const [
+        (FuelDailyReportScreen(), 'طباعة التقرير'),
+        (FuelOfficialReportScreen(), 'طباعة التقرير'),
+        (FuelConsumptionScreen(), 'طباعة التقرير'),
+        (FuelStocksReportScreen(), 'طباعة الكشف'),
+        (FuelLedgerScreen(), null),
+        (FuelPlanVsIssuedScreen(), null),
+      ]) {
+        await show(tester, screen);
+        expect(tester.takeException(), isNull, reason: '${screen.runtimeType}');
+        expect(find.byType(ImdStickyPage), findsOneWidget, reason: '${screen.runtimeType}');
+        expect(inBar('تحديث'), findsWidgets, reason: '${screen.runtimeType}');
+        if (printLabel != null) expect(inBar(printLabel), findsWidgets, reason: '${screen.runtimeType}');
+      }
+    });
   });
 }

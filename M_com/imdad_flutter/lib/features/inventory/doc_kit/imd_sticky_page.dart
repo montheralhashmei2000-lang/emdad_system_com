@@ -156,9 +156,12 @@ class _ImdStickyPageState extends State<ImdStickyPage> {
             Opacity(
                 opacity: _pinned ? 0 : 1,
                 child: KeyedSubtree(key: _inlineKey, child: widget.sticky)),
-            // Keep the last form fields scrollable above the floating action bar.
-            if (_pinned) SizedBox(height: _stickyHeight + 24),
             ...widget.after,
+            // Keep the last form fields scrollable above the floating action bar.
+            // At the very end, after [after]: between the bar and [after] it moved
+            // that content by the bar's height whenever the pin flipped, so a
+            // tab just scrolled into view slid off-screen.
+            if (_pinned) SizedBox(height: _stickyHeight + 24),
           ]),
         ),
         if (_pinned)

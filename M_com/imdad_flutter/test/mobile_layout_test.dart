@@ -204,8 +204,10 @@ void main() {
       await settle(tester);
       final nav = ImdNav.of(tester.element(find.byType(Scaffold).first));
 
+      // `fuelDashboard` اسمٌ بديل لـ`dash`: الرئيسية في قسم المحروقات هي لوحته.
       nav.go('fuelDashboard');
       await settle(tester);
+      expect(nav.current, 'dash');
       expect(find.byType(FuelDashboardScreen), findsOneWidget,
           reason: 'لوحة المحروقات لم تُبنَ — المسح يمرّ على فراغ');
 

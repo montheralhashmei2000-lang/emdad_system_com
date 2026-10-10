@@ -8,6 +8,7 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/fuel_repo.dart';
 import '../../domain/fuel.dart';
+import '../inventory/doc_kit/imd_sticky_page.dart';
 
 
 /// الاستحقاق مقابل الصرف — أين وقف كل وحدةٍ من حقّها.
@@ -58,7 +59,20 @@ class _FuelPlanVsIssuedScreenState extends State<FuelPlanVsIssuedScreen> {
     final drained = rows.where((r) => r.entitled > 0 && r.remaining <= 0).length;
     final held = rows.where((r) => !r.allocation.disbursable).length;
 
-    return ImdPage(children: [
+    // كشاشات الإمداد: أزرار التقرير في شريطٍ ملتصق بالأسفل، والنتائج تمرّ تحته.
+    return ImdStickyPage(
+      sticky: ImdStickyActions(children: [
+        ImdButton.outline(label: 'تحديث', icon: 'refresh', small: true, onPressed: _load),
+      ]),
+      after: [
+        const SizedBox(height: 14),
+      ImdPanel(
+        title: 'التفريدات',
+        icon: 'scale',
+        child: _table(rows),
+      ),
+      ],
+      children: [
       const ImdPageTitle(
         title: 'الاستحقاق مقابل الصرف',
         icon: 'scale',
@@ -95,17 +109,8 @@ class _FuelPlanVsIssuedScreenState extends State<FuelPlanVsIssuedScreen> {
           for (final t in FuelType.all) ImdTab(t, FuelType.label(t)),
         ],
       ),
-      const SizedBox(height: 14),
-      ImdPanel(
-        title: 'التفريدات',
-        icon: 'scale',
-        actions: [
-          ImdButton.outline(
-              label: 'تحديث', icon: 'refresh', small: true, onPressed: _load),
-        ],
-        child: _table(rows),
-      ),
-    ]);
+      ],
+    );
   }
 
   Widget _table(List<FuelAllocationRow> rows) {

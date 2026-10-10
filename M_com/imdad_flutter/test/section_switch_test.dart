@@ -11,6 +11,7 @@ import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/sync/auto_sync.dart';
 import 'package:imdad/domain/app_space.dart';
 import 'package:imdad/features/catalog/items_screen.dart';
+import 'package:imdad/features/fuel/fuel_dashboard_screen.dart';
 import 'package:imdad/features/home/home_shell.dart';
 import 'package:imdad/main.dart' show ImdTheme;
 import 'package:provider/provider.dart';
@@ -117,6 +118,24 @@ void main() {
     expect(shellColors(tester).accent, ImdColors.light.accent,
         reason: 'المحروقات يتبع لوحة الإمداد ما لم يُطلب تمييزه');
     expect(shellColors(tester).side, ImdColors.light.side);
+  });
+
+  testWidgets('لوحة المحروقات هي «الرئيسية»: لا تبويبة ولا عنوان كودي', (tester) async {
+    // `fuelDashboard` كانت تُفتح صفحةً مستقلة لا بند لها في القائمة، فيسقط
+    // عنوانها إلى معرّفها وتظهر تبويبةٌ باسم «fuelDashboard».
+    await enterShell(tester);
+    await switchSection(tester);
+    final nav = ImdNav.of(tester.element(find.byType(ImdPageTabs)));
+    nav.go('fuelDashboard');
+    await pump(tester);
+
+    expect(tester.takeException(), isNull);
+    expect(nav.current, 'dash');
+    expect(find.byType(FuelDashboardScreen), findsOneWidget);
+    expect(find.text('fuelDashboard'), findsNothing);
+    final tabs = tester.widgetList<ImdPageTabs>(find.byType(ImdPageTabs)).expand((t) => t.pages).map((p) => p.id);
+    expect(tabs, isNot(contains('fuelDashboard')));
+    expect(tabs, isNot(contains('dash')));
   });
 
   testWidgets('بتمييز القسم من الإعدادات: المحروقات بلوحته البرتقالية', (tester) async {

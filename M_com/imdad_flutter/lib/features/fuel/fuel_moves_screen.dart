@@ -114,7 +114,7 @@ class _FuelMovesScreenState extends State<FuelMovesScreen>
     }
     final can = Perm.of(context).writable('fuelMoves');
 
-    return ImdPage(children: [
+    final head = <Widget>[
       ImdPageTitle(
         title: switch (_tab) {
           'issue' => 'صرف محروقات',
@@ -137,7 +137,6 @@ class _FuelMovesScreenState extends State<FuelMovesScreen>
           _ => 'أرصدة بداية الفترة لكل مستودع وصنف — تدخل في حساب الجرد',
         },
         actions: [
-          ImdButton.outline(label: 'سند جديد', icon: 'plus-square', small: true, onPressed: _openNewTab),
           if (!widget.standalone)
             ImdItabs(
               value: _tab,
@@ -154,19 +153,6 @@ class _FuelMovesScreenState extends State<FuelMovesScreen>
               ],
             ),
         ],
-        trailing: can
-            ? ImdButton(
-                label: switch (_tab) {
-                  'issue' => 'حفظ الصرف',
-                  'supply' => 'حفظ التوريد',
-                  'transfer' => 'حفظ التحويل',
-                  _ => 'حفظ الرصيد',
-                },
-                icon: 'check',
-                busy: _busy,
-                onPressed: _submit,
-              )
-            : null,
       ),
       if (_suspended.isNotEmpty)
         ImdDocTabsBar<Map<String, dynamic>>(
@@ -177,19 +163,45 @@ class _FuelMovesScreenState extends State<FuelMovesScreen>
         ),
       const SizedBox(height: 4),
       if (_savedRef.isNotEmpty) _savedBanner(),
-      if (can)
+    ];
+    final log = switch (_tab) {
+      'issue' => _issueLog(),
+      'supply' => _supplyLog(),
+      'transfer' => _transferLog(),
+      _ => _openingLog(),
+    };
+    // بلا صلاحية كتابة لا نموذج ولا شريط إجراءات: السجل وحده.
+    if (!can) return ImdPage(children: [...head, ...log]);
+
+    // كسندات الإمداد: النموذج يمرّ وشريط الحفظ/الطباعة/سند جديد ملتصق بالأسفل،
+    // والسجل بعده يمرّ تحته.
+    return ImdStickyPage(
+      sticky: ImdStickyActions(children: [
+        ImdButton.outline(label: 'سند جديد', icon: 'plus-square', small: true, onPressed: _busy ? null : _openNewTab),
+        if (_savedRef.isNotEmpty && _tab != 'opening')
+          ImdButton.outline(label: 'طباعة السند', icon: 'printer', small: true, onPressed: _busy ? null : _printSaved),
+        ImdButton(
+          label: switch (_tab) {
+            'issue' => 'حفظ الصرف',
+            'supply' => 'حفظ التوريد',
+            'transfer' => 'حفظ التحويل',
+            _ => 'حفظ الرصيد',
+          },
+          icon: 'check',
+          busy: _busy,
+          onPressed: _submit,
+        ),
+      ]),
+      after: [const SizedBox(height: 14), ...log],
+      children: [
+        ...head,
         ...switch (_tab) {
           'issue' => _issueForm(),
           'supply' => _supplyForm(),
           'transfer' => _transferForm(),
           _ => _openingForm(),
         },
-      ...switch (_tab) {
-        'issue' => _issueLog(),
-        'supply' => _supplyLog(),
-        'transfer' => _transferLog(),
-        _ => _openingLog(),
-      },
-    ]);
+      ],
+    );
   }
 }

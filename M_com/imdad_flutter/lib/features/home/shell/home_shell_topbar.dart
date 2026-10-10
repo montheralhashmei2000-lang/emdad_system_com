@@ -185,7 +185,7 @@ class _DesktopBar extends StatelessWidget {
                 child: ImdPageTabs(
                   embedded: true,
                   // الرئيسية تُفتح من الشريط الجانبي ولا تحتاج تبويبة.
-                  pages: [for (final p in pages) if (p.id != 'dash') p],
+                  pages: [for (final p in pages) if (p.id != 'dash' && p.id != 'fuelDashboard') p],
                   activeId: activeId,
                   onSelect: onSelect,
                   onClose: onClose,

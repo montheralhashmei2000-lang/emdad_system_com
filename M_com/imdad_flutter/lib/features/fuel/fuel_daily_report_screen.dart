@@ -13,6 +13,7 @@ import '../../domain/fuel.dart';
 import '../../domain/fuel_daily_report.dart';
 import '../../domain/fuel_report.dart';
 import 'fuel_report_docs.dart';
+import '../inventory/doc_kit/imd_sticky_page.dart';
 
 /// تقرير الحركة اليومية للمحروقات — الدفتر اليومي بجميع معسكراته.
 ///
@@ -172,14 +173,45 @@ class _FuelDailyReportScreenState extends State<FuelDailyReportScreen> {
     }
     final r = _report;
 
-    return ImdPage(children: [
-      ImdPageTitle(
+    // كشاشات الإمداد: أزرار التقرير في شريطٍ ملتصق بالأسفل، والنتائج تمرّ تحته.
+    return ImdStickyPage(
+      sticky: ImdStickyActions(children: [
+        ImdButton.outline(label: 'تحديث', icon: 'refresh', small: true, onPressed: _load),
+        ImdButton(label: 'طباعة التقرير', icon: 'printer', onPressed: _print),
+      ]),
+      after: [
+        const SizedBox(height: 14),
+      ImdKpis(children: [
+        ImdKpi(
+          label: 'رصيد أول المدى',
+          value: '${nf(_openingTotal(r))} ${Fuel.unit}',
+          extra: const ImdChip('مُرحَّل', tone: ImdTone.off),
+        ),
+        ImdKpi(label: 'الوارد', value: nf(r.totalOf((b) => b.incoming))),
+        ImdKpi(label: 'المنصرف', value: nf(r.totalOf((b) => b.issued))),
+        ImdKpi(
+          label: 'المحوَّل',
+          value: nf(r.totalOf((b) => b.transferOut)),
+          extra: r.totalOf((b) => b.transferOut) == 0
+              ? null
+              : const ImdChip('بين المعسكرات', tone: ImdTone.info),
+        ),
+        ImdKpi(
+            label: 'رصيد آخر المدى',
+            value: '${nf(_closingTotal(r))} ${Fuel.unit}'),
+      ]),
+      _summary(r),
+      if (r.isEmpty)
+        const ImdEmptyBox('لا حركة في هذا المدى')
+      else
+        for (final day in r.days) ..._day(r, day),
+      ],
+      children: [
+      const ImdPageTitle(
         title: 'تقرير الحركة اليومية للمحروقات',
         icon: 'calendar',
         subtitle: 'ملخّصٌ أولًا، ثم حركة كل معسكر: الوارد فالمنصرف فالتحويل — '
             'والرصيد ينتقل من يومٍ إلى تاليه',
-        trailing: ImdButton(
-            label: 'طباعة التقرير', icon: 'printer', onPressed: _print),
       ),
       ImdICard(
         title: 'نطاق التقرير',
@@ -234,31 +266,8 @@ class _FuelDailyReportScreenState extends State<FuelDailyReportScreen> {
           ),
         ]),
       ),
-      ImdKpis(children: [
-        ImdKpi(
-          label: 'رصيد أول المدى',
-          value: '${nf(_openingTotal(r))} ${Fuel.unit}',
-          extra: const ImdChip('مُرحَّل', tone: ImdTone.off),
-        ),
-        ImdKpi(label: 'الوارد', value: nf(r.totalOf((b) => b.incoming))),
-        ImdKpi(label: 'المنصرف', value: nf(r.totalOf((b) => b.issued))),
-        ImdKpi(
-          label: 'المحوَّل',
-          value: nf(r.totalOf((b) => b.transferOut)),
-          extra: r.totalOf((b) => b.transferOut) == 0
-              ? null
-              : const ImdChip('بين المعسكرات', tone: ImdTone.info),
-        ),
-        ImdKpi(
-            label: 'رصيد آخر المدى',
-            value: '${nf(_closingTotal(r))} ${Fuel.unit}'),
-      ]),
-      _summary(r),
-      if (r.isEmpty)
-        const ImdEmptyBox('لا حركة في هذا المدى')
-      else
-        for (final day in r.days) ..._day(r, day),
-    ]);
+      ],
+    );
   }
 
   /// أرصدة أول يومٍ وآخره — لا مجموع الأعمدة كلها، فذاك يجمع اليوم بتاليه.

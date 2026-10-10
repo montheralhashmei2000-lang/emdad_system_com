@@ -15,6 +15,7 @@ import '../../data/repos/settings_repo.dart';
 import '../../domain/fuel.dart';
 import 'fuel_print.dart';
 import '../../domain/print_forms.dart';
+import '../inventory/doc_kit/imd_sticky_page.dart';
 
 /// تقرير استهلاك المحروقات — من يشرب، وكم، وبأي نسبة.
 ///
@@ -181,7 +182,40 @@ class _FuelConsumptionScreenState extends State<FuelConsumptionScreen> {
     final rows = FuelConsumption.group(moves, _groupBy);
     final total = FuelConsumption.total(moves);
 
-    return ImdPage(children: [
+    // كشاشات الإمداد: أزرار التقرير في شريطٍ ملتصق بالأسفل، والنتائج تمرّ تحته.
+    return ImdStickyPage(
+      sticky: ImdStickyActions(children: [
+        ImdButton.outline(label: 'تحديث', icon: 'refresh', small: true, onPressed: _load),
+        ImdButton(label: 'طباعة التقرير', icon: 'printer', onPressed: _print),
+      ]),
+      after: [
+        const SizedBox(height: 14),
+      ImdItabs(
+        value: _groupBy,
+        onChanged: (v) => setState(() => _groupBy = v),
+        tabs: [
+          for (final g in FuelGroupBy.all) ImdTab(g, FuelGroupBy.label(g)),
+        ],
+      ),
+      ImdPanel(
+        title: 'الاستهلاك حسب ${FuelGroupBy.label(_groupBy)}',
+        icon: 'chart',
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (rows.isNotEmpty) ...[
+            _chart(rows),
+            const SizedBox(height: 16),
+          ],
+          _table(rows, total),
+        ]),
+      ),
+      ImdPanel(
+        title: 'حركات الصرف',
+        icon: 'list',
+        child: _moveTable(),
+      ),
+      ],
+      children: [
       const ImdPageTitle(
         title: 'تقرير الاستهلاك',
         icon: 'trending',
@@ -254,49 +288,10 @@ class _FuelConsumptionScreenState extends State<FuelConsumptionScreen> {
             ),
             size: 11,
           ),
-          ImdLabeled(
-            ' ',
-            Wrap(spacing: 10, runSpacing: 8, children: [
-              ImdButton.outline(
-                  label: 'تحديث',
-                  icon: 'refresh',
-                  small: true,
-                  onPressed: _load),
-              ImdButton.outline(
-                  label: 'طباعة التقرير',
-                  icon: 'printer',
-                  small: true,
-                  onPressed: _print),
-            ]),
-            size: 11,
-          ),
         ]),
       ),
-      ImdItabs(
-        value: _groupBy,
-        onChanged: (v) => setState(() => _groupBy = v),
-        tabs: [
-          for (final g in FuelGroupBy.all) ImdTab(g, FuelGroupBy.label(g)),
-        ],
-      ),
-      ImdPanel(
-        title: 'الاستهلاك حسب ${FuelGroupBy.label(_groupBy)}',
-        icon: 'chart',
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (rows.isNotEmpty) ...[
-            _chart(rows),
-            const SizedBox(height: 16),
-          ],
-          _table(rows, total),
-        ]),
-      ),
-      ImdPanel(
-        title: 'حركات الصرف',
-        icon: 'list',
-        child: _moveTable(),
-      ),
-    ]);
+      ],
+    );
   }
 
   /// أكبر ثمانية بنودٍ رسمًا: عشرون عمودًا متلاصقة لا تُقرأ، والجدول تحتها

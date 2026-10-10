@@ -9,6 +9,7 @@ import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/fuel_repo.dart';
 import '../../domain/fuel.dart';
+import '../inventory/doc_kit/imd_sticky_page.dart';
 
 export 'fuel_stocks_report_screen.dart';
 export 'fuel_plan_vs_issued_screen.dart';
@@ -231,7 +232,36 @@ class _FuelLedgerScreenState extends State<FuelLedgerScreen> {
     final totalOut = moves.fold<double>(0, (t, m) => t + m.outQty);
     final closing = Fuel.round(opening + totalIn - totalOut);
 
-    return ImdPage(children: [
+    // كشاشات الإمداد: أزرار التقرير في شريطٍ ملتصق بالأسفل، والنتائج تمرّ تحته.
+    return ImdStickyPage(
+      sticky: ImdStickyActions(children: [
+        ImdButton.outline(label: 'تحديث', icon: 'refresh', small: true, onPressed: _load),
+      ]),
+      after: [
+        const SizedBox(height: 14),
+      ImdKpis(children: [
+        ImdKpi(
+          label: 'رصيد ما قبل المدى',
+          value: '${nf(opening)} ${Fuel.unit}',
+          extra: const ImdChip('مُرحَّل', tone: ImdTone.off),
+        ),
+        ImdKpi(label: 'الوارد في المدى', value: nf(totalIn)),
+        ImdKpi(label: 'الصادر في المدى', value: nf(totalOut)),
+        ImdKpi(
+          label: 'الرصيد في آخر المدى',
+          value: '${nf(closing)} ${Fuel.unit}',
+          extra: closing < 0
+              ? const ImdChip('رصيد سالب', tone: ImdTone.err)
+              : null,
+        ),
+      ]),
+      ImdPanel(
+        title: 'الحركة — $_warehouse · ${FuelType.label(_fuelType)}',
+        icon: 'list',
+        child: _table(moves, opening, closing),
+      ),
+      ],
+      children: [
       const ImdPageTitle(
         title: 'كشف حركة المستودع',
         icon: 'list',
@@ -274,28 +304,8 @@ class _FuelLedgerScreenState extends State<FuelLedgerScreen> {
           ),
         ]),
       ),
-      ImdKpis(children: [
-        ImdKpi(
-          label: 'رصيد ما قبل المدى',
-          value: '${nf(opening)} ${Fuel.unit}',
-          extra: const ImdChip('مُرحَّل', tone: ImdTone.off),
-        ),
-        ImdKpi(label: 'الوارد في المدى', value: nf(totalIn)),
-        ImdKpi(label: 'الصادر في المدى', value: nf(totalOut)),
-        ImdKpi(
-          label: 'الرصيد في آخر المدى',
-          value: '${nf(closing)} ${Fuel.unit}',
-          extra: closing < 0
-              ? const ImdChip('رصيد سالب', tone: ImdTone.err)
-              : null,
-        ),
-      ]),
-      ImdPanel(
-        title: 'الحركة — $_warehouse · ${FuelType.label(_fuelType)}',
-        icon: 'list',
-        child: _table(moves, opening, closing),
-      ),
-    ]);
+      ],
+    );
   }
 
   Widget _table(List<_Move> moves, double opening, double closing) {

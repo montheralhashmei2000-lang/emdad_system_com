@@ -48,7 +48,6 @@ class _BottomNav extends StatelessWidget {
       for (final id in ids)
         if (_itemOf(id) != null) _itemOf(id)!,
     ];
-    final home = space == AppSpace.fuel ? 'fuelDashboard' : 'dash';
 
     return Container(
       decoration: BoxDecoration(
@@ -63,8 +62,8 @@ class _BottomNav extends StatelessWidget {
             _BottomTile(
               icon: 'home',
               label: 'الرئيسية',
-              on: page == 'dash' || page == home,
-              onTap: () => onGo(home),
+              on: page == 'dash',
+              onTap: () => onGo('dash'),
             ),
             for (final i in items)
               _BottomTile(

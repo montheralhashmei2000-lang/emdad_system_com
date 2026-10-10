@@ -15,6 +15,7 @@ import 'fuel_plan_row.dart';
 import 'fuel_report_docs.dart';
 import '../../data/migration/excel_templates/excel_templates.dart' show TemplateKind;
 import '../excel_templates/excel_templates_dialog.dart';
+import '../inventory/doc_kit/imd_sticky_page.dart';
 
 /// تفريدة المحروقات: خطة توزيع الاستحقاق الأسبوعي والشهري لكل وحدة.
 ///
@@ -279,7 +280,7 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
     }
     final can = Perm.of(context).writable('fuelAllocations');
 
-    return ImdPage(children: [
+    final head = <Widget>[
       ImdPageTitle(
         title: 'تفريدة المحروقات',
         icon: 'clipboard',
@@ -293,8 +294,11 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
             onImported: _load,
           ),
         ],
-        trailing: ImdButton.outline(
-            label: 'طباعة الخطة', icon: 'printer', onPressed: _printPlan),
+        // مع النموذج تنتقل الطباعة إلى شريط الإجراءات الملتصق.
+        trailing: can
+            ? null
+            : ImdButton.outline(
+                label: 'طباعة الخطة', icon: 'printer', onPressed: _printPlan),
       ),
       ImdPillTabs<String>(
         value: _filter,
@@ -305,12 +309,8 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
         ],
       ),
       const SizedBox(height: 14),
-      if (can)
-        ImdPanel(
-          title: _editId == null ? 'تفريدة جديدة' : 'تعديل التفريدة',
-          icon: _editId == null ? 'plus-square' : 'edit',
-          child: _form(),
-        ),
+    ];
+    final tables = <Widget>[
       if (_rows.isEmpty)
         const ImdEmptyBox(
             'لا توجد تفريدة — أنشئ أول تفريدة لتحديد استحقاقات الوحدات')
@@ -324,7 +324,32 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
         ImdNote('**قواعد الصرف**\n\n${rules.map((r) => '• $r').join('\n')}'),
         const SizedBox(height: 20),
       ],
-    ]);
+    ];
+    if (!can) return ImdPage(children: [...head, ...tables]);
+
+    // كسندات الإمداد: الحفظ والطباعة في شريطٍ ملتصق بالأسفل، والجداول تمرّ تحته.
+    return ImdStickyPage(
+      sticky: ImdStickyActions(children: [
+        ImdButton(
+          label: _editId == null ? 'حفظ التفريدة' : 'حفظ التعديل',
+          icon: 'check',
+          busy: _busy,
+          onPressed: _save,
+        ),
+        if (_editId != null)
+          ImdButton.outline(label: 'إلغاء التعديل', icon: 'x', small: true, onPressed: _reset),
+        ImdButton.outline(label: 'طباعة الخطة', icon: 'printer', small: true, onPressed: _printPlan),
+      ]),
+      after: [const SizedBox(height: 14), ...tables],
+      children: [
+        ...head,
+        ImdPanel(
+          title: _editId == null ? 'تفريدة جديدة' : 'تعديل التفريدة',
+          icon: _editId == null ? 'plus-square' : 'edit',
+          child: _form(),
+        ),
+      ],
+    );
   }
 
   Widget _form() => Column(
@@ -408,17 +433,6 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
               'يأذن القائد. الإيقاف عن الصرف غير إيقاف التفريدة.',
             ),
           ],
-          const SizedBox(height: 12),
-          Wrap(spacing: 10, runSpacing: 10, children: [
-            ImdButton(
-              label: _editId == null ? 'حفظ التفريدة' : 'حفظ التعديل',
-              icon: 'check',
-              busy: _busy,
-              onPressed: _save,
-            ),
-            if (_editId != null)
-              ImdButton.outline(label: 'إلغاء', icon: 'x', onPressed: _reset),
-          ]),
         ],
       );
 

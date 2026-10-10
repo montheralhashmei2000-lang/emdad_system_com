@@ -10,6 +10,7 @@ import '../../data/db/app_database.dart';
 import '../../data/repos/fuel_repo.dart';
 import '../../domain/fuel.dart';
 import 'fuel_print.dart';
+import '../inventory/doc_kit/imd_sticky_page.dart';
 
 /// أرصدة المستودعات — مكوّنات الرصيد لا الرصيد وحده.
 ///
@@ -58,50 +59,24 @@ class _FuelStocksReportScreenState extends State<FuelStocksReportScreen> {
     double sum(double Function(FuelStock) of) =>
         _stocks.fold<double>(0, (t, s) => t + of(s));
 
-    return ImdPage(children: [
-      ImdPageTitle(
-        title: 'أرصدة المستودعات',
-        icon: 'package',
-        subtitle: 'الافتتاحي + التوريد + المحوَّل إليه − المحوَّل منه − '
-            'المصروف ± فرق الجرد = الرصيد الحالي',
-        trailing: ImdButton.outline(
+    // كشاشات الإمداد: أزرار التقرير في شريطٍ ملتصق بالأسفل، والنتائج تمرّ تحته.
+    return ImdStickyPage(
+      sticky: ImdStickyActions(children: [
+        ImdButton.outline(label: 'تحديث', icon: 'refresh', small: true, onPressed: _load),
+        ImdButton(
           label: 'طباعة الكشف',
           icon: 'printer',
           onPressed: () {
-                if (!Perm.of(context).guard(context, 'fuelReports', 'print')) return;
-                FuelPrint.stocksReport(_db, _stocks);
-              },
-        ),
-      ),
-      ImdKpis(children: [
-        ImdKpi(
-            label: 'الرصيد الكلي',
-            value: '${nf(sum((s) => s.stock))} ${Fuel.unit}'),
-        ImdKpi(
-            label: 'بترول',
-            value: nf(_stocks
-                .where((s) => s.fuelType == FuelType.petrol)
-                .fold<double>(0, (t, s) => t + s.stock))),
-        ImdKpi(
-            label: 'ديزل',
-            value: nf(_stocks
-                .where((s) => s.fuelType == FuelType.diesel)
-                .fold<double>(0, (t, s) => t + s.stock))),
-        ImdKpi(
-          label: 'خانات فارغة',
-          value: nf(_stocks.where((s) => s.empty).length),
-          extra: _stocks.any((s) => s.empty)
-              ? const ImdChip('لا يُصرف منها', tone: ImdTone.err)
-              : null,
+            if (!Perm.of(context).guard(context, 'fuelReports', 'print')) return;
+            FuelPrint.stocksReport(_db, _stocks);
+          },
         ),
       ]),
+      after: [
+        const SizedBox(height: 14),
       ImdPanel(
         title: 'مكوّنات الرصيد — محسوبة من السندات',
         icon: 'package',
-        actions: [
-          ImdButton.outline(
-              label: 'تحديث', icon: 'refresh', small: true, onPressed: _load),
-        ],
         child: ImdTable(
           empty: 'لا مستودعات محروقات بعد',
           minWidth: 980,
@@ -160,6 +135,37 @@ class _FuelStocksReportScreenState extends State<FuelStocksReportScreen> {
           ],
         ),
       ),
-    ]);
+      ],
+      children: [
+      const ImdPageTitle(
+        title: 'أرصدة المستودعات',
+        icon: 'package',
+        subtitle: 'الافتتاحي + التوريد + المحوَّل إليه − المحوَّل منه − '
+            'المصروف ± فرق الجرد = الرصيد الحالي',
+      ),
+      ImdKpis(children: [
+        ImdKpi(
+            label: 'الرصيد الكلي',
+            value: '${nf(sum((s) => s.stock))} ${Fuel.unit}'),
+        ImdKpi(
+            label: 'بترول',
+            value: nf(_stocks
+                .where((s) => s.fuelType == FuelType.petrol)
+                .fold<double>(0, (t, s) => t + s.stock))),
+        ImdKpi(
+            label: 'ديزل',
+            value: nf(_stocks
+                .where((s) => s.fuelType == FuelType.diesel)
+                .fold<double>(0, (t, s) => t + s.stock))),
+        ImdKpi(
+          label: 'خانات فارغة',
+          value: nf(_stocks.where((s) => s.empty).length),
+          extra: _stocks.any((s) => s.empty)
+              ? const ImdChip('لا يُصرف منها', tone: ImdTone.err)
+              : null,
+        ),
+      ]),
+      ],
+    );
   }
 }
