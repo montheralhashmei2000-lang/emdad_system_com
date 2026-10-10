@@ -258,7 +258,7 @@ class _WarehouseDashboardViewState extends State<WarehouseDashboardView> {
     final ok = _rows.where((r) => r.status == LimitStatus.ok).length;
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      ImdKpis(children: [
+      ImdKpis(large: true, children: [
         ImdKpi(label: 'أصناف لها حدود', value: nf(_rows.length)),
         ImdKpi(
           label: 'تحت الأدنى',

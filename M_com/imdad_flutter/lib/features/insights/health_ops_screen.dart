@@ -191,7 +191,7 @@ class _HealthOpsScreenState extends State<HealthOpsScreen> {
         subtitle: 'شاشة موحدة لقراءة صحة المنظومة: الجاهزية، الضغط، عناصر الخطر، '
             'والانحرافات التشغيلية قبل أن تتحول إلى أزمة.',
       ),
-      ImdKpis(children: [
+      ImdKpis(large: true, children: [
         ImdKpi(label: 'مؤشر الصحة العام', value: '${nf(_score)}%', color: c.accent),
         ImdKpi(
           label: 'ضغط التشغيل',

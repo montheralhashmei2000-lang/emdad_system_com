@@ -557,7 +557,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               'openStk': ImdKpi(label: 'جلسات جرد مفتوحة', value: v((d) => d.openStk), color: c.accent),
             };
             final order = _kpiIds.isEmpty ? _kpiCatalog.map((k) => k.$1).toList() : _kpiIds;
-            return ImdKpis(children: [
+            return ImdKpis(large: true, children: [
               for (final id in order)
                 if (byId[id] != null) byId[id]!,
             ]);

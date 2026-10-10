@@ -7,6 +7,7 @@ import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/security/perm.dart';
+import '../../core/ui/imd_context_menu.dart';
 import '../../core/ui/imd_drop_zone.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
@@ -23,7 +24,6 @@ import '../../domain/access_control.dart';
 import 'archive_auto_settings.dart';
 import 'electronic_archive/archive_image.dart';
 
-part 'electronic_archive/archive_card.dart';
 part 'electronic_archive/archive_view_body.dart';
 part 'electronic_archive/archive_upload_sheet.dart';
 part 'electronic_archive/archive_meta_form.dart';
@@ -38,9 +38,11 @@ part 'electronic_archive/archive_meta_form.dart';
 /// «الإعدادات ← الأرشفة التلقائية»، ومن تُفعَّل أُرشفت نسختها المطبوعة
 /// بشارة «تلقائي» ونوع عمليتها، وتُرشَّح هنا مثل سواها.
 ///
-/// **بنية الشاشة**: مؤشراتٌ أعلى، لوحة مرشّحات، ثم العرض بوجهين — جدولٌ
-/// كثيف على سطح المكتب وبطاقاتٌ مصوّرة على الجوال (وبنقرتك). الملفات تُعاين
-/// داخل التطبيق (صورٌ وPDF) وتُنزَّل نسخةً للعمل عليها خارجًا.
+/// **بنية الشاشة**: شريط مؤشراتٍ رفيع، لوحة مرشّحات، ثم جدولٌ واحد مضغوط بصفوفٍ
+/// من سطرٍ واحد (بحثٌ وتصفيةٌ وتجميعٌ من رأسه)، يصير بطاقاتٍ نصيةً على الجوال.
+/// كان للعرض وجهٌ ثانٍ «بطاقات» بمعاينةٍ مصوّرة — البيانات والإجراءات نفسها
+/// بصفوفٍ أطول — فحُذف. الملفات تُعاين داخل التطبيق (صورٌ وPDF) وتُنزَّل نسخةً
+/// للعمل عليها خارجًا.
 ///
 /// الصلاحيات صفحة `archive`: view / create / edit / delete / print.
 class ElectronicArchiveScreen extends StatefulWidget {
@@ -50,9 +52,6 @@ class ElectronicArchiveScreen extends StatefulWidget {
   State<ElectronicArchiveScreen> createState() => _ElectronicArchiveScreenState();
 }
 
-/// وجه العرض: جدول أو بطاقات.
-enum _ViewMode { table, cards }
-
 class _ElectronicArchiveScreenState extends State<ElectronicArchiveScreen> {
   late final AppDatabase _db = context.read<AppDatabase>();
   late final ArchiveRepo _repo = ArchiveRepo(_db);
@@ -60,7 +59,6 @@ class _ElectronicArchiveScreenState extends State<ElectronicArchiveScreen> {
 
   final _q = TextEditingController();
 
-  _ViewMode _view = _ViewMode.table;
   String _category = '';
   String _warehouse = '';
   String _tag = '';
@@ -193,16 +191,6 @@ class _ElectronicArchiveScreenState extends State<ElectronicArchiveScreen> {
   Widget _chip(ArchiveFile f) {
     final (icon, tone) = _typeView(f);
     return ImdChip(f.category, tone: tone, icon: icon, onTap: () => setState(() => _category = f.category));
-  }
-
-  /// شارة المصدر ونوع العملية — «تلقائي» تصنعها الطباعة، ويدويٌّ ما رفعه
-  /// المستخدم بنفسه من هذه الشاشة.
-  List<Widget> _sourceChips(ArchiveFile f) {
-    if (f.source != 'auto') return const [];
-    return [
-      const ImdChip('تلقائي', tone: ImdTone.info, icon: 'zap'),
-      if (f.opType.isNotEmpty) ImdChip(archiveOpLabel(f.opType), tone: ImdTone.code),
-    ];
   }
 
   // ───────── إعدادات الأرشفة التلقائية ─────────
@@ -348,14 +336,6 @@ class _ElectronicArchiveScreenState extends State<ElectronicArchiveScreen> {
         subtitle: 'حفظ المستندات والملفات ببياناتها الوصفية — أرشفةٌ يدوية وتلقائية عند الطباعة، معاينةٌ ووسومٌ وبصمة نزاهة، وكل شيءٍ محليٌّ على جهازك',
         actions: [
           ImdIconButton(icon: 'zap', tooltip: 'إعدادات الأرشفة التلقائية', onPressed: _openSettings),
-          ImdSegmented<_ViewMode>(
-            tabs: const [
-              ImdTab(_ViewMode.table, 'جدول', icon: 'database'),
-              ImdTab(_ViewMode.cards, 'بطاقات', icon: 'square'),
-            ],
-            value: _view,
-            onChanged: (v) => setState(() => _view = v),
-          ),
           if (_canCreate)
             ImdButton(label: 'أرشفة ملفات', icon: 'upload', onPressed: _upload),
         ],
@@ -454,14 +434,9 @@ class _ElectronicArchiveScreenState extends State<ElectronicArchiveScreen> {
           message: 'لا ملفاتٍ تطابق المرشّحات الحالية — جرّب مسح المرشحات أو تغيير كلمات البحث.',
           action: ImdButton.outline(label: 'مسح المرشحات', icon: 'eraser', small: true, onPressed: _clearFilters),
         )
-      else if (_view == _ViewMode.cards)
-        ImdAutoGrid(
-          minItem: 250,
-          gap: 14,
-          bottom: 20,
-          children: [for (final f in rows) _ArchiveCard(f: f, state: this)],
-        )
       else
+        // جدولٌ مضغوط: صفٌّ من سطرٍ واحد (نحو ٣٦ بكسل)، و`values` تفتح البحث
+        // والتصفية والتجميع من رأس الجدول، و`cards` بطاقاتٌ نصية على الجوال.
         ImdTable(
           columns: const [
             ImdCol('العنوان', flex: 3),
@@ -472,13 +447,33 @@ class _ElectronicArchiveScreenState extends State<ElectronicArchiveScreen> {
             ImdCol('تاريخ المستند'),
             ImdCol('الحجم', numeric: true),
             ImdCol('المُنشئ'),
-            ImdCol(''),
+            // ثلاثة أزرار مضغوطة (عرض، تنزيل، ⋯) + حشوة الخلية: القياس الذاتي
+            // يقصر عنها ببضع بكسلات فيفيض الصف.
+            ImdCol('', width: 148),
           ],
           rows: [for (final f in rows) _row(f)],
+          values: [
+            for (final f in rows)
+              [
+                f.title,
+                f.category,
+                decodeTags(f.tags).join('، '),
+                f.docRef,
+                f.warehouse,
+                f.docDate,
+                f.sizeBytes,
+                f.createdBy,
+                null,
+              ],
+          ],
           pageSize: 50,
+          cards: true,
+          cellPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          cellFontSize: 12.5,
           empty: 'لا ملفات مطابقة',
           maxHeight: ImdSizes.tableMaxHeight(context),
           onRowTap: (i) => _openFile(rows[i]),
+          rowMenu: (i) => _moreMenu(rows[i]),
         ),
     ];
 
@@ -486,37 +481,81 @@ class _ElectronicArchiveScreenState extends State<ElectronicArchiveScreen> {
   }
 
   List<Widget> _row(ArchiveFile f) {
+    final c = context.imd;
     final (icon, tone) = _typeView(f);
-    final (_, fg) = ImdChip.colors(context.imd, tone);
+    final (_, fg) = ImdChip.colors(c, tone);
     final tags = decodeTags(f.tags);
+    final faint = TextStyle(color: c.faint);
+    Text one(String v, {FontWeight? weight}) =>
+        Text(v, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: weight));
     return [
-      // العنوان بأيقونة نوعه وشارة مصدره — أسرع من قراءة امتدادٍ في عمودٍ مستقل.
-      Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        ImdIcon(icon, size: 15, color: fg),
-        Flexible(child: Text(f.title, maxLines: 2, overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontWeight: FontWeight.w700, color: context.imd.text))),
-        ..._sourceChips(f),
-        if (f.pinned) ImdIcon('pin', size: 13, color: context.imd.accent),
+      // العنوان بأيقونة نوعه في سطرٍ واحد؛ المصدر التلقائي أيقونةٌ لا شارة.
+      Row(children: [
+        ImdIcon(icon, size: 14, color: fg),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(f.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontWeight: FontWeight.w700, color: c.text)),
+        ),
+        if (f.source == 'auto') ...[
+          const SizedBox(width: 4),
+          Tooltip(
+            message: f.opType.isEmpty ? 'أُرشف تلقائيًّا عند الطباعة' : 'تلقائي — ${archiveOpLabel(f.opType)}',
+            child: ImdIcon('zap', size: 12, color: c.info),
+          ),
+        ],
+        if (f.pinned) ...[const SizedBox(width: 4), ImdIcon('pin', size: 12, color: c.accent)],
       ]),
-      _chip(f),
-      Wrap(spacing: 4, runSpacing: 4, children: [
-        for (final t in tags.take(2)) ImdChip(t, tone: ImdTone.code),
-        if (tags.length > 2) ImdChip('+${nf(tags.length - 2)}', tone: ImdTone.code),
-        if (tags.isEmpty) Text('—', style: TextStyle(color: context.imd.faint)),
-      ]),
-      Text(f.docRef.isEmpty ? '—' : f.docRef, style: TextStyle(fontWeight: f.docRef.isEmpty ? FontWeight.w400 : FontWeight.w600)),
-      Text(f.warehouse.isEmpty ? '—' : f.warehouse),
+      // التصنيف شارةٌ بلون نوع الملف، ونقرُها يرشّح به.
+      f.category.isEmpty ? Text('—', style: faint) : _chip(f),
+      tags.isEmpty
+          ? Text('—', style: faint)
+          : Row(children: [
+              Flexible(child: ImdChip(tags.first, tone: ImdTone.code)),
+              if (tags.length > 1) ...[
+                const SizedBox(width: 4),
+                Text('+${nf(tags.length - 1)}', style: TextStyle(fontSize: 11.5, color: c.muted)),
+              ],
+            ]),
+      f.docRef.isEmpty ? Text('—', style: faint) : one(f.docRef, weight: FontWeight.w600),
+      f.warehouse.isEmpty ? Text('—', style: faint) : one(f.warehouse),
       Text(_day(f.docDate)),
       Text(_size(f.sizeBytes)),
-      Text(f.createdBy.isEmpty ? '—' : f.createdBy),
-      Wrap(spacing: 6, runSpacing: 6, children: [
-        ImdIconButton(icon: 'eye', tooltip: 'عرض', onPressed: () => _openFile(f)),
-        ImdIconButton(icon: 'download', tooltip: 'تنزيل نسخة', onPressed: () => _saveCopy(f)),
-        ImdIconButton(icon: f.pinned ? 'star' : 'pin', tooltip: f.pinned ? 'إلغاء التثبيت' : 'تثبيت', onPressed: () => _togglePin(f)),
-        if (_canEdit(f)) ImdIconButton(icon: 'edit', tooltip: 'تعديل البيانات', onPressed: () => _edit(f)),
-        if (_canDelete(f))
-          ImdIconButton(icon: 'trash', tooltip: 'حذف', kind: ImdBtnKind.danger, onPressed: () => _delete(f)),
+      f.createdBy.isEmpty ? Text('—', style: faint) : one(f.createdBy),
+      Row(mainAxisSize: MainAxisSize.min, children: [
+        ImdIconButton(icon: 'eye', tooltip: 'عرض', dense: true, onPressed: () => _openFile(f)),
+        const SizedBox(width: 4),
+        ImdIconButton(icon: 'download', tooltip: 'تنزيل نسخة', dense: true, onPressed: () => _saveCopy(f)),
+        const SizedBox(width: 4),
+        Builder(
+          builder: (ctx) => ImdIconButton(
+            icon: 'menu',
+            tooltip: 'إجراءات أخرى',
+            dense: true,
+            onPressed: () {
+              final box = ctx.findRenderObject() as RenderBox?;
+              if (box == null) return;
+              showImdContextMenu(ctx, box.localToGlobal(box.size.bottomLeft(Offset.zero)), _moreMenu(f));
+            },
+          ),
+        ),
       ]),
     ];
   }
+
+  /// ما لا يتّسع له الصف: التثبيت والتعديل والحذف — من زرّ «⋯» أو قائمة الصف
+  /// (نقرٌ يمين على سطح المكتب، ضغطٌ مطوّل على اللمس).
+  List<ImdMenuItem> _moreMenu(ArchiveFile f) => [
+        ImdMenuItem(label: 'عرض', icon: 'eye', onTap: () => _openFile(f)),
+        ImdMenuItem(label: 'تنزيل نسخة', icon: 'download', onTap: () => _saveCopy(f)),
+        ImdMenuItem(
+          label: f.pinned ? 'إلغاء التثبيت' : 'تثبيت',
+          icon: f.pinned ? 'star' : 'pin',
+          onTap: () => _togglePin(f),
+        ),
+        if (_canEdit(f)) ImdMenuItem(label: 'تعديل البيانات', icon: 'edit', onTap: () => _edit(f)),
+        if (_canDelete(f)) ImdMenuItem(label: 'حذف', icon: 'trash', danger: true, onTap: () => _delete(f)),
+      ];
 }

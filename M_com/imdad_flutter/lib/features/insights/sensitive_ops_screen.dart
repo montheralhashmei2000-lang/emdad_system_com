@@ -262,7 +262,7 @@ class _SensitiveOpsScreenState extends State<SensitiveOpsScreen> {
         subtitle: 'طبقة رقابية فوق التشغيل: أي تغيير كبير، أو قرار حساس، '
             'أو حدث يحتاج عينًا ثانية يجب أن يمر من هنا.',
       ),
-      ImdKpis(children: [
+      ImdKpis(large: true, children: [
         ImdKpi(label: 'إجمالي الطابور', value: nf(_queue.length)),
         ImdKpi(label: 'حرج غير مُراجع', value: nf(criticalOpen), color: c.danger),
         ImdKpi(label: 'حساس غير مُراجع', value: nf(sensitiveOpen)),

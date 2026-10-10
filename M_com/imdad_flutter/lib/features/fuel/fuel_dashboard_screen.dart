@@ -105,7 +105,7 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
         icon: 'zap',
         subtitle: 'شعبة الإمداد والتموين — بترول وديزل باللتر فقط',
       ),
-      ImdKpis(children: [
+      ImdKpis(large: true, children: [
         ImdKpi(label: 'إجمالي الرصيد', value: '${nf(_total())} ${Fuel.unit}'),
         ImdKpi(
             label: 'بترول',

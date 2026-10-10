@@ -304,7 +304,7 @@ class _ExecutiveCmdScreenState extends State<ExecutiveCmdScreen> {
         subtitle: 'شاشة المدير قبل بداية اليوم وأثناء الضغط: ما الذي يجب فعله الآن، '
             'وما الذي لو تُرك ساعات قليلة سيتحول إلى مشكلة حقيقية.',
       ),
-      ImdKpis(children: [
+      ImdKpis(large: true, children: [
         ImdKpi(
           label: 'درجة القيادة التنفيذية',
           value: '${nf(_execScore)}%',

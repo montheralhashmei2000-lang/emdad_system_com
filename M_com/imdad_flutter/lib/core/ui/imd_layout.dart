@@ -27,33 +27,83 @@ class ImdFit extends StatelessWidget {
       );
 }
 
-/// شبكة المؤشرات: auto-fit بحد أدنى 210، وأربعة أعمدة عند ≥1200،
-/// وعمودان بفجوة 8 على الجوال، وعمود واحد ≤420.
+/// المؤشرات.
+///
+/// **الافتراضي شريطٌ واحدٌ رفيع** (نحو ٤٠ بكسل): إطارٌ واحد وصفٌّ أفقيٌّ من
+/// «عنوان قيمة» بفواصل رأسية، يلتفّ على الشاشة الضيّقة. كانت كل شاشةٍ تبدأ
+/// بشبكة بطاقاتٍ كبيرة (رقمٌ بخط 28) تأكل نحو ٢٣٠ بكسل قبل جدولها، وأرقامها
+/// ملخّصٌ لا المحتوى.
+///
+/// [large] ⇒ الشبكة القديمة: auto-fit بحد أدنى 210، وأربعة أعمدة عند ≥1200،
+/// وعمودان بفجوة 8 على الجوال، وعمود واحد ≤420. للّوحات وحدها (الرئيسية،
+/// لوحة المحروقات، الرؤى، لوحة المستودع) حيث الأرقام هي المحتوى نفسه.
 class ImdKpis extends StatelessWidget {
-  const ImdKpis({super.key, required this.children});
+  const ImdKpis({super.key, required this.children, this.large = false});
   final List<Widget> children;
+
+  /// البطاقات الكبيرة (ومعها خط الاتجاه `spark`) بدل الشريط المضغوط.
+  final bool large;
 
   @override
   Widget build(BuildContext context) {
     final bp = ImdBp.of(context);
+    if (large) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 20),
+        child: LayoutBuilder(builder: (context, cons) {
+          final gap = bp.mobile ? 8.0 : 14.0;
+          int cols;
+          if (bp.tiny) {
+            cols = 1;
+          } else if (bp.mobile) {
+            cols = 2;
+          } else if (bp.wide) {
+            cols = 4;
+          } else {
+            cols = ((cons.maxWidth + gap) / (210 + gap)).floor().clamp(1, children.length);
+          }
+          return ImdGridRows(cols: cols, gap: gap, children: children);
+        }),
+      );
+    }
+    final c = context.imd;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
-      child: LayoutBuilder(builder: (context, cons) {
-        final gap = bp.mobile ? 8.0 : 14.0;
-        int cols;
-        if (bp.tiny) {
-          cols = 1;
-        } else if (bp.mobile) {
-          cols = 2;
-        } else if (bp.wide) {
-          cols = 4;
-        } else {
-          cols = ((cons.maxWidth + gap) / (210 + gap)).floor().clamp(1, children.length);
-        }
-        return ImdGridRows(cols: cols, gap: gap, children: children);
-      }),
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        decoration: BoxDecoration(
+          color: c.subtle,
+          border: Border.all(color: c.line),
+          borderRadius: BorderRadius.circular(ImdSizes.radius),
+        ),
+        child: _ImdKpiStrip(
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            runSpacing: 2,
+            children: [
+              for (var i = 0; i < children.length; i++) ...[
+                if (i > 0) Container(width: 1, height: 18, color: c.line),
+                children[i],
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
+}
+
+/// يُعلِم [ImdKpi] أنه داخل الشريط المضغوط. خارج [ImdKpis] (أو داخل
+/// `ImdKpis(large: true)`) تبقى البطاقة الكبيرة كما كانت.
+class _ImdKpiStrip extends InheritedWidget {
+  const _ImdKpiStrip({required super.child});
+
+  static bool of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_ImdKpiStrip>() != null;
+
+  @override
+  bool updateShouldNotify(_ImdKpiStrip oldWidget) => false;
 }
 
 /// بطاقة مؤشرٍ واحد: عنوانٌ ورقمٌ كبير، وإضافةٌ اختيارية تحتهما.
@@ -71,11 +121,37 @@ class ImdKpi extends StatelessWidget {
   final String? icon;
 
   /// سلسلة قيم (من الأقدم إلى الأحدث) تُرسم خطًّا صغيرًا أسفل القيمة — اتجاهٌ
-  /// بنظرة. لا تُرسم بأقل من نقطتين. بلا تمريرها لا يتغيّر شيء.
+  /// بنظرة. لا تُرسم بأقل من نقطتين. بلا تمريرها لا يتغيّر شيء. في البطاقة
+  /// الكبيرة وحدها: الشريط المضغوط سطرٌ واحد لا يتّسع لها.
   final List<double>? spark;
+
+  /// عنصر الشريط المضغوط: «أيقونة · عنوان **قيمة** [شارة]» في سطرٍ واحد.
+  Widget _compact(BuildContext context) {
+    final c = context.imd;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (icon != null) ...[
+          ImdIcon(icon!, size: 13, color: color ?? c.muted),
+          const SizedBox(width: 5),
+        ],
+        Flexible(
+          child: Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: c.muted)),
+        ),
+        const SizedBox(width: 6),
+        Text(value,
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: color ?? c.text, height: 1.2)),
+        if (extra != null) ...[const SizedBox(width: 6), extra!],
+      ]),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_ImdKpiStrip.of(context)) return _compact(context);
     final c = context.imd;
     final mobile = ImdBp.of(context).mobile;
     return Container(

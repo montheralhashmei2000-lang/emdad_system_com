@@ -292,7 +292,7 @@ class _ActivityIntelScreenState extends State<ActivityIntelScreen> {
         subtitle: 'شاشة تفهم سلوك التشغيل: مَن تحمّل فوق الطبيعي، أين الزحام، '
             'وما الأصناف التي بدأ نمطها يقلق، وهل هناك انحراف يجب إغلاقه مبكرًا.',
       ),
-      ImdKpis(children: [
+      ImdKpis(large: true, children: [
         ImdKpi(
           label: 'درجة الانضباط السلوكي',
           value: '${nf(_score)}%',
