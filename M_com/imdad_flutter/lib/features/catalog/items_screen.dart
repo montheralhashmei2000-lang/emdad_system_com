@@ -8,7 +8,6 @@ import '../../core/print/barcode_labels.dart';
 import '../../core/print/barcode128.dart';
 import '../../core/security/perm.dart';
 import '../../core/ui/imd_context_menu.dart';
-import '../../core/ui/imd_drop_zone.dart';
 import '../../core/ui/imd_files.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
@@ -154,15 +153,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // إفلات ملف Excel/CSV على الشاشة يستورده، لمن يملك صلاحية الكتابة وفي تبويب
-    // القائمة وحده (حيث زر «استيراد Excel»).
-    final canDrop = _tab == 'list' && _w(context);
-    return ImdDropZone(
-      enabled: canDrop,
-      extensions: const ['xlsx', 'xls', 'csv'],
-      hint: 'أفلت ملف Excel لاستيراد الأصناف',
-      onFile: (path) => _import(path: path),
-      child: ImdPage(
+    return ImdPage(
       children: [
         ImdPageTitle(
           title: 'إدارة الأصناف',
@@ -194,7 +185,6 @@ class _ItemsScreenState extends State<ItemsScreen> {
             _ => _bc(context),
           },
       ],
-      ),
     );
   }
 
@@ -241,8 +231,6 @@ class _ItemsScreenState extends State<ItemsScreen> {
         ImdTableToolbar(
           page: 'items',
           onExport: () => _exportList(rows, w),
-          onTemplate: _template,
-          onImport: _import,
         ),
         ImdTable(
           minWidth: 720,
@@ -362,93 +350,6 @@ class _ItemsScreenState extends State<ItemsScreen> {
       ],
     );
   }
-
-  /// `itemsTemplate()`
-  Future<void> _template() => ImdExcel.save(
-        context,
-        'أصناف-قالب',
-        const ['code', 'name', 'category', 'unit', 'min', 'qty'],
-        const [
-          ['', '', '', '', '', ''],
-        ],
-      );
-
-  /// `importItems(rows)` — يحدّث الصنف بنفس الكود أو يُنشئه.
-  Future<void> _import({String? path}) async {
-    if (!Perm.of(context).guard(context, 'items', 'import')) return;
-    final actor = Perm.of(context).email;
-    final rows = await ImdExcel.pickAndRead(context, path: path);
-    if (rows == null) return;
-    var ok = 0, skip = 0, qtyPending = 0;
-    // الرصيد لا يُحفظ على الصنف: يصير رصيدًا افتتاحيًا في مستودع، مصدر الأرصدة
-    // الوحيد. مع مستودع واحد يُعرف مكانه؛ ومع أكثر يُترك لشاشة الأرصدة الافتتاحية.
-    final whs = await _repo.warehouses();
-    final soleWh = whs.length == 1 ? whs.single.name : '';
-    for (final r in rows) {
-      final code = (r['code'] ?? '').trim();
-      final name = (r['name'] ?? '').trim();
-      if (code.isEmpty || name.isEmpty) {
-        skip++;
-        continue;
-      }
-      try {
-        final cat = (r['category'] ?? '').trim();
-        final unit = (r['unit'] ?? '').trim();
-        final qty = double.tryParse((r['qty'] ?? '').trim()) ?? 0;
-        final min = double.tryParse((r['min'] ?? '').trim()) ?? 0;
-        final existingItem = await _repo.itemByCode(code);
-        final catRow = _cats.where((x) => x.name == cat).firstOrNull;
-        if (existingItem != null) {
-          final it = existingItem;
-          await _repo.updateItemFromImport(
-            it.id,
-            name: name,
-            categoryName: cat,
-            categoryId: catRow?.id ?? it.categoryId,
-            baseUnit: unit,
-            firstUnitJson: (unit.isEmpty || _unitsRaw(it).isNotEmpty)
-                ? null
-                : '[{"name":${_jsonStr(unit)},"factor":1,"isBase":true}]',
-            minQty: min,
-          );
-        } else {
-          final id = await _repo.saveItem(
-            code: code,
-            name: name,
-            categoryId: catRow?.id ?? '',
-            categoryName: cat,
-            baseUnit: unit,
-            units: unit.isEmpty ? const [] : [ItemUnit(name: unit, factor: 1, isBase: true)],
-            minQty: min,
-          );
-          if (unit.isEmpty) {
-            await _repo.clearItemUnits(id);
-          }
-        }
-        if (qty != 0) {
-          if (soleWh.isEmpty) {
-            qtyPending++;
-          } else {
-            final item = (await _repo.itemByCode(code))!;
-            await _repo.setOpeningBalance(item, soleWh, qty, actor);
-          }
-        }
-        ok++;
-      } catch (_) {
-        skip++;
-        if (mounted) showImdToast(context, '✖ خطأ لصف $code');
-      }
-    }
-    if (!mounted) return;
-    showImdToast(
-      context,
-      '✔ استيراد الأصناف: $ok صنفًا${skip > 0 ? ' (تجاهل $skip)' : ''}'
-      '${qtyPending > 0 ? ' — لم تُسجَّل كميات $qtyPending صنفًا لتعدد المستودعات: أدخلها من «الأرصدة الافتتاحية»' : ''}',
-    );
-    await _fetch();
-  }
-
-  static String _jsonStr(String s) => '"${s.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"';
 
   // ───────────────────────── التصنيفات ─────────────────────────
   Widget _catsView(BuildContext context) {
