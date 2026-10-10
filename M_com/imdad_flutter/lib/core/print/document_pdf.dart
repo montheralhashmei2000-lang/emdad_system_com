@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -9,7 +10,11 @@ import 'package:provider/provider.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repos/archive_auto.dart';
 import '../../domain/print_layout.dart';
+import '../security/auth_service.dart';
+import '../security/perm.dart';
 import '../ui/imd_fonts.dart';
+import '../ui/imd_numbers.dart';
+import 'print_format.dart';
 import 'print_preview.dart';
 import '../../core/error_log.dart';
 
@@ -144,14 +149,51 @@ class DocumentPdf {
         PrintAlign.left => pw.TextAlign.left,
       };
 
+  /// يُستدعى برقم كل صفحةٍ تُرسم فيها خانات التوقيع — للاختبارات وحدها:
+  /// نصوص PDF العربية رموزُ خطٍّ لا تُبحث في البايتات.
+  @visibleForTesting
+  static void Function(int page)? debugOnSignatures;
+
+  /// يُستدعى حين يتعذّر التخطيط الجديد فيُعاد البناء بالتخطيط القديم — للاختبارات وحدها.
+  @visibleForTesting
+  static void Function()? debugOnFallback;
+
+  /// [printedBy] فارغ ⇒ مستخدم الجلسة الحالية (الاسم، وإلا اسم الدخول).
+  /// [printedAt] للاختبارات؛ الافتراضي لحظة البناء، وهي نفسها في كل صفحة.
   static Future<Uint8List> build({
     required PrintDoc doc,
     PrintLayout layout = PrintLayout.defaults,
     PdfPageFormat format = PdfPageFormat.a4,
+    String printedBy = '',
+    DateTime? printedAt,
   }) async {
+    // السياق يُقرأ قبل أي await.
+    final by = printedBy.isNotEmpty ? printedBy : _sessionUser();
+    final at = printedAt ?? DateTime.now();
     final theme = await pdfTheme(family: layout.fontFamily);
-    final pdf = pw.Document(theme: theme);
+    try {
+      return await _render(doc, layout, format, theme, at: at, by: by, perPage: true);
+    } on pw.TooManyPagesException catch (err, stack) {
+      // صفٌّ واحد أطول من مساحة الصفحة (خليةٌ بآلاف الأحرف) لا تقسمه مكتبة
+      // pdf، والتذييل الموقَّع وصفُّ العناوين المكرَّر يقتطعان من تلك المساحة.
+      // فبدل أن تفشل طباعةٌ كانت تنجح، يُعاد التخطيط القديم كاملًا: التواقيع
+      // في آخر المحتوى والعناوين في الصفحة الأولى — فلا يقلّ الحدّ عمّا كان.
+      ErrorLogger.log('print.signaturesFallback', err, stack);
+      debugOnFallback?.call();
+      return _render(doc, layout, format, theme, at: at, by: by, perPage: false);
+    }
+  }
 
+  static Future<Uint8List> _render(
+    PrintDoc doc,
+    PrintLayout layout,
+    PdfPageFormat format,
+    pw.ThemeData theme, {
+    required DateTime at,
+    required String by,
+    required bool perPage,
+  }) {
+    final pdf = pw.Document(theme: theme);
     pdf.addPage(
       pw.MultiPage(
         pageFormat: doc.landscape ? format.landscape : format,
@@ -160,24 +202,56 @@ class DocumentPdf {
         header: (context) => context.pageNumber == 1
             ? _header(doc, layout)
             : pw.SizedBox(height: 6),
-        footer: (context) => _footer(doc, layout, context),
+        // التوقيعات في التذييل لا في آخر المحتوى: كل ورقةٍ من تقريرٍ متعدد
+        // الصفحات تحمل خانات توقيعها، فلا تُستبدل ورقةٌ وسطى بغير الموقَّعة.
+        footer: (context) => _footer(doc, layout, context,
+            at: at, by: by, signatures: perPage),
         build: (context) => [
           if (doc.sections.isEmpty)
-            _table(doc, layout)
+            _table(doc, layout, repeatHeader: perPage)
           else
-            for (final sec in doc.sections) ..._section(sec, layout),
-          pw.SizedBox(height: 18),
-          _signatures(doc, layout),
+            for (final sec in doc.sections) ..._section(sec, layout, repeatHeader: perPage),
+          if (!perPage) ...[
+            pw.SizedBox(height: 18),
+            _signatures(doc, layout),
+          ],
         ],
       ),
     );
     return pdf.save();
   }
 
+  /// اسم مستخدم الجلسة للعرض من سياق التطبيق، أو فارغ بلا سياق (اختبار أو خلفية).
+  static String _sessionUser() {
+    try {
+      final ctx = imdNavigatorKey.currentContext;
+      if (ctx == null) return '';
+      return Perm(Provider.of<AuthService>(ctx, listen: false)).displayName;
+    } catch (_) {
+      // متوقع: لا مزوِّد مصادقة فوق السياق — يُطبع السطر بلا «طُبع بواسطة».
+      return '';
+    }
+  }
+
+  /// سطر التذييل الأخير في كل صفحة: تاريخ الطباعة · طُبع بواسطة · صفحة X من Y.
+  /// [by] فارغ ⇒ يُحذف مقطعه بدل «طُبع بواسطة:» بلا اسم.
+  @visibleForTesting
+  static String footerLine({required DateTime at, required String by, required int page, required int pages}) {
+    String d(String s) => ImdNumbers.toDigits(s, ImdNumbers.current.printDigits);
+    final iso = '${at.year}-${at.month.toString().padLeft(2, '0')}-${at.day.toString().padLeft(2, '0')}';
+    final time = d('${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}');
+    return [
+      'تاريخ الطباعة: ${printDate(iso)} $time',
+      if (by.trim().isNotEmpty) 'طُبع بواسطة: ${by.trim()}',
+      d('صفحة $page من $pages'),
+    ].join(' · ');
+  }
+
   /// طباعة مباشرة عبر حوار نظام التشغيل (ويندوز) أو الطابعة (أندرويد).
   static Future<void> printDoc({
     required PrintDoc doc,
     PrintLayout layout = PrintLayout.defaults,
+    String printedBy = '',
   }) async {
     // قاعدة البيانات تُحلّ من سياق التطبيق **قبل** أي await: السياق لا يُستعمل
     // بعد فجوة غير متزامنة. فشلُ الحلّ أو الأرشفة لا يمنع طباعةً تمّت.
@@ -189,7 +263,7 @@ class DocumentPdf {
       // متوقع: لا سياق تطبيق أو لا مزوِّد قاعدة بيانات (اختبار أو طباعة من خلفية): تُطبع الوثيقة بلا أرشفة.
     }
 
-    final bytes = await build(doc: doc, layout: layout);
+    final bytes = await build(doc: doc, layout: layout, printedBy: printedBy);
     await showPrintPreview(bytes, name: doc.title);
     // الأرشفة التلقائية للتقارير والمطبوعات — إن مُكِّنت من الإعدادات.
     if (archiveDb == null) return;
@@ -209,8 +283,9 @@ class DocumentPdf {
     required PrintDoc doc,
     PrintLayout layout = PrintLayout.defaults,
     String fileName = 'document.pdf',
+    String printedBy = '',
   }) async {
-    final bytes = await build(doc: doc, layout: layout);
+    final bytes = await build(doc: doc, layout: layout, printedBy: printedBy);
     await Printing.sharePdf(bytes: bytes, filename: fileName);
   }
 
@@ -353,7 +428,7 @@ class DocumentPdf {
 
   /// `pw.Table` لا تعرف اتجاه النص وترسم الأعمدة يسارًا ليمينًا دائمًا، فتُعكس
   /// الأعمدة (ومعها عروضها) ليبدأ العمود الأول من يمين الصفحة كما في المستند العربي.
-  static List<pw.Widget> _section(PrintSection sec, PrintLayout layout) => [
+  static List<pw.Widget> _section(PrintSection sec, PrintLayout layout, {bool repeatHeader = true}) => [
         if (sec.title.isNotEmpty) ...[
           pw.SizedBox(height: 10),
           pw.Text(sec.title,
@@ -380,6 +455,7 @@ class DocumentPdf {
             columnFlex: sec.columnFlex,
             layout: layout,
             totalRow: sec.totalRow,
+            repeatHeader: repeatHeader,
           ),
       ];
 
@@ -391,6 +467,7 @@ class DocumentPdf {
     required List<int> columnFlex,
     required PrintLayout layout,
     List<String>? totalRow,
+    bool repeatHeader = true,
   }) {
     final t = layout.table;
     final n = headers.length;
@@ -417,7 +494,9 @@ class DocumentPdf {
       border: pw.TableBorder.all(width: 0.6),
       columnWidths: widths.isEmpty ? null : widths,
       children: [
+        // صف العناوين يتكرر أعلى الجدول في كل صفحة: الصفحة الثانية لا تبدأ بأرقامٍ بلا أسماء أعمدة.
         pw.TableRow(
+          repeat: repeatHeader,
           decoration: const pw.BoxDecoration(color: PdfColors.grey300),
           children: [
             for (var i = n - 1; i >= 0; i--)
@@ -454,7 +533,7 @@ class DocumentPdf {
     );
   }
 
-  static pw.Widget _table(PrintDoc doc, PrintLayout layout) {
+  static pw.Widget _table(PrintDoc doc, PrintLayout layout, {bool repeatHeader = true}) {
     final t = layout.table;
     final n = doc.headers.length;
     final widths = <int, pw.TableColumnWidth>{};
@@ -468,7 +547,9 @@ class DocumentPdf {
       border: pw.TableBorder.all(width: 0.6),
       columnWidths: widths.isEmpty ? null : widths,
       children: [
+        // صف العناوين يتكرر أعلى الجدول في كل صفحة: الصفحة الثانية لا تبدأ بأرقامٍ بلا أسماء أعمدة.
         pw.TableRow(
+          repeat: repeatHeader,
           decoration: const pw.BoxDecoration(color: PdfColors.grey300),
           children: [
             for (final h in doc.headers.reversed)
@@ -560,11 +641,24 @@ class DocumentPdf {
     );
   }
 
-  static pw.Widget _footer(PrintDoc doc, PrintLayout layout, pw.Context context) {
+  static bool _hasSignatures(PrintDoc doc, PrintLayout layout) =>
+      doc.signatureLines.isNotEmpty || layout.signatures.any((s) => s.show);
+
+  /// تذييل كل صفحة: التوقيعات، ثم ملاحظة المستند، ثم أسطر التذييل من
+  /// التخطيط، ثم سطر الطباعة ([footerLine]).
+  static pw.Widget _footer(PrintDoc doc, PrintLayout layout, pw.Context context,
+      {required DateTime at, required String by, required bool signatures}) {
     final lines = layout.footer.where((l) => l.show).toList();
+    final signed = signatures && _hasSignatures(doc, layout);
+    if (signed) debugOnSignatures?.call(context.pageNumber);
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
+        if (signed) ...[
+          pw.SizedBox(height: 10),
+          _signatures(doc, layout),
+          pw.SizedBox(height: 6),
+        ],
         if (doc.footerNote.isNotEmpty)
           pw.Text(doc.footerNote, style: const pw.TextStyle(fontSize: 9)),
         ...lines.map((l) => pw.Text(
@@ -576,7 +670,7 @@ class DocumentPdf {
               ),
             )),
         pw.Text(
-          'صفحة ${context.pageNumber} من ${context.pagesCount}',
+          footerLine(at: at, by: by, page: context.pageNumber, pages: context.pagesCount),
           textAlign: pw.TextAlign.center,
           style: const pw.TextStyle(fontSize: 9),
         ),
