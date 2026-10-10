@@ -10,7 +10,9 @@ enum IssueTarget {
   unit, // وحدة مستفيدة
   facility, // مطبخ أو فرن
   custom, // مستلم باسمه
-  multiUnit; // وحدات متعددة (لكل سطر وحدته)
+  // وحدات متعددة (لكل سطر وحدته). حُذف تبويبه من شاشة الصرف، ويبقى لأن
+  // سنداتٍ محفوظة بـ`targetType = 3` يقرؤها دفتر المعسكر والأسطوانات وإعادة الطباعة.
+  multiUnit;
 
   static IssueTarget of(int index) => IssueTarget.values[index.clamp(0, IssueTarget.values.length - 1)];
 }

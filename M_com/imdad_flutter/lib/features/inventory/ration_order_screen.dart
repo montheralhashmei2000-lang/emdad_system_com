@@ -116,6 +116,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
   @override
   void initState() {
     super.initState();
+    _ensureBlank();
     _render();
     _screenActions = ImdScreenActions.maybeOf(context)
       ?..register(
@@ -176,11 +177,23 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
     });
   }
 
+  /// سطرٌ فارغ في آخر الجدول دائمًا (كشاشة التحويل): جدول الإدخال لا يختفي،
+  /// والسطر الأخير جاهزٌ للصنف التالي.
+  void _ensureBlank() {
+    if (_lines.isEmpty || _lines.last.itemId.isNotEmpty) _lines.add(_LineDraft());
+  }
+
+  /// السطور التي أدخل فيها المستخدم شيئًا — الفارغ (بلا صنف ولا كمية) لا
+  /// يدخل التحقق ولا الحفظ، وإلا منع السطرُ الدائم الحفظَ («كل سطر يحتاج صنفًا»).
+  List<_LineDraft> get _filled =>
+      [for (final l in _lines) if (l.itemId.isNotEmpty || l.qty.text.trim().isNotEmpty) l];
+
   void _resetForm() {
     for (final l in _lines) {
       l.dispose();
     }
     _lines.clear();
+    _ensureBlank();
     imdSetText(_notes, '');
     setState(() {
       _editId = null;
@@ -207,7 +220,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
         'priority': _priority,
         'notes': _notes.text,
         'lines': [
-          for (final l in _lines)
+          for (final l in _filled)
             {'itemId': l.itemId, 'qty': l.qty.text, 'unit': l.unit, 'notes': l.notes.text},
         ],
       };
@@ -241,6 +254,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
                   ),
               ]
             : <_LineDraft>[]);
+      _ensureBlank();
     });
     _loadSupplyBalances();
   }
@@ -287,6 +301,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
         for (final l in full.lines)
           _LineDraft(itemId: l.itemId, qty: l.requestedQty, unit: l.unitName, notes: l.notes),
       ]);
+    _ensureBlank();
     imdSetText(_notes, o.notes);
     setState(() {
       _editId = o.id;
@@ -323,7 +338,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
       requiredDate: _requiredDate,
       priority: _priority,
       notes: _notes.text.trim(),
-      lines: [for (final l in _lines) _inputOf(l)],
+      lines: [for (final l in _filled) _inputOf(l)],
       actor: context.read<AuthService>().currentUser?.email ?? '',
     );
     if (!mounted) return;
@@ -391,7 +406,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
     if (dateError != null) out.add(ImdCheck('err', 'التواريخ', dateError));
 
     final lineError =
-        RationRules.validateLines([for (final l in _lines) _inputOf(l).draft]);
+        RationRules.validateLines([for (final l in _filled) _inputOf(l).draft]);
     if (lineError != null) out.add(ImdCheck('err', 'سطور الطلبية', lineError));
 
     // تجاوزُ رصيد المورِّد ليس منعًا: للفرع أن يطلب ما يتوقّع وروده. لكنه
@@ -692,16 +707,12 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
             RationStatus.open.contains(o.status))
         .length;
 
-    return ImdPage(children: [
-      ImdPageTitle(
+    final head = <Widget>[
+      const ImdPageTitle(
         title: 'طلبيات الإعاشة',
         icon: 'clipboard',
         subtitle: 'الطلبية طلبٌ لا حركة: لا تمسّ المخزون. '
             'وما يحرّكه سندُ التحويل أو التوريد الذي تُربط به بعد الاعتماد',
-        actions: [
-          if (can)
-            ImdButton.outline(label: 'طلبية جديدة', icon: 'plus-square', small: true, onPressed: _openNewTab),
-        ],
       ),
       if (_suspended.isNotEmpty)
         ImdDocTabsBar<Map<String, dynamic>>(
@@ -745,6 +756,8 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
           ]),
         ]),
       ),
+    ];
+    final after = <Widget>[
       ImdICard(
         child: ImdF2(children: [
           ImdLabeled(
@@ -775,13 +788,6 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
           ),
         ]),
       ),
-      if (can) ...[
-        ImdPanel(
-          title: _editId == null ? 'طلبية جديدة' : 'تعديل مسودة',
-          icon: _editId == null ? 'plus-square' : 'edit',
-          child: _form(),
-        ),
-      ],
       ImdPanel(title: 'سجل الطلبيات', icon: 'list', child: _table(can)),
       if (_open != null) ...[
         ImdPanel(
@@ -790,7 +796,47 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
           child: _linesTable(_open!),
         ),
       ],
-    ]);
+    ];
+    // بلا صلاحية كتابة: لا نموذج ولا شريط إجراءات.
+    if (!can) return ImdPage(children: [...head, ...after]);
+
+    // كسندات العمليات المخزنية: النموذج يمرّ وأزرار الحفظ/الجديد/الطباعة
+    // ملتصقةٌ بالأسفل، والتصفية والسجل بعدها.
+    return ImdStickyPage(
+      sticky: ImdStickyActions(children: [
+        ImdButton.outline(label: 'طلبية جديدة', icon: 'plus-square', small: true, onPressed: _busy ? null : _openNewTab),
+        ImdButton.outline(label: 'طباعة الطلبية', icon: 'printer', small: true, onPressed: _busy ? null : _printCurrent),
+        if (_editId != null)
+          ImdButton.outline(label: 'إلغاء التعديل', icon: 'x', small: true, onPressed: _busy ? null : _resetForm),
+        ImdButton(
+          label: _editId == null ? 'حفظ كمسودة' : 'حفظ التعديل',
+          icon: 'check',
+          busy: _busy,
+          onPressed: _save,
+        ),
+      ]),
+      after: [const SizedBox(height: 14), ...after],
+      children: [
+        ...head,
+        ImdPanel(
+          title: _editId == null ? 'طلبية جديدة' : 'تعديل مسودة',
+          icon: _editId == null ? 'plus-square' : 'edit',
+          child: _form(),
+        ),
+      ],
+    );
+  }
+
+  /// الطباعة من الشريط: الطلبية المحفوظة الجاري تعديلها. الطلبية الجديدة
+  /// لا رقم لها ولا سطور معتمدة بعد، فتُحفظ أولًا.
+  Future<void> _printCurrent() async {
+    final id = _editId;
+    if (id == null) {
+      showImdToast(context, 'ℹ احفظ الطلبية أولًا ثم اطبعها — أو اطبع طلبيةً من السجل');
+      return;
+    }
+    final full = await _repo.byId(id);
+    if (full != null && mounted) await _print(full);
   }
 
   Widget _form() {
@@ -908,35 +954,13 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
           ),
         ]),
         const SizedBox(height: 8),
-        if (_lines.isEmpty)
-          ImdEmptyState.noData(
-            title: 'لم يُضف صنف بعد',
-            message: 'أضف سطرًا لكل صنف مطلوب في الطلبية، ثم حدد الكمية ووحدتها.',
-            action: ImdButton(
-              label: 'إضافة صنف',
-              icon: 'plus-square',
-              onPressed: () => setState(() => _lines.add(_LineDraft())),
-            ),
-          )
-        else
-          _linesTableEditor(context),
+        _linesTableEditor(context),
         const SizedBox(height: 6),
         ImdCollapsibleSection(title: 'ملاحظات', child: ImdFld(controller: _notes, maxLines: 2)),
-        if (_lines.isNotEmpty || _requesting.isNotEmpty) ...[
+        if (_filled.isNotEmpty || _requesting.isNotEmpty) ...[
           const SizedBox(height: 12),
           ImdValidationBox(title: 'مراجعة الطلبية', items: checks),
         ],
-        const SizedBox(height: 12),
-        Wrap(spacing: 10, runSpacing: 10, children: [
-          ImdButton(
-            label: _editId == null ? 'حفظ كمسودة' : 'حفظ التعديل',
-            icon: 'check',
-            busy: _busy,
-            onPressed: _save,
-          ),
-          if (_editId != null)
-            ImdButton.outline(label: 'إلغاء', icon: 'x', onPressed: _resetForm),
-        ]),
       ],
     ));
   }
@@ -1106,6 +1130,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
                 final units = item == null ? const <ItemUnit>[] : _catalog.unitsOf(item);
                 l.unit = units.where((u) => u.isBase).firstOrNull?.name ??
                     (units.isNotEmpty ? units.first.name : '');
+                _ensureBlank();
               }),
             )),
             cell(ImdEntryBalanceCell(
@@ -1125,6 +1150,7 @@ class _RationOrderScreenState extends State<RationOrderScreen> {
               onPressed: () => setState(() {
                 _lines.remove(l);
                 l.dispose();
+                _ensureBlank();
               }),
             )),
           ],

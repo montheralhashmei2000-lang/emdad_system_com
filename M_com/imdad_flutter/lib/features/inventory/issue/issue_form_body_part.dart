@@ -68,7 +68,6 @@ mixin _IssueFormBody on _IssueBase, _IssueBeneficiary, _IssueAutosave, _IssueRow
               ImdTab(0, 'وحدة مستفيدة', icon: 'users'),
               ImdTab(1, 'مطبخ / فرن', icon: 'utensils'),
               ImdTab(2, 'استثنائي / مخصص', icon: 'star'),
-              ImdTab(3, 'وحدات متعددة', icon: 'file'),
             ],
           ),
           const SizedBox(height: ImdSizes.compactRowGap),

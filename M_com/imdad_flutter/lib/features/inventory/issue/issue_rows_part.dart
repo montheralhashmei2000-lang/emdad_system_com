@@ -11,9 +11,8 @@ mixin _IssueRows on _IssueBase, _IssueBeneficiary {
       r.itemId = id;
       final units = it == null ? const <ItemUnit>[] : _catalog.unitsOf(it);
       r.unit = units.where((u) => u.isBase).firstOrNull?.name ?? (units.isNotEmpty ? units.first.name : '');
-      if (r.benUnit.isEmpty && _units.isNotEmpty) r.benUnit = _units.first.id;
       _calcRow(r);
-      if (it != null && !r.noAuto && identical(_rows.last, r)) _rows.add(_newRow(benUnit: _units.isNotEmpty ? _units.first.id : ''));
+      if (it != null && !r.noAuto && identical(_rows.last, r)) _rows.add(_newRow());
     });
   }
 
@@ -31,7 +30,6 @@ mixin _IssueRows on _IssueBase, _IssueBeneficiary {
       if (_wh.isNotEmpty && IssueRules.shortage([(it.id, qty * factor)], _whBal) != null) {
         return (rows: rows, err: '✖ رصيد «${it.name}» في مستودع «$_wh» لا يكفي (${nf(have)} متاح)');
       }
-      final ben = _type == 3 ? _units.where((u) => u.id == r.benUnit).firstOrNull : null;
       rows.add(DocLineInput(
         itemId: it.id,
         itemCode: it.code,
@@ -41,8 +39,6 @@ mixin _IssueRows on _IssueBase, _IssueBeneficiary {
         qty: qty,
         notes: r.notes.text.trim(),
         cylinderAction: it.isRefillable ? r.cy : '',
-        beneficiaryUnitId: ben?.id ?? '',
-        beneficiaryUnitName: ben == null ? '' : '${ben.code} — ${ben.name}',
       ));
     }
     return (rows: rows, err: '');
@@ -72,10 +68,10 @@ mixin _IssueRows on _IssueBase, _IssueBeneficiary {
     }
     if (complete.length < 2) return;
 
-    // الجهة المستفيدة وعملية الأسطوانة لا يصح خلطها، فتدخل في مفتاح المجموعة.
+    // عملية الأسطوانة لا يصح خلطها، فتدخل في مفتاح المجموعة.
     String keyOf(_Row r) {
       final it = _item(r.itemId)!;
-      return '${r.itemId}|${r.benUnit}|${it.isRefillable ? r.cy : ''}';
+      return '${r.itemId}|${it.isRefillable ? r.cy : ''}';
     }
 
     final notesOf = <String, String>{};
@@ -111,9 +107,8 @@ mixin _IssueRows on _IssueBase, _IssueBeneficiary {
               unit: l.unitName,
               qty: l.qty,
               notes: notesOf[l.groupKey] ?? '',
-              benUnit: l.groupKey.split('|')[1],
               noAuto: true,
-            )..cy = l.groupKey.split('|')[2].isEmpty ? 'EXCHANGE' : l.groupKey.split('|')[2],
+            )..cy = l.groupKey.split('|')[1].isEmpty ? 'EXCHANGE' : l.groupKey.split('|')[1],
           ...pending,
         ]);
       if (_rows.isEmpty) _rows.add(_newRow());

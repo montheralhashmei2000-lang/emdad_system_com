@@ -3,10 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import 'imd_density.dart';
 import 'imd_format.dart';
 import 'imd_icon.dart';
-import 'imd_style.dart';
 import 'imd_tokens.dart';
 
 /// عدّاد السجلات التي تعرضها الصفحة الحالية — يغذّيه كل [ImdTable] ويقرؤه
@@ -77,7 +75,8 @@ class ImdRecordScope extends InheritedWidget {
   bool updateShouldNotify(ImdRecordScope old) => old.sink != sink;
 }
 
-/// الشريط السفلي لسطح المكتب: الوقت، حالة الاتصال، عدد السجلات، ومفتاح الكثافة.
+/// الشريط السفلي لسطح المكتب: الوقت، حالة الاتصال، وعدد السجلات. الكثافة والنمط
+/// الكلاسيكي في الإعدادات ▸ «المظهر والعرض» وحدها.
 ///
 /// عرضٌ فقط — لا منطق مزامنةٍ هنا: [connection] تأتيه جاهزةً من القشرة التي
 /// تملك `AutoSyncService`.
@@ -103,7 +102,7 @@ class ImdStatusBar extends StatefulWidget {
   /// عدّاد الصفحة الظاهرة، أو `null` فلا يُعرض عدد.
   final ImdRecordSink? records;
 
-  /// عناصر إضافية قبل مفتاح الكثافة.
+  /// عناصر إضافية في طرف الشريط.
   final List<Widget> trailing;
 
   @override
@@ -189,46 +188,6 @@ class _ImdStatusBarState extends State<ImdStatusBar> {
           records,
           const Spacer(),
           ...widget.trailing,
-          // النمط الكلاسيكي (مسطّح بلا ظلال وزوايا حادة) — اختياري.
-          ValueListenableBuilder<bool>(
-            valueListenable: ImdStyle.notifier,
-            builder: (context, on, _) => Tooltip(
-              message: on ? 'العودة إلى النمط الحديث' : 'نمط كلاسيكي: مسطّح بلا ظلال وزوايا حادة وخط أصغر',
-              child: InkWell(
-                borderRadius: BorderRadius.circular(6),
-                onTap: ImdStyle.toggle,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    ImdIcon('monitor', size: 13, color: on ? c.accent : c.muted),
-                    const SizedBox(width: 6),
-                    Text('كلاسيكي',
-                        style: style.copyWith(color: on ? c.accent : c.muted, fontWeight: on ? FontWeight.w700 : FontWeight.w500)),
-                  ]),
-                ),
-              ),
-            ),
-          ),
-          // مفتاح الكثافة: يُحدَّث وحده عند التبديل لا الشريط كله.
-          ValueListenableBuilder<bool>(
-            valueListenable: ImdDensity.notifier,
-            builder: (context, high, _) => Tooltip(
-              message: high ? 'العودة إلى الوضع المريح' : 'كثافة عالية: صفوف ومسافات أضيق لعرض بياناتٍ أكثر',
-              child: InkWell(
-                borderRadius: BorderRadius.circular(6),
-                onTap: ImdDensity.toggle,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    ImdIcon('sliders', size: 13, color: high ? c.accent : c.muted),
-                    const SizedBox(width: 6),
-                    Text('كثافة عالية',
-                        style: style.copyWith(color: high ? c.accent : c.muted, fontWeight: high ? FontWeight.w700 : FontWeight.w500)),
-                  ]),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );

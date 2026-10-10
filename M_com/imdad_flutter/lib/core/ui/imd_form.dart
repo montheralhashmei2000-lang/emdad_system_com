@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'imd_format.dart';
 import 'imd_icon.dart';
 import 'imd_layout.dart';
+import 'imd_page_dirty.dart';
 import 'imd_tokens.dart';
 import 'imd_widgets.dart';
 
@@ -205,7 +206,11 @@ class ImdFld extends StatelessWidget {
       readOnly: readOnly,
       enabled: enabled,
       obscureText: obscure,
-      onChanged: onChanged,
+      // كتابة المستخدم ترفع علامة الصفحة (انظر ImdPageDirty).
+      onChanged: (v) {
+        ImdPageDirty.mark(context);
+        onChanged?.call(v);
+      },
       onSubmitted: onSubmitted,
       autofocus: autofocus,
       maxLines: maxLines,
@@ -230,7 +235,10 @@ class ImdFld extends StatelessWidget {
           : _ImdSuggestions(
               controller: controller,
               items: suggestions,
-              onPick: onChanged,
+              onPick: (v) {
+                ImdPageDirty.mark(context);
+                onChanged?.call(v);
+              },
               child: field,
             );
     if (fixed && suggestions.isEmpty) {
@@ -446,6 +454,7 @@ class ImdDateField extends StatelessWidget {
             ? null
             : () async {
                 final init = DateTime.tryParse(value) ?? DateTime.now();
+                final dirty = ImdPageDirty.flagOf(context);
                 final d = await showDatePicker(
                   context: context,
                   initialDate: init,
@@ -453,7 +462,10 @@ class ImdDateField extends StatelessWidget {
                   lastDate: DateTime(2100),
                   locale: const Locale('ar'),
                 );
-                if (d != null) onChanged(isoDay(d));
+                if (d != null) {
+                  dirty?.dirty = true;
+                  onChanged(isoDay(d));
+                }
               },
         child: SizedBox(
           height: ImdCompact.of(context) ? ImdSizes.compactField : ImdSizes.touchMin,

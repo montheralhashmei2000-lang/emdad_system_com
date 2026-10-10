@@ -4,7 +4,6 @@ import 'imd_context_menu.dart';
 import 'imd_icon.dart';
 import 'imd_status_bar.dart';
 import 'imd_tokens.dart';
-import 'imd_widgets.dart';
 
 /// تبويبةٌ لصفحةٍ مفتوحة في القشرة.
 class ImdOpenPage {
@@ -204,40 +203,4 @@ class ImdPageHost extends StatelessWidget {
           ),
         ),
       );
-}
-
-/// شريطٌ ناعمٌ فوق الصفحة الظاهرة حين تكون بياناتها قد تقادمت.
-///
-/// لا يُعاد تحميل الصفحة تلقائيًّا: قد يكون فيها سندٌ نصف مملوء، وإعادة البناء
-/// تمحوه. فالقرار للمستخدم.
-class ImdStaleBanner extends StatelessWidget {
-  const ImdStaleBanner({super.key, required this.onRefresh, required this.onDismiss});
-
-  final VoidCallback onRefresh;
-  final VoidCallback onDismiss;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.imd;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      decoration: BoxDecoration(
-        color: c.warnSoft,
-        border: Border(bottom: BorderSide(color: c.line)),
-      ),
-      child: Row(children: [
-        ImdIcon('alert', size: 14, color: c.warn),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            'تغيّرت بيانات النظام من صفحةٍ أخرى — قد يعرض هذا الجدول أرقامًا قديمة.',
-            style: TextStyle(fontSize: 12.5, color: c.text2),
-          ),
-        ),
-        ImdButton.outline(label: 'تحديث الصفحة', icon: 'refresh', small: true, onPressed: onRefresh),
-        const SizedBox(width: 6),
-        ImdIconButton(icon: 'x', tooltip: 'إخفاء', onPressed: onDismiss),
-      ]),
-    );
-  }
 }

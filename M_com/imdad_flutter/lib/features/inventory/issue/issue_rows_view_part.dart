@@ -26,7 +26,6 @@ mixin _IssueRowsView on _IssueBase, _IssueBeneficiary, _IssueRows {
     bool refill,
     Widget balance,
     Widget picker,
-    Widget ben,
     Widget unit,
     Widget qty,
     Widget notes,
@@ -47,14 +46,6 @@ mixin _IssueRowsView on _IssueBase, _IssueBeneficiary, _IssueRows {
     );
     final balance =
         ImdEntryBalanceCell(shown == null ? '' : '${nf(shown.qty)} ${shown.unit}');
-    final ben = ImdSelect<String>(
-      value: r.benUnit.isEmpty && _units.isNotEmpty ? _units.first.id : r.benUnit,
-      items: [for (final u in _units) (u.id, '${u.code} — ${u.name}')],
-      onChanged: (v) {
-        setState(() => r.benUnit = v ?? '');
-        _scheduleAutosave();
-      },
-    );
     final unit = ImdUnitPicker(
       units: [for (final u in units) u.name],
       value: r.unit,
@@ -118,7 +109,6 @@ mixin _IssueRowsView on _IssueBase, _IssueBeneficiary, _IssueRows {
       refill: refill,
       balance: balance,
       picker: picker,
-      ben: ben,
       unit: unit,
       qty: qty,
       notes: notes,
@@ -134,7 +124,6 @@ mixin _IssueRowsView on _IssueBase, _IssueBeneficiary, _IssueRows {
   /// الجدول كلّه لا السطر الواحد، فلا تتبدّل الأعمدة وهي تُقرأ.
   Widget _desktopTable(BuildContext context) {
     final fields = [for (final r in _rows) _rowFields(r)];
-    final multi = _type == 3;
     final anyRefill = fields.any((f) => f.refill);
     const cell = ImdEntryTable.cell;
 
@@ -142,7 +131,6 @@ mixin _IssueRowsView on _IssueBase, _IssueBeneficiary, _IssueRows {
       columns: [
         const ImdCol('الصنف', flex: 3),
         const ImdCol('الرصيد', width: 96),
-        if (multi) const ImdCol('الوحدة المستفيدة', flex: 2),
         const ImdCol('الوحدة', width: 112),
         const ImdCol('الكمية', width: 88),
         if (anyRefill) const ImdCol('نوع العملية', width: 150),
@@ -155,7 +143,6 @@ mixin _IssueRowsView on _IssueBase, _IssueBeneficiary, _IssueRows {
           [
             cell(f.picker),
             cell(f.balance),
-            if (multi) cell(f.ben),
             cell(f.unit),
             cell(f.qty),
             if (anyRefill) cell(f.refill ? f.cy : const SizedBox.shrink()),

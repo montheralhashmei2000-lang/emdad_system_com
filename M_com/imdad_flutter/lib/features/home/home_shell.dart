@@ -19,6 +19,7 @@ import '../../core/ui/imd_density.dart';
 import '../../core/ui/imd_section_theme.dart';
 import '../../core/ui/imd_fonts.dart';
 import '../../core/ui/imd_menu_bar.dart';
+import '../../core/ui/imd_page_dirty.dart';
 import '../../core/ui/imd_page_tabs.dart';
 import '../../core/ui/imd_screen_actions.dart';
 import '../../core/ui/imd_status_bar.dart';
@@ -132,6 +133,9 @@ class _SpaceState {
   final Map<String, int> gen = {};
   final Map<String, ImdRecordSink> sinks = {};
   final Set<String> stale = {};
+
+  /// علامة «عدّل المستخدم شيئًا» لكل صفحةٍ مفتوحة ([ImdPageDirty]).
+  final Map<String, ImdDirtyFlag> dirty = {};
   String? openSec;
 }
 
@@ -179,6 +183,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   /// صفحاتٌ مخفيّة تغيّرت البيانات بعد إخفائها.
   Set<String> get _stale => _st.stale;
+  Map<String, ImdDirtyFlag> get _dirty => _st.dirty;
   StreamSubscription<Object?>? _dbSub;
 
   /// آخر قياسٍ للقشرة — يقرّره البناء، ويقرؤه التنقّل لتقييد عدد الصفحات.
@@ -305,6 +310,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   void _drop(String page) {
     _open.remove(page);
     _stale.remove(page);
+    _dirty.remove(page);
     _gen.remove(page);
     // يُتخلَّص منه بعد الإطار: جداول الصفحة المهدومة ما زالت تُبلّغ عنه حتى تُفكَّك.
     final sink = _sinks.remove(page);
@@ -327,10 +333,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         _page = keep;
       });
 
-  void _refreshPage(String page) => setState(() {
-        _gen[page] = (_gen[page] ?? 0) + 1;
-        _stale.remove(page);
-      });
+  /// العودة إلى صفحةٍ مخفيّة تغيّرت بياناتها: تُعاد بناءً صامتًا **إن لم يعدّل
+  /// المستخدم فيها شيئًا**. المعدَّلة تبقى كما تُركت (سندٌ نصف مملوء، تبويبات
+  /// سنداتٍ معلّقة) ونقطتها على التبويب تقول إن بياناتها قد تكون قديمة.
+  ///
+  /// يُستدعى داخل `setState`.
+  static void _reenter(_SpaceState st, String page) {
+    if (!st.stale.contains(page)) return;
+    if (st.dirty[page]?.dirty ?? false) return;
+    st.gen[page] = (st.gen[page] ?? 0) + 1;
+    st.stale.remove(page);
+  }
 
   static String _titleOf(String page) {
     if (_canonical(page) == 'dash') return 'الرئيسية';
@@ -377,7 +390,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     await prefs.setString(_spaceKey(auth), space);
     if (!mounted) return;
     // لا تُصفَّر الحالة: العودة إلى قسمٍ زاره المستخدم تُظهر تبويباته كما تركها.
-    setState(() => _space = space);
+    setState(() {
+      _space = space;
+      _reenter(_stateOf(space), _stateOf(space).page);
+    });
   }
 
   /// يبدّل إلى القسم التالي مباشرةً (دون شاشة الاختيار) ويحفظ اختياره. القسم
@@ -438,6 +454,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         }
       }
       _page = page;
+      _reenter(_st, page);
     });
     // يُغلق الدرج نفسه لا «أعلى مسار»: `Navigator.pop` كانت تغلق أي حوارٍ
     // مفتوح فوق الشاشة بدل الدرج.
@@ -743,7 +760,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (_space != null && available.isNotEmpty && !available.contains(_space)) {
       final fallback = available.first;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _space != fallback) setState(() => _space = fallback);
+        if (mounted && _space != fallback) {
+          setState(() {
+            _space = fallback;
+            _reenter(_stateOf(fallback), _stateOf(fallback).page);
+          });
+        }
       });
     }
     final space = _space ?? AppSpace.supply;
@@ -777,10 +799,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                       sink: st.sinks.putIfAbsent(p, ImdRecordSink.new),
                       child: KeyedSubtree(
                         key: ValueKey('$sp:$p#${st.gen[p] ?? 0}'),
-                        // «الرئيسية» مفتوحةٌ لكل مستخدم، إلا أن يُحجب قسمُها نفسه.
-                        child: ((p == 'dash' && !_spaceBlocked(auth, sp)) || _hasPerm(auth, p))
-                            ? _pageBody(p, sp)
-                            : const _NoAccess(),
+                        child: ImdPageDirty(
+                          flag: st.dirty.putIfAbsent(p, ImdDirtyFlag.new),
+                          // «الرئيسية» مفتوحةٌ لكل مستخدم، إلا أن يُحجب قسمُها نفسه.
+                          child: ((p == 'dash' && !_spaceBlocked(auth, sp)) || _hasPerm(auth, p))
+                              ? _pageBody(p, sp)
+                              : const _NoAccess(),
+                        ),
                       ),
                     ),
                 ],
@@ -928,11 +953,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          if (!handheld && _stale.contains(_page))
-                            ImdStaleBanner(
-                              onRefresh: () => _refreshPage(_page),
-                              onDismiss: () => setState(() => _stale.remove(_page)),
-                            ),
                           Expanded(child: body),
                         ],
                       ),

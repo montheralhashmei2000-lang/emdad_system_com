@@ -420,14 +420,18 @@ void main() {
   });
 
   group('الصفحات المفتوحة وشريط الحالة', () {
-    testWidgets('سطح المكتب: شريط تبويبات وشريط حالة بالوقت والاتصال والكثافة', (tester) async {
+    testWidgets('سطح المكتب: شريط تبويبات وشريط حالة بالوقت والاتصال', (tester) async {
       wideWindow(tester);
       await enterSupply(tester);
       expect(tester.takeException(), isNull);
       expect(find.byType(ImdPageTabs), findsOneWidget);
       expect(find.byType(ImdStatusBar), findsOneWidget);
       expect(find.textContaining('المزامنة متوقفة'), findsWidgets);
-      expect(find.text('كثافة عالية'), findsOneWidget);
+      // «كلاسيكي» و«كثافة عالية» خرجا من شريط الحالة: مصدرهما الإعدادات ▸
+      // «المظهر والعرض» وحدها.
+      final bar = find.byType(ImdStatusBar);
+      expect(find.descendant(of: bar, matching: find.text('كثافة عالية')), findsNothing);
+      expect(find.descendant(of: bar, matching: find.text('كلاسيكي')), findsNothing);
     });
 
     testWidgets('فتح شاشةٍ يضيف تبويبة، والعودة تُبقي حالة الأولى', (tester) async {

@@ -51,7 +51,7 @@ mixin _IssueAutosave on _IssueBase, _IssueBeneficiary {
         ..clear()
         ..add(_newRow());
       _wh = _whsForCamp('').isNotEmpty ? _whsForCamp('').first.name : '';
-      if (_type == 2 || _type == 3) _strength = 0;
+      if (_type == 2) _strength = 0;
       _ready = true;
     });
     await _refreshBal();
@@ -94,7 +94,6 @@ mixin _IssueAutosave on _IssueBase, _IssueBeneficiary {
               'unit': row.unit,
               'qty': row.qty.text,
               'notes': row.notes.text,
-              'beneficiary': row.benUnit,
               'cylinder': row.cy,
               'noAuto': row.noAuto,
             },
@@ -105,6 +104,8 @@ mixin _IssueAutosave on _IssueBase, _IssueBeneficiary {
   void _applySnapshot(Map<String, dynamic> data) {
     setState(() {
       _type = (data['type'] as num?)?.toInt() ?? _type;
+      // «وحدات متعددة» (3) حُذف من الشاشة: مسودةٌ محفوظةٌ عليه تعود إلى «وحدة مستفيدة».
+      if (_type == 3) _type = 0;
       _ref = '${data['ref'] ?? _ref}';
       _wh = '${data['warehouse'] ?? _wh}';
       _date = '${data['date'] ?? _date}';
@@ -130,7 +131,6 @@ mixin _IssueAutosave on _IssueBase, _IssueBeneficiary {
                     unit: '${value['unit'] ?? ''}',
                     qty: double.tryParse('${value['qty'] ?? ''}'),
                     notes: '${value['notes'] ?? ''}',
-                    benUnit: '${value['beneficiary'] ?? ''}',
                     noAuto: value['noAuto'] == true,
                   )..cy = '${value['cylinder'] ?? 'EXCHANGE'}',
               ]
@@ -154,7 +154,7 @@ mixin _IssueAutosave on _IssueBase, _IssueBeneficiary {
     final r = _rows.single;
     if (r.itemId.isNotEmpty || r.unit.isNotEmpty) return false;
     if (r.qty.text.isNotEmpty || r.notes.text.isNotEmpty) return false;
-    if (r.benUnit.isNotEmpty || r.noAuto) return false;
+    if (r.noAuto) return false;
     if (_custom.text.isNotEmpty || _notes.text.isNotEmpty) return false;
     if (_parent.isNotEmpty || _ben.isNotEmpty || _fac.isNotEmpty) return false;
     if (_days.text.isNotEmpty && _days.text != '1') return false;

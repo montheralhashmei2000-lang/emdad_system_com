@@ -119,8 +119,6 @@ mixin _IssueSubmit on _IssueBase, _IssueAutosave, _IssueRows {
       2 => _custom.text.trim().isEmpty ? '—' : _custom.text.trim(),
       _ => '—',
     };
-    // الصرف متعدد الجهات يطبع عمود «الوحدة المستفيدة» بدل دمجه في اسم الصنف.
-    final multi = _type == 3;
     final lines = [
       for (final l in c.rows)
         VoucherLine(
@@ -146,7 +144,6 @@ mixin _IssueSubmit on _IssueBase, _IssueAutosave, _IssueRows {
       notes: _notes.text.trim(),
       strength: nf(_strength),
       days: nf(days),
-      multiUnit: multi,
       lines: lines,
       withReceipt: both,
     );

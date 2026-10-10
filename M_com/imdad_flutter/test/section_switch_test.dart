@@ -8,6 +8,7 @@ import 'package:imdad/core/ui/imd_status_bar.dart';
 import 'package:imdad/core/ui/imd_section_theme.dart';
 import 'package:imdad/core/ui/imd_tokens.dart';
 import 'package:imdad/data/db/app_database.dart';
+import 'package:imdad/data/repos/fuel_repo.dart';
 import 'package:imdad/data/sync/auto_sync.dart';
 import 'package:imdad/domain/app_space.dart';
 import 'package:imdad/features/catalog/items_screen.dart';
@@ -155,6 +156,10 @@ void main() {
   });
 
   testWidgets('التبديل لا يهدم تبويبات القسم الذي غادرناه ولا حالة صفحاته', (tester) async {
+    // أول دخولٍ إلى المحروقات في قاعدةٍ جديدة يكتب صفّ إعداداتها الافتراضي، وكتابةٌ
+    // والأصناف مخفيّة تعيد بناءها عند العودة (صفحةٌ لم يُعدَّل فيها شيء). هنا يُختبر
+    // التبديل وحده، فيُكتب الصفّ مسبقًا كما هو في كل قاعدةٍ مستعملة.
+    await tester.runAsync(() => FuelRepo(db).settings());
     await enterShell(tester);
 
     // الإمداد: افتح «الأصناف» فتصير تبويبتان (الرئيسية + الأصناف).

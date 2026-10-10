@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../imd_icon.dart';
+import '../imd_page_dirty.dart';
 import '../imd_tokens.dart';
 import 'imd_dialogs.dart';
 
@@ -215,6 +216,7 @@ class ImdSelect<T> extends StatelessWidget {
   final String? title;
 
   Future<void> _open(BuildContext context) async {
+    final dirty = ImdPageDirty.flagOf(context);
     final picked = await showImdModal<_Pick<T>>(
       context,
       title: title ?? hint ?? 'اختر',
@@ -222,7 +224,10 @@ class ImdSelect<T> extends StatelessWidget {
       maxWidth: 460,
       builder: (ctx) => ImdPickerBody<T>(items: items, value: value),
     );
-    if (picked != null) onChanged?.call(picked.value);
+    if (picked != null) {
+      dirty?.dirty = true;
+      onChanged?.call(picked.value);
+    }
   }
 
   @override

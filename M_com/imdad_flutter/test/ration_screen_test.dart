@@ -10,6 +10,8 @@ import 'package:imdad/data/db/app_database.dart';
 import 'package:imdad/data/repos/catalog_repo.dart';
 import 'package:imdad/data/repos/ration_repo.dart';
 import 'package:imdad/domain/ration_order.dart';
+import 'package:imdad/features/inventory/doc_kit/imd_entry_table.dart';
+import 'package:imdad/features/inventory/doc_kit/imd_sticky_page.dart';
 import 'package:imdad/features/inventory/ration_order_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -196,5 +198,46 @@ void main() {
 
     expect(find.textContaining('لا شيء يُستلم'), findsWidgets,
         reason: 'طلبية بلا كمية تُرفض لا تُعتمد صفرًا');
+  });
+
+  group('نمط سندات العمليات المخزنية (D7)', () {
+    Finder inBar(String label) => find.descendant(
+        of: find.byType(ImdStickyActions), matching: find.text(label), skipOffstage: false);
+
+    testWidgets('جدول الإدخال ظاهرٌ دائمًا بسطرٍ فارغ، والأزرار في الشريط الثابت', (tester) async {
+      await show(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.byType(ImdStickyPage), findsOneWidget);
+      expect(find.byType(ImdEntryTable, skipOffstage: false), findsOneWidget);
+      expect(find.text('لم يُضف صنف بعد', skipOffstage: false), findsNothing);
+      expect(inBar('حفظ كمسودة'), findsWidgets);
+      expect(inBar('طلبية جديدة'), findsWidgets);
+      expect(inBar('طباعة الطلبية'), findsWidgets);
+    });
+
+    testWidgets('تعديل مسودةٍ وحفظها: السطر الفارغ الدائم لا يمنع الحفظ', (tester) async {
+      // مسودةٌ بسطرٍ واحد؛ فتحُها للتعديل يضيف السطر الفارغ في آخر الجدول، وكان
+      // يُرفض لو دخل التحقق («كل سطر يحتاج صنفًا»).
+      final id = await seedPending();
+      await (db.update(db.rationOrders)..where((t) => t.id.equals(id)))
+          .write(const RationOrdersCompanion(status: Value(RationStatus.draft)));
+      await show(tester);
+      final edit = find.byWidgetPredicate((w) => w is ImdIconButton && w.tooltip == 'تعديل');
+      await tester.ensureVisible(edit);
+      await tester.pumpAndSettle();
+      await tester.tap(edit, warnIfMissed: false);
+      await settle(tester);
+      expect(inBar('حفظ التعديل'), findsWidgets);
+
+      final save = inBar('حفظ التعديل').last;
+      await tester.ensureVisible(save);
+      await tester.pumpAndSettle();
+      await tester.tap(save, warnIfMissed: false);
+      await settle(tester);
+      expect(find.textContaining('حُفظت الطلبية'), findsOneWidget);
+      expect(find.textContaining('كل سطر يحتاج صنفًا'), findsNothing);
+      final saved = await RationRepo(db).byId(id);
+      expect(saved!.lines, hasLength(1));
+    });
   });
 }

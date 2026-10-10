@@ -26,7 +26,7 @@ mixin _IssueBeneficiary on _IssueBase {
   void _setType(int t) {
     setState(() {
       _type = t;
-      if (t == 2 || t == 3) {
+      if (t == 2) {
         _strength = 0;
         _nextDue = '—';
         _nextDueColor = null;
@@ -161,7 +161,6 @@ mixin _IssueBeneficiary on _IssueBase {
       return;
     }
 
-    final ben = _units.isNotEmpty ? _units.first.id : '';
     var added = 0;
     setState(() {
       for (final r in _rows) {
@@ -177,10 +176,10 @@ mixin _IssueBeneficiary on _IssueBase {
                 .round() /
             1000;
         if (qty <= 0) continue;
-        _rows.add(_newRow(itemId: it.id, unit: uName, qty: qty, benUnit: ben, noAuto: true));
+        _rows.add(_newRow(itemId: it.id, unit: uName, qty: qty, noAuto: true));
         added++;
       }
-      if (_rows.isEmpty) _rows.add(_newRow(benUnit: ben));
+      if (_rows.isEmpty) _rows.add(_newRow());
     });
     showImdToast(context, '✔ احتُسب $added صنفًا تلقائيًا — راجع الكميات قبل التنفيذ');
   }

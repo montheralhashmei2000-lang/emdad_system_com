@@ -66,6 +66,6 @@ mixin _IssueBase on State<IssueScreen> {
     await prefs.remove(_legacyAutosaveKey);
   }
 
-  _Row _newRow({String itemId = '', String unit = '', double? qty, String notes = '', String benUnit = '', bool noAuto = false}) =>
-      _Row(itemId: itemId, unit: unit, qty: qty, notes: notes, benUnit: benUnit, noAuto: noAuto, onEdit: _scheduleAutosave);
+  _Row _newRow({String itemId = '', String unit = '', double? qty, String notes = '', bool noAuto = false}) =>
+      _Row(itemId: itemId, unit: unit, qty: qty, notes: notes, noAuto: noAuto, onEdit: _scheduleAutosave);
 }

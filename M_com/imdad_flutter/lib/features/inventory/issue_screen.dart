@@ -52,7 +52,7 @@ class IssueScreen extends StatefulWidget {
 }
 
 class _Row {
-  _Row({this.itemId = '', this.unit = '', double? qty, String notes = '', this.benUnit = '', this.noAuto = false, this.onEdit})
+  _Row({this.itemId = '', this.unit = '', double? qty, String notes = '', this.noAuto = false, this.onEdit})
       : cy = 'EXCHANGE', qty = TextEditingController(text: qty == null ? '' : _num(qty)),
         notes = TextEditingController(text: notes) {
     this.qty.addListener(_changed);
@@ -63,7 +63,6 @@ class _Row {
   final TextEditingController qty;
   final TextEditingController notes;
   String cy;
-  String benUnit;
   bool noAuto;
   final VoidCallback? onEdit;
   final key = UniqueKey();
@@ -228,7 +227,6 @@ class _IssueScreenState extends State<IssueScreen>
   @override
   Widget _rowView(BuildContext context, int index, _Row r) {
     final it = _item(r.itemId);
-    final multi = _type == 3;
     // الرصيد يُعرض بوحدة العرض المختارة في بطاقة الصنف لا بالأساسية دائمًا.
     final shown = it == null
         ? null
@@ -250,9 +248,6 @@ class _IssueScreenState extends State<IssueScreen>
           meta: meta,
           unit: f.unit,
           qty: f.qty,
-          // التوجيه متعدّد الوحدات يضيف حقلًا رابعًا، فينزل الصنف إلى صفّه
-          // وتبقى الوحدةُ المستفيدة والوحدةُ والكمية في صفٍّ واحد.
-          leading: multi ? ('الوحدة المستفيدة', f.ben) : null,
           extras: [if (f.refill) ('نوع العملية', f.cy)],
           actions: [f.delete],
         ),

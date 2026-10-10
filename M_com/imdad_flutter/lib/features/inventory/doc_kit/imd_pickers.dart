@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/ui/imd_form.dart';
+import '../../../core/ui/imd_page_dirty.dart';
 import '../../../core/ui/imd_tokens.dart';
 import '../../../core/ui/imd_widgets.dart';
 import '../../../data/db/app_database.dart';
@@ -369,6 +370,7 @@ class _ImdItemPickerState extends State<ImdItemPicker> {
 
   void _pick(Item i) {
     if (!mounted) return;
+    ImdPageDirty.mark(context);
     widget.onChanged(i.id);
     imdSetText(_ctrl, _label(i));
     _close();
