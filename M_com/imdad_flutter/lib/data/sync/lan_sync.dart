@@ -335,12 +335,18 @@ class LanSync {
           case 'GET /export':
             // إرسال بيانات هذا الجهاز إلى الجهاز الطالب (سحب).
             final includeUsers = request.uri.queryParameters['users'] == '1';
-            // غياب `since` ⇒ نسخة كاملة، كما يطلبها جهاز جديد أو نسخة احتياطية.
-            final since = int.tryParse(request.uri.queryParameters['since'] ?? '');
+            // `seqSince` (رقم تسلسلٍ بعدّاد هذا الجهاز) هو المسار المعتمد، وحضوره
+            // وحده يكفي ليُعرف العميل الحديث (صفر ⇒ نسخة كاملة). و`since` (ختم
+            // زمني) لعميلٍ أقدم وحده. غيابهما ⇒ نسخة كاملة.
+            final query = request.uri.queryParameters;
+            final seqMode = query.containsKey('seqSince');
+            final seqSince = int.tryParse(query['seqSince'] ?? '') ?? 0;
+            final since = int.tryParse(query['since'] ?? '');
             final map = await DataExporter(db).toMap(
               includeUsers: includeUsers,
               includeOwnerSecrets: false,
-              since: (since ?? 0) > 0 ? since : null,
+              sinceSeq: seqMode && seqSince > 0 ? seqSince : null,
+              since: !seqMode && (since ?? 0) > 0 ? since : null,
             );
             await _sealed(request, session, map);
             onEvent?.call('أرسل نسخة إلى ${request.connectionInfo?.remoteAddress.address}');
@@ -362,7 +368,7 @@ class LanSync {
                   '${request.connectionInfo?.remoteAddress.address ?? 'جهاز'}',
               details: {'records': result.total},
             );
-            await _sealed(request, session, {'ok': true, 'records': result.total});
+            await _sealed(request, session, {'ok': true, 'records': result.total, 'failed': result.failedRows});
             onEvent?.call('استُقبل ${result.total} سجلًا من '
                 '${request.connectionInfo?.remoteAddress.address}');
             break;
@@ -380,7 +386,9 @@ class LanSync {
         } catch (_) {
           // متوقع: الطرف الآخر أغلق الاتصال قبل أن نرد عليه بالخطأ: لا مستمع للردّ، والخطأ الأصلي معروض أعلاه.
         }
-        ErrorLogger.log('sync.request', e);
+        // ما يبلغ هنا ليس رفض مصادقة (ذاك يُعالَج قبله) بل عطلٌ في معالجة طلبٍ
+        // موثوق — والأغلب تعثّر الدمج. حرجٌ يُدقَّق: الطرف الآخر لا يرى سببه.
+        ErrorLogger.critical('sync.request', e);
         onEvent?.call('خطأ في طلب وارد: $e');
       }
     }
@@ -930,8 +938,18 @@ class LanSync {
       );
       // أول دورة مع جهاز (علامة ماء صفر) كاملة بالضرورة — بها يبلغ الجهاز
       // الجديد حالةَ الوحدة. وما بعدها تفاضليّ: ما تغيّر وحده يعبر الشبكة.
-      final pulled = await pull(peer, includeUsers: true, since: SyncTrust.watermark(p.pulledUpTo));
-      final pushed = await push(peer, includeUsers: true, since: SyncTrust.watermark(p.pushedUpTo));
+      //
+      // العلامتان **رقما تسلسل** لا ختمان زمنيان: السحب بعدّاد القرين، والدفع
+      // بعدّادنا. الختم الزمني خليطٌ من ساعات كل الأجهزة (C-1)، فكان سجلٌّ عبر
+      // جهازًا وسيطًا بختمٍ قديم، أو كُتب هنا وساعة القرين متقدّمة، يقع تحت
+      // العلامة ولا يُطلب أبدًا. ويُرسل الختم القديم معه لقرينٍ بإصدارٍ أقدم.
+      final pulled = await pull(
+        peer,
+        includeUsers: true,
+        since: SyncTrust.watermark(p.pulledUpTo),
+        sinceSeq: p.pulledSeq,
+      );
+      final pushed = await push(peer, includeUsers: true, sinceSeq: p.pushedSeq);
       if (!pulled.ok || !pushed.ok) {
         problems.add('$label: ${pulled.ok ? pushed.message : pulled.message}');
         continue;
@@ -940,11 +958,20 @@ class LanSync {
       // يعني تخطّي تغييرات لن تُطلب مرة أخرى أبدًا.
       await store.remember(p.copyWith(
         host: host,
-        pulledUpTo: pulled.upTo > p.pulledUpTo ? pulled.upTo : p.pulledUpTo,
-        pushedUpTo: pushed.upTo > p.pushedUpTo ? pushed.upTo : p.pushedUpTo,
+        // دمجٌ تعثّر بعضه لا يقدّم علامته: ما تعثّر يُطلب ثانيةً بدل أن يقع تحتها.
+        pulledSeq: pulled.upToSeq == null || pulled.partial
+            ? p.pulledSeq
+            : nextWatermark(p.pulledSeq, pulled.upToSeq!),
+        pushedSeq: pushed.partial ? p.pushedSeq : nextWatermark(p.pushedSeq, pushed.upToSeq ?? 0),
+        // قرينٌ أقدم بلا رقم تسلسل: تبقى علامته الزمنية القديمة تعمل له وحده.
+        pulledUpTo: pulled.upToSeq != null
+            ? p.pulledUpTo
+            : (pulled.upTo > p.pulledUpTo ? pulled.upTo : p.pulledUpTo),
       ));
       reached++;
       records += pulled.records + pushed.records;
+      if (pulled.partial) problems.add('$label: ${pulled.message}');
+      if (pushed.partial) problems.add('$label: ${pushed.message}');
       onEvent?.call('زامن $label — سحب ${pulled.records} وأرسل ${pushed.records}');
     }
 
@@ -959,6 +986,15 @@ class LanSync {
           '${problems.isEmpty ? '' : ' — تعذّر: ${problems.join('، ')}'}',
     );
   }
+
+  /// العلامة التالية بعد عمليةٍ بلغت [upTo] وقد طُلب ما بعد [previous].
+  ///
+  /// عدّاد الجهاز لا ينقص في التشغيل العادي؛ فإن جاء أصغر من العلامة المحفوظة
+  /// فقد أُعيدت قاعدة ذلك الجهاز من نسخةٍ أقدم، ورقمٌ قديمٌ عنده قد يُعاد
+  /// استعماله لسجلٍّ جديد. العلامة حينها تُصفَّر فتكون الدورة القادمة كاملة —
+  /// كلفةُ دورةٍ أثقل خيرٌ من سجلاتٍ تقع تحت علامةٍ لا تُطلب بعدها أبدًا.
+  @visibleForTesting
+  static int nextWatermark(int previous, int upTo) => upTo < previous ? 0 : upTo;
 
   /// أين هذا الجهاز الموثوق الآن؟ عنوانه المحفوظ أولًا، فإن تبدّل فبالبحث.
   ///
@@ -999,23 +1035,28 @@ class LanSync {
   }
 
   /// يرسل بيانات هذا الجهاز إلى جهاز الاستقبال.
-  /// [since] > 0 ⇒ لا يُرسل إلا ما تغيّر بعده (مزامنة تفاضلية).
-  Future<SyncResult> push(SyncPeer peer, {bool includeUsers = false, int since = 0}) async {
+  /// [sinceSeq] > 0 ⇒ لا يُرسل إلا ما كُتب هنا بعد رقم التسلسل ذاك (تفاضلية).
+  /// [since] (ختم زمني) مسارٌ قديم لا تستعمله الدورة التلقائية.
+  Future<SyncResult> push(SyncPeer peer, {bool includeUsers = false, int since = 0, int? sinceSeq}) async {
     final host = peer.host;
     final session = peer.session;
     try {
       final map = await DataExporter(db).toMap(
         includeUsers: includeUsers,
         includeOwnerSecrets: false,
-        since: since > 0 ? since : null,
+        sinceSeq: (sinceSeq ?? 0) > 0 ? sinceSeq : null,
+        since: sinceSeq == null && since > 0 ? since : null,
       );
-      final upTo = ((map['meta'] as Map)['maxStamp'] as num?)?.toInt() ?? 0;
+      final meta = map['meta'] as Map;
+      final upTo = (meta['maxStamp'] as num?)?.toInt() ?? 0;
+      final upToSeq = (meta['maxSeq'] as num?)?.toInt() ?? 0;
       final payload = await compute(_sealTask, (session, map));
       final decoded = await _send(host, peer.port, session, 'POST', '/import', body: payload);
       if (decoded == null) {
         return const SyncResult(ok: false, message: 'رفض الجهاز الطلب — أعد الاقتران');
       }
       final records = (decoded['records'] as num?)?.toInt() ?? 0;
+      final failed = (decoded['failed'] as num?)?.toInt() ?? 0;
       await AuditRepo(db).log(
         action: 'sync.push',
         entityType: 'مزامنة',
@@ -1026,7 +1067,9 @@ class LanSync {
         ok: true,
         records: records,
         upTo: upTo,
-        message: 'أُرسل $records سجلًا',
+        upToSeq: upToSeq,
+        partial: failed > 0,
+        message: failed > 0 ? 'أُرسل $records سجلًا وتعذّر دمج $failed هناك' : 'أُرسل $records سجلًا',
       );
     } on SyncCryptoError catch (e) {
       return SyncResult(ok: false, message: e.message);
@@ -1036,8 +1079,10 @@ class LanSync {
   }
 
   /// يسحب بيانات جهاز الاستقبال ويدمجها هنا.
-  /// [since] > 0 ⇒ لا يُطلب إلا ما تغيّر بعده على الجهاز الآخر.
-  Future<SyncResult> pull(SyncPeer peer, {bool includeUsers = false, int since = 0}) async {
+  /// [sinceSeq] (غير `null`) ⇒ يُطلب ما كُتب عند الجهاز الآخر بعد رقم التسلسل
+  /// ذاك (صفر ⇒ نسخة كاملة). ويُرسل [since] (ختم زمني) معه لجهازٍ بإصدارٍ أقدم
+  /// لا يعرف رقم التسلسل فيعمل بالمسار القديم.
+  Future<SyncResult> pull(SyncPeer peer, {bool includeUsers = false, int since = 0, int? sinceSeq}) async {
     final host = peer.host;
     try {
       final data = await _send(
@@ -1049,16 +1094,27 @@ class LanSync {
         query: {
           'users': includeUsers ? '1' : '0',
           if (since > 0) 'since': '$since',
+          if (sinceSeq != null) 'seqSince': '$sinceSeq',
         },
       );
       if (data == null) {
         return const SyncResult(ok: false, message: 'رفض الجهاز الطلب — أعد الاقتران');
       }
-      final upTo = ((data['meta'] as Map?)?['maxStamp'] as num?)?.toInt() ?? 0;
-      final result = await LegacyImporter(db, ownerPublicKey: ownerPublicKey).importJson(
-        data,
-        source: 'جهاز $host',
-      );
+      final meta = data['meta'] as Map?;
+      final upTo = (meta?['maxStamp'] as num?)?.toInt() ?? 0;
+      final upToSeq = (meta?['maxSeq'] as num?)?.toInt();
+      final LegacyImportResult result;
+      try {
+        result = await LegacyImporter(db, ownerPublicKey: ownerPublicKey).importJson(
+          data,
+          source: 'جهاز $host',
+        );
+      } catch (e, stack) {
+        // الاتصال سليم والبيانات وصلت؛ الدمج هو الذي تعثّر. كانت الرسالة «تعذّر
+        // الاتصال» فيبحث المشغّل في الشبكة والعطل في البيانات.
+        ErrorLogger.critical('sync.merge', e, stack: stack);
+        return SyncResult(ok: false, message: 'وصلت بيانات $host وتعذّر دمجها هنا — $e');
+      }
       await AuditRepo(db).log(
         action: 'sync.pull',
         entityType: 'مزامنة',
@@ -1069,7 +1125,11 @@ class LanSync {
         ok: true,
         records: result.total,
         upTo: upTo,
-        message: 'سُحب ${result.total} سجلًا',
+        upToSeq: upToSeq,
+        partial: result.failedRows > 0,
+        message: result.failedRows > 0
+            ? 'سُحب ${result.total} سجلًا وتعذّر دمج ${result.failedRows} — يُعاد طلبه في الدورة القادمة'
+            : 'سُحب ${result.total} سجلًا',
       );
     } on SyncCryptoError catch (e) {
       return SyncResult(ok: false, message: e.message);
@@ -1108,6 +1168,10 @@ class LanSync {
       }
       final res = await req.close();
       final bytes = await _collect(res);
+      if (res.statusCode == HttpStatus.internalServerError) {
+        // الطلب قُبل وتعثّرت معالجته هناك (الدمج غالبًا): لا علاقة له بالاقتران.
+        throw const SyncCryptoError('تعثّرت معالجة البيانات في الجهاز الآخر — راجع سجل التدقيق عنده');
+      }
       if (res.statusCode != HttpStatus.ok) return null;
       return await compute(_openTask, (session, bytes));
     } finally {

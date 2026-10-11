@@ -89,6 +89,9 @@ class StocktakeRepo {
     final id = Ids.next('stk');
     final orderNo = await _nextOrderNo();
 
+    // الأمر وسطوره معًا: انقطاعٌ بينهما كان يترك أمرًا «قيد العد» بلا سطور يجمّد
+    // المستودع ولا يُعدّ فيه شيء.
+    await db.transaction(() async {
     await db.into(db.stocktakes).insert(StocktakesCompanion.insert(
           id: id,
           orderNo: Value(orderNo),
@@ -120,6 +123,7 @@ class StocktakeRepo {
           ),
         );
       }
+    });
     });
     return id;
   }
@@ -244,24 +248,31 @@ class StocktakeRepo {
   /// اعتماد التسوية: تُكتب فروق الأصناف المقرَّر تسويتها كحركات تسوية على
   /// المستودع، ثم يُغلق الأمر ويُفك التجميد. الأصناف المهملة أو المطلوب
   /// إعادة عدّها لا تُغيِّر الرصيد.
+  ///
+  /// **في معاملة واحدة** (M-3): كان كل سطر يُكتب وحده ثم يُغلق الأمر، فانقطاعٌ في
+  /// المنتصف يترك تسوياتٍ جزئية والمستودع مجمَّدًا، وإعادة الاعتماد تفشل لأن
+  /// معرّف التسوية حتميٌّ والإدراج عادي. الآن: الكل أو لا شيء، والإدراج يحتمل
+  /// التكرار، والأمر المغلق لا يُعتمد ثانيةً.
   Future<int> approve({
     required String sessionId,
     String approvedBy = '',
   }) async {
-    final session = await sessionById(sessionId);
-    if (session == null) return 0;
-    final rows = await lines(sessionId);
     var applied = 0;
     var totalAdjusted = 0.0;
+    Stocktake? session;
+    await db.transaction(() async {
+    session = await sessionById(sessionId);
+    if (session == null || session!.status == closed || session!.status == cancelled) return;
+    final rows = await lines(sessionId);
 
     for (final l in rows) {
       final variance = l.variance ?? 0;
       if (l.decision != decisionAdjust || variance == 0 || l.countedQty == null) continue;
-      await db.into(db.adjustments).insert(AdjustmentsCompanion.insert(
+      await db.into(db.adjustments).insertOnConflictUpdate(AdjustmentsCompanion.insert(
             id: 'adj-${l.id}',
-            refNo: Value(session.orderNo),
-            date: Value(session.date),
-            warehouse: Value(session.warehouse),
+            refNo: Value(session!.orderNo),
+            date: Value(session!.date),
+            warehouse: Value(session!.warehouse),
             itemId: Value(l.itemId),
             itemCode: Value(l.itemCode),
             itemName: Value(l.itemName),
@@ -292,14 +303,17 @@ class StocktakeRepo {
         adjustedCount: Value(applied),
       ),
     );
+    });
+    final done = session;
+    if (done == null || done.status == closed || done.status == cancelled) return 0;
 
     await AuditRepo(db).write(
       'STOCKTAKE_POSTED',
       'stocktake',
-      'اعتماد تسوية الجرد ${session.orderNo}',
+      'اعتماد تسوية الجرد ${done.orderNo}',
       details: {
-        'refNo': session.orderNo,
-        'warehouse': session.warehouse,
+        'refNo': done.orderNo,
+        'warehouse': done.warehouse,
         'status': closed,
         'itemCount': applied,
         'totalBaseQty': totalAdjusted,

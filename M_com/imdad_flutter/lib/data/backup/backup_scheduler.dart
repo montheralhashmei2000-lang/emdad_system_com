@@ -2,13 +2,13 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/error_log.dart';
 import '../../core/security/device_activation.dart';
 import '../db/app_database.dart';
+import '../db/db_cipher.dart' show imdSecureStorage;
 import '../migration/data_export.dart';
 import '../repos/settings_repo.dart';
 
@@ -27,7 +27,7 @@ abstract class BackupSecretStore {
 class SecureBackupSecretStore implements BackupSecretStore {
   const SecureBackupSecretStore();
 
-  static const _storage = FlutterSecureStorage();
+  static const _storage = imdSecureStorage;
   static const String _key = 'imdad.backup.password';
 
   @override

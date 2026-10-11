@@ -99,6 +99,8 @@ class FuelAllocationCalc {
     this.disbursable = true,
     this.weeklyLiters = 0,
     this.monthlyLiters = 0,
+    this.carryCapPeriods = 0,
+    this.writtenOff = 0,
   });
 
   final String periodType;
@@ -110,6 +112,12 @@ class FuelAllocationCalc {
   final bool disbursable;
   final double weeklyLiters;
   final double monthlyLiters;
+
+  /// سقف ما يُتاح في وقتٍ واحد بعدد الفترات (إعدادات المحروقات). صفر ⇒ بلا سقف.
+  final int carryCapPeriods;
+
+  /// ما شُطب من المستحق المتراكم بـ«تصفير الرصيد».
+  final double writtenOff;
 }
 
 class Fuel {
@@ -157,19 +165,52 @@ class Fuel {
     };
   }
 
-  /// الاستحقاق المتراكم حتى [asOf].
+  /// الاستحقاق المتراكم حتى [asOf]، بعد طرح ما شُطب بالتصفير.
   static double entitledLiters(FuelAllocationCalc a, DateTime asOf) {
     if (!a.active) return 0;
-    if (a.periodType == FuelPeriod.custom) return round(a.totalQuantity);
-    return round(periodsElapsed(a, asOf) * a.quantityPerPeriod);
+    final raw = a.periodType == FuelPeriod.custom
+        ? a.totalQuantity
+        : periodsElapsed(a, asOf) * a.quantityPerPeriod;
+    final net = raw - a.writtenOff;
+    return round(net < 0 ? 0 : net);
   }
 
+  /// سقف المتاح في وقتٍ واحد باللترات، أو `null` بلا سقف (الفترة المحددة لا
+  /// تتراكم أصلًا).
+  static double? carryCap(FuelAllocationCalc a) {
+    if (a.carryCapPeriods <= 0 || a.periodType == FuelPeriod.custom) return null;
+    return round(a.carryCapPeriods * a.quantityPerPeriod);
+  }
+
+  /// المتاح للصرف الآن: المستحق ناقص المصروف، **ولا يتجاوز السقف** (H-6).
+  /// كان التراكم بلا حدّ: وحدةٌ لم تسحب أشهرًا تسحب استحقاقها كله دفعةً.
   static double remainingLiters({
     required FuelAllocationCalc allocation,
     required double issued,
     required DateTime asOf,
-  }) =>
-      round(entitledLiters(allocation, asOf) - issued);
+  }) {
+    final left = round(entitledLiters(allocation, asOf) - issued);
+    final cap = carryCap(allocation);
+    return cap != null && left > cap ? cap : left;
+  }
+
+  /// ما يُشطب لتصفير الرصيد المتراكم: كل المتبقي الموجب (بلا سقف)، فيصير
+  /// المتبقي صفرًا لحظة التصفير ويعود يتراكم من الفترة التالية.
+  static double writeOffAmount({
+    required FuelAllocationCalc allocation,
+    required double issued,
+    required DateTime asOf,
+  }) {
+    final left = round(entitledLiters(allocation, asOf) - issued);
+    return left > 0 ? left : 0;
+  }
+
+  /// هل التاريخ بعد اليوم؟ (`YYYY-MM-DD`)
+  static bool isFutureDate(String date, DateTime today) {
+    final d = _parse(date);
+    if (d == null) return false;
+    return DateTime(d.year, d.month, d.day).isAfter(DateTime(today.year, today.month, today.day));
+  }
 
   /// ما يعادله أسبوعيًّا — للمقارنة بين تفريدات مختلفة الفترات.
   static double weeklyOf(FuelAllocationCalc a) {
@@ -201,19 +242,25 @@ class Fuel {
     required String date,
     required double qty,
     required double alreadyIssued,
+    DateTime? now,
   }) {
     if (!allocation.active) return 'التفريدة موقوفة';
     if (!allocation.disbursable) {
       return 'هذه التفريدة لا تُصرف إلا بتوجيه من القائد';
     }
     final d = date.trim();
+    final today = now ?? DateTime.now();
+    // سندٌ بتاريخٍ قادم كان يجمع استحقاق الفترات حتى ذلك التاريخ فيُصرف الآن
+    // استحقاق أشهرٍ لم تأتِ (H-6).
+    if (isFutureDate(d, today)) return 'تاريخ الصرف لا يكون في المستقبل';
     if (allocation.startDate.isNotEmpty && d.compareTo(allocation.startDate) < 0) {
       return 'تاريخ الصرف قبل بداية التفريدة';
     }
     if (allocation.endDate.isNotEmpty && d.compareTo(allocation.endDate) > 0) {
       return 'تاريخ الصرف بعد نهاية التفريدة';
     }
-    final asOf = _parse(d) ?? DateTime.now();
+    final parsed = _parse(d);
+    final asOf = parsed == null || parsed.isAfter(today) ? today : parsed;
     final remaining = remainingLiters(
       allocation: allocation,
       issued: alreadyIssued,

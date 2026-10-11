@@ -487,44 +487,44 @@ class CatalogRepo {
     return dates;
   }
 
+  /// معرّف الرصيد الافتتاحي لصنفٍ في مستودع — **واحدٌ** على كل الأجهزة.
+  ///
+  /// كان التثبيت حذفًا ثم إدراجًا بمعرّفٍ عشوائي، فجهازان يثبّتان رصيد الصنف
+  /// نفسه قبل أن يتزامنا يتركان صفّين، فيُجمعان: يُحتسب الرصيد مرتين بصمت (H-7).
+  static String openingIdOf(String itemId, String warehouse) => Ids.natural('opb', [itemId, warehouse]);
+
+  /// يثبّت رصيد [item] في [warehouse]: صفٌّ واحد بالمعرّف الحتمي، وتُحذف أي
+  /// صفوفٍ أخرى للمفتاح نفسه (من إصدارٍ أقدم أو من دمجٍ سابق) فيسافر شاهد حذفها.
+  Future<void> _putOpening(Item item, String warehouse, double qty, String actor, String date) async {
+    final id = openingIdOf(item.id, warehouse);
+    await (db.delete(db.openingBalances)
+          ..where((t) => t.itemId.equals(item.id) & t.warehouse.equals(warehouse) & t.id.equals(id).not()))
+        .go();
+    await db.into(db.openingBalances).insertOnConflictUpdate(OpeningBalancesCompanion.insert(
+          id: id,
+          itemId: item.id,
+          itemCode: Value(item.code),
+          itemName: Value(item.name),
+          warehouse: Value(warehouse),
+          qty: Value(qty),
+          date: Value(date),
+          setBy: Value(actor),
+          createdAt: Value(DateTime.now()),
+        ));
+  }
+
   /// تثبيت عدة أرصدة افتتاحية بمعاملةٍ واحدة وتاريخٍ واحد (كل صنفٍ يستبدل سابقه في المستودع).
   Future<void> setOpeningBalances(String warehouse, String actor, List<({Item item, double qty})> entries,
           {required String date}) =>
       db.transaction(() async {
         for (final e in entries) {
-          await (db.delete(db.openingBalances)
-                ..where((t) => t.itemId.equals(e.item.id) & t.warehouse.equals(warehouse)))
-              .go();
-          await db.into(db.openingBalances).insert(OpeningBalancesCompanion.insert(
-                id: Ids.next('opb'),
-                itemId: e.item.id,
-                itemCode: Value(e.item.code),
-                itemName: Value(e.item.name),
-                warehouse: Value(warehouse),
-                qty: Value(e.qty),
-                date: Value(date),
-                setBy: Value(actor),
-              ));
+          await _putOpening(e.item, warehouse, e.qty, actor, date);
         }
       });
 
   /// رصيدٌ افتتاحي للصنف في مستودع — تثبيتٌ يستبدل السابق (كشاشة الأرصدة الافتتاحية).
   Future<void> setOpeningBalance(Item item, String warehouse, double qty, String actor) =>
-      db.transaction(() async {
-        await (db.delete(db.openingBalances)
-              ..where((t) => t.itemId.equals(item.id) & t.warehouse.equals(warehouse)))
-            .go();
-        await db.into(db.openingBalances).insert(OpeningBalancesCompanion.insert(
-              id: Ids.next('opb'),
-              itemId: item.id,
-              itemCode: Value(item.code),
-              itemName: Value(item.name),
-              warehouse: Value(warehouse),
-              qty: Value(qty),
-              date: Value(isoDay(DateTime.now())),
-              setBy: Value(actor),
-            ));
-      });
+      db.transaction(() => _putOpening(item, warehouse, qty, actor, isoDay(DateTime.now())));
 
   Future<void> deleteCategory(String id) =>
       (db.delete(db.categories)..where((t) => t.id.equals(id))).go();

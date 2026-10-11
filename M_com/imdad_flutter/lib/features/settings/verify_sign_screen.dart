@@ -30,6 +30,10 @@ class _VerifySignScreenState extends State<VerifySignScreen> {
   bool _busy = false;
   bool _docFound = false;
 
+  /// حالة السند في هذا الجهاز — سندٌ أُلغي بعد توقيعه يبقى توقيعه سليمًا
+  /// رياضيًّا، والورقة مع ذلك لا يُعتدّ بها.
+  String _docStatus = '';
+
   @override
   void dispose() {
     _token.dispose();
@@ -49,12 +53,14 @@ class _VerifySignScreenState extends State<VerifySignScreen> {
     final payload =
         ref.isEmpty ? null : await SignaturesRepo(_db).payloadOfStored(ref);
     final result = await ESign(_db).verify(token, payload: payload);
+    final status = ref.isEmpty ? null : await SignaturesRepo(_db).statusOfStored(ref);
 
     if (!mounted) return;
     setState(() {
       _busy = false;
       _result = result;
       _docFound = payload != null;
+      _docStatus = status ?? '';
     });
   }
 
@@ -103,28 +109,38 @@ class _VerifySignScreenState extends State<VerifySignScreen> {
       ),
       if (_result != null) ...[
         const SizedBox(height: 12),
-        _ResultPanel(result: _result!, docFound: _docFound, colors: c),
+        _ResultPanel(result: _result!, docFound: _docFound, docStatus: _docStatus, colors: c),
       ],
     ]);
   }
 }
 
 class _ResultPanel extends StatelessWidget {
-  const _ResultPanel({required this.result, required this.docFound, required this.colors});
+  const _ResultPanel({
+    required this.result,
+    required this.docFound,
+    required this.colors,
+    this.docStatus = '',
+  });
 
   final ESignCheck result;
   final bool docFound;
+  final String docStatus;
+
+  /// حالةٌ تُسقط الاعتداد بالورقة مهما صحّ توقيعها.
+  bool get _void => docStatus == 'CANCELLED' || docStatus == 'REJECTED';
   final ImdColors colors;
 
   @override
   Widget build(BuildContext context) {
-    final ok = result.ok;
+    final ok = result.ok && !_void;
     return ImdPanel(
       title: ok ? 'التوقيع سليم' : 'التوقيع غير مقبول',
       icon: ok ? 'check-circle' : 'alert',
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         ImdChipsRow(children: [
-          ImdChip(result.reason, tone: ok ? ImdTone.ok : ImdTone.err),
+          ImdChip(result.reason, tone: result.ok ? ImdTone.ok : ImdTone.err),
+          if (_void) ImdChip(docStatus == 'CANCELLED' ? 'السند ملغى' : 'السند مرفوض', tone: ImdTone.err),
           if (result.keyId.isNotEmpty) ImdChip('المفتاح ${result.keyId}', tone: ImdTone.code),
         ]),
         const SizedBox(height: 10),
@@ -138,6 +154,9 @@ class _ResultPanel extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         // التمييز مهم: توقيع سليم على مستند لم نجده لا يثبت أن الورقة صحيحة.
+        if (_void)
+          const ImdNote('✖ السند أُلغي (أو رُفض) في النظام بعد توقيعه — الورقة لا يُعتدّ بها '
+              'وإن صحّ توقيعها.'),
         ImdNote(
           !docFound
               ? '⚠ السند غير موجود في هذا الجهاز، فتُحقق من التوقيع وحده دون مقابلة '

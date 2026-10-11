@@ -56,6 +56,8 @@ class VoucherPrint {
     String endDate = '',
     bool multiUnit = false,
     bool withReceipt = false,
+    bool saved = false,
+    String status = '',
   }) async {
     // تخطيطُ النموذج المقصود لا التخطيط العام: لكل نوع سندٍ مفتاحُه في
     // [PrintForms]، فمن أفرد «أمر الصرف» بترويسةٍ لم تتبعه بقيةُ السندات.
@@ -76,6 +78,7 @@ class VoucherPrint {
       'strength': strength,
       'days': days,
       'is_multi_unit': multiUnit ? 'true' : 'false',
+      if (!saved) 'draft': 'true',
       switch (kind) {
         VoucherKind.receive => 'supplier',
         VoucherKind.issue => 'beneficiary',
@@ -106,20 +109,25 @@ class VoucherPrint {
               ],
     ];
 
-    // التوقيع الإلكتروني يُختم مرة واحدة لكل سند ويُطبع رمزه في أسفل الورقة.
-    // إن لم يكن للقائد مفتاح على هذا الجهاز يُطبع السند بلا رمز كما كان.
-    final token = await SignaturesRepo(db).signOnce(
-      docRef: refNo,
-      payload: SignaturesRepo.payloadOf(
-        refNo: refNo,
-        date: date,
-        warehouse: warehouse,
-        party: party,
-        lines: [
-          for (final l in lines) (item: l.itemName, unit: l.unitName, qty: l.qty),
-        ],
-      ),
-    );
+    // التوقيع الإلكتروني على **السند المحفوظ** وحده وبحالةٍ نهائية (H-5):
+    // نموذجٌ على الشاشة لم يُحفظ يحمل رقمًا محجوزًا لا مُستهلَكًا، فلا يُوقَّع
+    // ويُطبع بشريط «مسودة». وسياسة الجهة (تلقائي/يدوي/معطَّل) هي الحَكَم.
+    final token = !saved
+        ? null
+        : await SignaturesRepo(db).tokenForPrint(
+            docRef: refNo,
+            status: status,
+            mode: await SettingsRepo(db).esignMode(),
+            payload: SignaturesRepo.payloadOf(
+              refNo: refNo,
+              date: date,
+              warehouse: warehouse,
+              party: party,
+              lines: [
+                for (final l in lines) (item: l.itemName, unit: l.unitName, qty: l.qty),
+              ],
+            ),
+          );
 
     final bytes = switch (kind) {
       VoucherKind.receive => await engine.receiveVoucher(master, rows, signatureToken: token),
@@ -133,6 +141,8 @@ class VoucherPrint {
         await engine.returnVoucher(master, rows, fromUnit: false, signatureToken: token),
     };
     await MilitaryPrint.show(bytes, name: '$title $refNo');
+    // المسودة لا تُؤرشف: الأرشيف أثرُ ما صدر فعلًا.
+    if (!saved) return;
     // الأرشفة التلقائية: إن مُكِّنت عملية هذا السند من «الإعدادات ←
     // الأرشفة التلقائية» أُرشفت نسخة PDF مطابقة لما طُبع فعلًا. والفشل
     // هنا لا يمنع طباعةً تمّت، فيُبتلع بعد إظهار الطباعة.

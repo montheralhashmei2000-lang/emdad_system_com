@@ -151,6 +151,10 @@ class MilitaryPrint {
                     approvalVisible && (type == 'receive' || type == 'daily_work'),
                 logo: logo,
               ),
+              // سندٌ لم يُحفظ بعد: يُطبع للمراجعة لا للتسليم. الشريط في كل صفحة،
+              // ولا توقيع إلكتروني عليه (H-5): رقمه محجوزٌ لا مُستهلَك، فقد يحمله
+              // سندٌ آخر يُحفظ لاحقًا.
+              if (master['draft'] == 'true') draftBanner(),
               if (i == 0) ..._infoTable(type, master, date),
               pw.SizedBox(height: 4),
               pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
@@ -195,6 +199,22 @@ class MilitaryPrint {
     }
     return pdf.save();
   }
+
+  /// شريط «مسودة غير محفوظة» أعلى كل صفحة من سندٍ لم يُحفظ.
+  pw.Widget draftBanner() => pw.Container(
+        margin: const pw.EdgeInsets.only(bottom: 4),
+        padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        decoration: pw.BoxDecoration(
+          color: PdfColors.red50,
+          border: pw.Border.all(color: PdfColors.red700, width: 1),
+        ),
+        child: pw.Center(
+          child: pw.Text(
+            'مسودة غير محفوظة — للمراجعة فقط، لا يُعتدّ بها ولا تُسلَّم ولا تحمل توقيعًا',
+            style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.red800),
+          ),
+        ),
+      );
 
   Uint8List? _logoBytes() {
     if (logoBase64.isEmpty) return null;

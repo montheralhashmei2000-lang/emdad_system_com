@@ -129,9 +129,24 @@ mixin _LegacyDaily on _LegacyBase {
       if (!_accept('app_settings', entry.key)) continue;
       final value = _json(entry.value, '{}');
       if (local[entry.key] == value) continue;
+      // قيمةٌ ليست JSON لا تُكتب: `SettingsRepo.read` يفكّها عند كل قراءة، و`org`
+      // يُقرأ قبل ظهور الواجهة — فقيمةٌ تالفة واحدة من قرين كانت تُسقط التطبيق
+      // عند كل إقلاع.
+      try {
+        jsonDecode(value);
+      } on FormatException {
+        _rejectedMarks.add('app_settings/${entry.key}');
+        res.warnings.add('تُجوِّز إعدادٌ وارد بقيمة غير صالحة («${entry.key}»)');
+        continue;
+      }
       if (_losesSettingsTie(entry.key, value, local[entry.key])) {
         _rejectedMarks.add('app_settings/${entry.key}');
         continue;
+      }
+      final mine = _local['app_settings/${entry.key}'];
+      final theirs = _incoming['app_settings/${entry.key}'];
+      if (mine != null && theirs != null && mine.stamp == theirs.stamp) {
+        _changedOnTie.add('app_settings/${entry.key}');
       }
       await db
           .into(db.appSettings)

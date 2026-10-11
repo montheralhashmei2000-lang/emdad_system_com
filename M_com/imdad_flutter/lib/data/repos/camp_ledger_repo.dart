@@ -285,7 +285,7 @@ class CampLedgerRepo {
         final previous = previousByKey[key];
         final previousAmounts = previous == null ? null : _amountsOf(previous);
         ledgerWrites.add(CampLedgersCompanion.insert(
-          id: existing?.id ?? Ids.next('cld'),
+          id: existing?.id ?? Ids.natural('cld', [camp.id, scale.itemId, year, month]),
           campId: camp.id,
           campName: Value(camp.name),
           itemId: scale.itemId,
@@ -454,7 +454,7 @@ class CampLedgerRepo {
         await db
             .into(db.campLedgers)
             .insertOnConflictUpdate(CampLedgersCompanion.insert(
-              id: next?.id ?? Ids.next('cld'),
+              id: next?.id ?? Ids.natural('cld', [r.ledger.campId, r.ledger.itemId, nextYear, nextMonth]),
               campId: r.ledger.campId,
               campName: Value(r.ledger.campName),
               itemId: r.ledger.itemId,
@@ -476,7 +476,7 @@ class CampLedgerRepo {
       await db
           .into(db.monthlySettlements)
           .insert(MonthlySettlementsCompanion.insert(
-            id: Ids.next('stl'),
+            id: Ids.natural('stl', [year, month]),
             year: year,
             month: month,
             settledBy: Value(actor),
@@ -585,7 +585,7 @@ class CampLedgerRepo {
         .get();
     await db.into(db.campStockLimits).insertOnConflictUpdate(
           CampStockLimitsCompanion.insert(
-            id: rows.isEmpty ? Ids.next('lim') : rows.first.id,
+            id: rows.isEmpty ? Ids.natural('lim', [campId, itemId]) : rows.first.id,
             campId: campId,
             campName: Value(campName),
             itemId: itemId,

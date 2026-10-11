@@ -9,7 +9,10 @@ import '../../core/error_log.dart';
 import '../repos/audit_repo.dart';
 import 'app_database.dart';
 
-/// نسخة احتياطية **كاملة** من ملف القاعدة قبل ترحيل v25.
+/// نسخة احتياطية **كاملة** من ملف القاعدة قبل أي ترحيلٍ لمخططها.
+///
+/// كانت خاصةً بترحيل v25 (الهدف ثابتٌ 25)، فلا تُؤخذ قبل أي ترحيلٍ بعده — ومنه
+/// v26 (تراكم المحروقات). الهدف الآن إصدار مخطط التطبيق الحالي.
 ///
 /// **لماذا نسخ الملف نفسه لا تصدير JSON:** الرجوع بعد ترحيلٍ فاشل أو معيب يحتاج
 /// القاعدة كما كانت بالضبط — بما فيها جدول المستخدمين وكلمات مرورهم. التصدير
@@ -27,13 +30,17 @@ import 'app_database.dart';
 class PreMigrationBackup {
   const PreMigrationBackup._();
 
-  /// إصدار المخطط الذي تسبقه النسخة.
-  static const int targetVersion = 25;
+  /// إصدار المخطط الذي تسبقه النسخة: مخطط التطبيق الحالي.
+  static int get targetVersion => AppDatabase.kSchemaVersion;
 
   /// مدة بقاء النسخة بعد نجاح الفتح بالمخطط الجديد.
   static const Duration keepFor = Duration(days: 7);
 
-  static const String tag = 'pre-v25';
+  /// وسم النسخة في اسم ملفها: `pre-v<الهدف>`.
+  static String tagFor(int target) => 'pre-v$target';
+
+  /// ما تشترك فيه أسماء كل النسخ أيًّا كان هدفها.
+  static const String _tagStem = 'pre-v';
   static const String createdAction = 'backup.pre_migration.created';
   static const String deletedAction = 'backup.pre_migration.deleted';
 
@@ -58,10 +65,11 @@ class PreMigrationBackup {
   static File? createIfNeeded(
     CommonDatabase db,
     File dbFile, {
-    int target = targetVersion,
+    int? target,
     int schemaVersion = AppDatabase.kSchemaVersion,
     DateTime? now,
   }) {
+    target ??= targetVersion;
     if (schemaVersion < target) return null;
 
     final version = (db.select('PRAGMA user_version').first.values.first as num).toInt();
@@ -74,7 +82,7 @@ class PreMigrationBackup {
     if (_markers(dbFile.parent, dbFile).any((m) => m.openedOkAt == null)) return null;
 
     final t = now ?? DateTime.now();
-    final dest = '${dbFile.path}.$tag-${_stamp(t)}';
+    final dest = '${dbFile.path}.${tagFor(target)}-${_stamp(t)}';
     final part = '$dest.part';
     try {
       // سجل WAL يُفرَّغ في الملف الرئيسي أولًا، وإلا فاتت النسخةَ آخرُ الكتابات.
@@ -124,8 +132,6 @@ class PreMigrationBackup {
     DateTime? now,
   }) async {
     try {
-      // قبل أن يبلغ التطبيق مخطط النسخة لا معنى لـ«نجاح الترحيل».
-      if (schemaVersion < targetVersion) return;
 
       final Directory dir;
       try {
@@ -138,6 +144,8 @@ class PreMigrationBackup {
       final t = now ?? DateTime.now();
       final audit = AuditRepo(db);
       for (final m in _markers(dir, null)) {
+        // قبل أن يبلغ التطبيق مخطط النسخة لا معنى لـ«نجاح الترحيل».
+        if (m.toVersion > schemaVersion) continue;
         final name = p.basename(m.backupPath);
 
         m.openedOkAt ??= t;
@@ -193,12 +201,12 @@ class PreMigrationBackup {
   /// أوصاف النسخ الموجودة في [dir] (لقاعدةٍ بعينها إن أُعطيت [dbFile]).
   static List<_Marker> _markers(Directory dir, File? dbFile) {
     if (!dir.existsSync()) return const [];
-    final prefix = dbFile == null ? null : '${p.basename(dbFile.path)}.$tag-';
+    final prefix = dbFile == null ? null : '${p.basename(dbFile.path)}.$_tagStem';
     final out = <_Marker>[];
     for (final e in dir.listSync()) {
       if (e is! File || !e.path.endsWith('.json')) continue;
       final base = p.basename(e.path);
-      if (!base.contains('.$tag-')) continue;
+      if (!base.contains('.$_tagStem')) continue;
       if (prefix != null && !base.startsWith(prefix)) continue;
       final backupPath = e.path.substring(0, e.path.length - '.json'.length);
       try {

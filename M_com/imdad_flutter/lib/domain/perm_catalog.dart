@@ -137,6 +137,10 @@ class PermCatalog {
     PermEntry('settings', 'الإعدادات والهوية', PermSection.admin, 'الإدارة', [PermAction.view, PermAction.edit]),
     PermEntry('usersAccess', 'المستخدمون والصلاحيات', PermSection.admin, 'الإدارة',
         [PermAction.view, PermAction.edit, PermAction.approve]),
+    // «اعتماد» = توقيع السندات المحفوظة باسم القائد في الوضع اليدوي. لا يرثها
+    // المدير ضمنًا (انظر `ESignPolicy.canSign`).
+    PermEntry('esign', 'التوقيع الإلكتروني للسندات (القائد)', PermSection.admin, 'الإدارة',
+        [PermAction.view, PermAction.approve]),
   ];
 
   static final Map<String, PermEntry> byKey = {for (final e in entries) e.key: e};

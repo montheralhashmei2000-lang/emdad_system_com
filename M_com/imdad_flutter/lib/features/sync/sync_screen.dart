@@ -12,6 +12,7 @@ import '../../core/ui/imd_tokens.dart';
 import '../../core/ui/imd_window.dart';
 import '../../core/ui/imd_widgets.dart';
 import '../../data/db/app_database.dart';
+import '../../data/repos/audit_repo.dart';
 import '../../data/sync/auto_sync.dart';
 import '../../data/sync/lan_sync.dart';
 import '../../data/sync/sync_crypto.dart';
@@ -403,15 +404,45 @@ class _SyncScreenState extends State<SyncScreen> {
         const SizedBox(height: 10),
         Align(
           alignment: AlignmentDirectional.centerStart,
-          child: ImdButton(
-            label: 'زامن الآن',
-            icon: 'refresh',
-            busy: _busy,
-            onPressed: editable && _trusted.isNotEmpty ? _syncNow : null,
-          ),
+          child: Wrap(spacing: 10, runSpacing: 10, children: [
+            ImdButton(
+              label: 'زامن الآن',
+              icon: 'refresh',
+              busy: _busy,
+              onPressed: editable && _trusted.isNotEmpty ? _syncNow : null,
+            ),
+            ImdButton.outline(
+              label: 'مزامنة كاملة',
+              icon: 'swap',
+              onPressed: editable && _trusted.isNotEmpty && !_busy ? _fullSync : null,
+            ),
+          ]),
         ),
       ]),
     );
+  }
+
+  /// «مزامنة كاملة»: تُصفَّر علامات الماء فتنقل الدورة القاعدةَ كاملة في
+  /// الاتجاهين — علاجٌ لتباعدٍ يُشكّ فيه. الدمج بالمعرّف يجعلها بلا تكرار.
+  Future<void> _fullSync() async {
+    final ok = await imdConfirm(
+      context,
+      'تُرسل الدورة القادمة البيانات كاملةً إلى كل جهاز موثوق وتسحبها منه كاملة. '
+      'تستغرق أطول من المعتاد، ولا تكرّر شيئًا. متابعة؟',
+      ok: 'مزامنة كاملة',
+    );
+    if (!ok || !mounted) return;
+    final db = context.read<AppDatabase>();
+    final actor = context.read<AuthService>().currentUser?.email ?? '';
+    await SyncTrust(db).resetAllWatermarks();
+    await AuditRepo(db).log(
+      action: 'sync.full_requested',
+      entityType: 'مزامنة',
+      summary: 'طُلبت مزامنة كاملة مع كل الأجهزة الموثوقة',
+      actorEmail: actor,
+    );
+    if (!mounted) return;
+    await _syncNow();
   }
 
   /// لوحة «هذا الجهاز مستقبِل» — العنوان وحالة الاستقبال ورمز الاقتران.

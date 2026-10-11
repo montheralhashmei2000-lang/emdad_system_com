@@ -15,7 +15,9 @@ QueryExecutor openConnection() {
     final dir = await getApplicationSupportDirectory();
     final file = File(p.join(dir.path, DbCipher.fileName));
 
-    final key = await DbCipher.loadKey();
+    // المفتاح الغائب وقاعدةٌ مشفّرة قائمة يُرمى (لا مفتاحٌ جديد يقفلها للأبد)؛
+    // الإقلاع يفحص ذلك قبل هنا ويعرض شاشة الاسترداد (`DbCipher.loadKey`).
+    final key = await DbCipher.loadKey(dbFile: file);
     // الترحيل يجري على هذا الخيط، فيحتاج توجيه المكتبة هنا أيضًا.
     DbCipher.setupIsolate();
     await DbCipher.migratePlainFile(file, key);

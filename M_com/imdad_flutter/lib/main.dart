@@ -31,6 +31,7 @@ import 'data/repos/camp_ledger_repo.dart';
 import 'data/repos/settings_repo.dart';
 import 'data/sync/auto_sync.dart';
 import 'features/auth/idle_lock_host.dart';
+import 'features/auth/key_recovery_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_shell.dart';
 import 'core/security/device_activation.dart';
@@ -46,6 +47,41 @@ Future<void> main() async {
       'نسخة الإصدار بُنيت بلا مفتاح مالك (OwnerKey.publicKey فارغ). '
       'ولّد مفتاحًا بـ tool/make_owner_key.dart وأعد البناء.',
     );
+  }
+  await boot();
+}
+
+/// فحص مفتاح القاعدة قبل فتحها: غائبٌ أو لا يُقرأ والقاعدة المشفّرة قائمة ⇒
+/// شاشة الاسترداد لا مفتاحٌ جديد (H-2). `null` ⇒ المفتاح جاهز (أو وُلِّد لتثبيتٍ
+/// جديد).
+Future<DbKeyMissing?> _keyPreflight() async {
+  try {
+    await DbCipher.loadKey(dbFile: await DbCipher.defaultFile());
+    return null;
+  } on DbKeyMissing catch (e) {
+    return e;
+  } on StateError catch (e) {
+    // مفتاحٌ محفوظٌ تالف (`loadKey` يرفض الكتابة فوقه): الاسترداد هو الطريق نفسه.
+    return DbKeyMissing(e.message, unreadable: true);
+  }
+}
+
+/// الإقلاع كاملًا — ويُعاد استدعاؤه بعد استرداد المفتاح من شاشة الاسترداد.
+Future<void> boot() async {
+  final keyProblem = await _keyPreflight();
+  if (keyProblem != null) {
+    if (ImdWindow.supported) {
+      await windowManager.ensureInitialized();
+      await windowManager.waitUntilReadyToShow(
+        const WindowOptions(size: Size(1000, 760), title: 'Emdad System', center: true),
+        () async {
+          await windowManager.show();
+          await windowManager.focus();
+        },
+      );
+    }
+    runApp(KeyRecoveryApp(problem: keyProblem, onResolved: boot));
+    return;
   }
 
   final db = AppDatabase();
@@ -112,7 +148,7 @@ Future<void> _cleanupPlainBackups(AppDatabase db) async {
   try {
     final dir = await getApplicationSupportDirectory();
     final file = File(p.join(dir.path, DbCipher.fileName));
-    final removed = DbCipher.removeStalePlainBackups(file, await DbCipher.loadKey());
+    final removed = DbCipher.removeStalePlainBackups(file, await DbCipher.loadKey(dbFile: file));
     if (removed.isEmpty) return;
     await AuditRepo(db).log(
       action: 'db.cleanup_plain_backup',

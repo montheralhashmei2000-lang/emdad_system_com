@@ -226,6 +226,29 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
     }
   }
 
+  /// «تصفير الرصيد المتراكم»: يُشطب المتبقي كله الآن، ويعود يتراكم من الفترة
+  /// التالية (قرار المالك 2026-10-11). يُدقَّق بخطورة عالية.
+  Future<void> _resetCarry(FuelAllocationRow row) async {
+    if (!Perm.of(context).guard(context, 'fuelAllocations', PermAction.edit)) return;
+    if (!await imdConfirm(
+      context,
+      'تصفير الرصيد المتراكم لتفريدة «${row.allocation.unitName}»؟\n'
+      'يُشطب المتبقي (${nf(row.remaining)} ${Fuel.unit}) ويعود الاستحقاق يتراكم من الفترة التالية.',
+      ok: 'تصفير',
+      danger: true,
+    )) {
+      return;
+    }
+    if (!mounted) return;
+    final res = await _repo.resetCarry(
+      row.allocation.id,
+      actor: context.read<AuthService>().currentUser?.email ?? '',
+    );
+    if (!mounted) return;
+    showImdToast(context, res.ok ? '✔ صُفِّر الرصيد المتراكم' : res.error, error: !res.ok);
+    if (res.ok) await _load();
+  }
+
   List<FuelAllocationRow> _of(String fuelType) =>
       _rows.where((r) => r.allocation.fuelType == fuelType).toList();
 
@@ -511,6 +534,11 @@ class _FuelAllocationsScreenState extends State<FuelAllocationsScreen> {
                         icon: 'edit',
                         tooltip: 'تعديل',
                         onPressed: () => _edit(r)),
+                    if (r.remaining > 0)
+                      ImdIconButton(
+                          icon: 'rotate-ccw',
+                          tooltip: 'تصفير الرصيد المتراكم',
+                          onPressed: () => _resetCarry(r)),
                     if (_canDel)
                       ImdIconButton(
                           icon: 'trash',

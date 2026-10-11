@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 
 import '../../data/db/app_database.dart';
+import '../../data/db/db_cipher.dart' show imdSecureStorage;
 import '../error_log.dart';
 import 'auth_service.dart';
 
@@ -34,7 +35,7 @@ enum BiometricAvailability {
 class BiometricService {
   BiometricService(this.db, this.auth, {LocalAuthentication? localAuth, FlutterSecureStorage? storage})
       : _local = localAuth ?? LocalAuthentication(),
-        _storage = storage ?? const FlutterSecureStorage();
+        _storage = storage ?? imdSecureStorage;
 
   final AppDatabase db;
   final AuthService auth;

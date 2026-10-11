@@ -2,9 +2,11 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 
+import '../../core/error_log.dart';
 import '../../core/ui/imd_fonts.dart';
 import '../../core/ui/imd_numbers.dart';
 import '../db/app_database.dart';
+import '../../domain/esign_policy.dart';
 import '../../domain/print_layout.dart';
 
 /// هوية التطبيق والجهة: الاسم والشعار وأسطر الترويسة والسمة.
@@ -150,6 +152,9 @@ class SettingsRepo {
     // الأرشفة التلقائية (`kArchiveAutoKey`): الأرشيف وملفاته على قرص كل جهاز
     // وخارج المزامنة، فتفعيلُه قرارُ ذلك الجهاز لا قرارٌ يُفرض على أقراص الفروع.
     'archive.auto',
+    // ملف استرداد مفتاح القاعدة (`KeyEscrow`): متى حُفظ آخره على **هذا** الجهاز —
+    // لكل جهازٍ مفتاحه، فلا معنى لتاريخ جهازٍ آخر هنا.
+    'keyEscrow',
   };
 
   static const String issueRecoveryKey = 'issueRecovery';
@@ -178,7 +183,15 @@ class SettingsRepo {
   Future<Map<String, dynamic>> read(String key) async {
     final rows = await (db.select(db.appSettings)..where((t) => t.key.equals(key))).get();
     if (rows.isEmpty) return {};
-    final decoded = jsonDecode(rows.first.value);
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(rows.first.value);
+    } on FormatException catch (err, stack) {
+      // قيمةٌ تالفة لا تُسقط مستدعيها (والهوية تُقرأ قبل ظهور الواجهة): تُعامل
+      // كأنها غائبة، ويبقى الخطأ مسجَّلًا.
+      ErrorLogger.critical('settings.read.$key', err, stack: stack);
+      return {};
+    }
     return decoded is Map ? Map<String, dynamic>.from(decoded) : {};
   }
 
@@ -254,6 +267,12 @@ class SettingsRepo {
     await write(numbersKey, p.toMap());
     ImdNumbers.apply(p);
   }
+
+  /// وضع التوقيع الإلكتروني للسندات (H-5) — تلقائي افتراضيًّا كما كان، لكن على
+  /// المحفوظ وحده.
+  Future<ESignMode> esignMode() async => ESignPolicy.parse((await read(ESignPolicy.settingsKey))['mode']);
+
+  Future<void> saveEsignMode(ESignMode mode) => write(ESignPolicy.settingsKey, {'mode': mode.name});
 
   /// يقرأ التفضيل المحفوظ ويُفعّله — يُنادى مرةً عند الإقلاع.
   Future<void> loadNumbers() async => ImdNumbers.apply(await numbers());

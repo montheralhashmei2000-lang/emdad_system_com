@@ -7,6 +7,9 @@ import 'package:sqlcipher_flutter_libs/sqlcipher_flutter_libs.dart';
 import 'package:sqlite3/open.dart';
 import 'package:sqlite3/common.dart';
 import 'package:sqlite3/sqlite3.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
 import '../../core/error_log.dart';
 
 /// مخزن سرّ المفتاح — واجهة ضيقة تُحقن في الاختبارات بنسخة في الذاكرة، لأن إضافة
@@ -14,19 +17,41 @@ import '../../core/error_log.dart';
 abstract class KeyStore {
   Future<String?> read(String key);
   Future<void> write(String key, String value);
+  Future<void> delete(String key);
 }
+
+/// إعداد مخزن الأسرار الموحَّد للتطبيق كله.
+///
+/// **`resetOnError: false`** (البند H-2): الافتراضي في الإصدار 10 أن يُمسح المخزن
+/// **كلّه** عند أي عطلٍ في فكّه — والمخزن ملفٌّ واحد يحمل مفتاح القاعدة وكلمة سر
+/// النسخ والبصمة معًا. فعطلٌ في Keystore بعد تحديث نظام كان يمحو مفتاح القاعدة
+/// بصمت، ثم يولّد التطبيق مفتاحًا جديدًا فلا تُفتح القاعدة أبدًا. الآن يُرمى
+/// الخطأ ويُعرض على المستخدم ([DbKeyMissing]) ولا يُمسح شيء.
+const FlutterSecureStorage imdSecureStorage = FlutterSecureStorage(
+  aOptions: AndroidOptions(resetOnError: false),
+);
 
 /// المخزن الحقيقي: Keystore على أندرويد، وخزانة الاعتمادات على ويندوز.
 class SecureKeyStore implements KeyStore {
   const SecureKeyStore();
 
-  static const _storage = FlutterSecureStorage();
+  static const _storage = imdSecureStorage;
 
   @override
   Future<String?> read(String key) => _storage.read(key: key);
 
   @override
   Future<void> write(String key, String value) => _storage.write(key: key, value: value);
+
+  /// حذف المدخل؛ وإن كان المخزن نفسه لا يُقرأ فيُفرَّغ كلّه (لا سبيل غيره).
+  @override
+  Future<void> delete(String key) async {
+    try {
+      await _storage.delete(key: key);
+    } catch (_) {
+      await _storage.deleteAll();
+    }
+  }
 }
 
 /// تشفير قاعدة البيانات على الجهاز (SQLCipher — AES-256).
@@ -49,13 +74,28 @@ class DbCipher {
   /// لاحقة النسخة غير المشفّرة التي يتركها الترحيل القديم.
   static const String plainBackupSuffix = '.plain.bak';
 
+  /// ملف القاعدة في مجلد بيانات التطبيق.
+  static Future<File> defaultFile() async =>
+      File(p.join((await getApplicationSupportDirectory()).path, fileName));
+
   /// يقرأ مفتاح القاعدة، ويولّده **عند غيابه تمامًا** فقط. [store] للاختبارات فقط.
   ///
   /// قيمة محفوظة غير سليمة (طولها ليس ٦٤ أو فيها غير hex) لا يُكتب فوقها: المفتاح
   /// القديم قد يكون ما يفتح القاعدة، ومسحه بصمت يحوّلها إلى ملف لا يُفتح ويبدو
   /// للمستخدم فاسدًا. يُرمى [StateError] بدل ذلك ليُعالَج الأمر عن علم.
-  static Future<String> loadKey({KeyStore store = const SecureKeyStore()}) async {
-    final existing = await store.read(_keyName);
+  ///
+  /// **ولا يُولَّد مفتاحٌ جديد وقاعدةٌ مشفَّرة موجودة** ([dbFile]) — يُرمى
+  /// [DbKeyMissing]. غيابُ المفتاح والقاعدة قائمة يعني أنه فُقد (مخزن الأسرار مُسح،
+  /// أو حساب ويندوز أُعيد تعيينه)، ومفتاحٌ جديد يجعل القاعدة لا تُفتح **نهائيًّا**
+  /// ويمحو أي أملٍ في استرداد القديم (H-2). يُسترد حينها من ملف الاسترداد
+  /// (`KeyEscrow`) أو يُبدأ بقاعدةٍ جديدة صراحةً.
+  static Future<String> loadKey({KeyStore store = const SecureKeyStore(), File? dbFile}) async {
+    final String? existing;
+    try {
+      existing = await store.read(_keyName);
+    } catch (e) {
+      throw DbKeyMissing('تعذّرت قراءة مفتاح القاعدة من مخزن الأسرار: $e', unreadable: true);
+    }
     if (existing != null && existing.isNotEmpty) {
       if (!_validKey.hasMatch(existing)) {
         throw StateError(
@@ -64,6 +104,10 @@ class DbCipher {
         );
       }
       return existing;
+    }
+
+    if (dbFile != null && hasEncryptedDatabase(dbFile)) {
+      throw const DbKeyMissing('مفتاح القاعدة غائب عن هذا الجهاز وقاعدة البيانات المشفّرة موجودة');
     }
 
     final rnd = Random.secure();
@@ -75,6 +119,54 @@ class DbCipher {
   }
 
   static final RegExp _validKey = RegExp(r'^[0-9a-fA-F]{64}$');
+
+  /// هل في [file] قاعدةٌ مشفّرة (ملفٌ غير فارغ ولا يبدأ بترويسة SQLite الصريحة)؟
+  static bool hasEncryptedDatabase(File file) {
+    try {
+      return file.existsSync() && file.lengthSync() > 0 && !_looksPlain(file);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// هل يفتح [keyHex] القاعدة المشفّرة [file]؟ — للتحقق من مفتاحٍ مستردٍّ قبل حفظه.
+  static bool keyOpens(File file, String keyHex) =>
+      _validKey.hasMatch(keyHex) && _verifyEncrypted(file, keyHex, 1, atLeast: true);
+
+  /// يحفظ مفتاحًا مستردًّا في مخزن الأسرار (بعد [keyOpens]).
+  static Future<void> storeKey(String keyHex, {KeyStore store = const SecureKeyStore()}) async {
+    if (!_validKey.hasMatch(keyHex)) throw ArgumentError('مفتاح غير صالح');
+    await store.write(_keyName, keyHex.toLowerCase());
+  }
+
+  /// يمحو المفتاح المحفوظ — لـ«بدء قاعدة جديدة» حين يتعذّر قراءة المخزن نفسه
+  /// (فلا يُولَّد بديلٌ ما دام القديم التالف يُقرأ خطأً في كل إقلاع). لا يُنادى
+  /// إلا بعد تنحية القاعدة القديمة ([setAsideLocked]).
+  static Future<void> forgetKey({KeyStore store = const SecureKeyStore()}) => store.delete(_keyName);
+
+  /// «بدء قاعدة جديدة» بعد فقد المفتاح: تُنحّى القاعدة القديمة **ولا تُحذف**
+  /// (تبقى بجوارها باسمٍ مختوم، فإن وُجد المفتاح لاحقًا أمكن فتحها)، ويُعاد
+  /// الملف المنحّى.
+  static File setAsideLocked(File file, {DateTime? now}) {
+    final t = (now ?? DateTime.now()).toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+    final dest = File('${file.path}.locked-$t');
+    _dropSidecarsInto(file, dest.path);
+    file.renameSync(dest.path);
+    return dest;
+  }
+
+  static void _dropSidecarsInto(File file, String destBase) {
+    for (final suffix in const ['-wal', '-shm']) {
+      final f = File('${file.path}$suffix');
+      if (f.existsSync()) {
+        try {
+          f.renameSync('$destBase$suffix');
+        } catch (err, stack) {
+          ErrorLogger.log('db.sidecarAside', err, stack);
+        }
+      }
+    }
+  }
 
   /// يُنفَّذ داخل خيط قاعدة البيانات قبل فتحها: أندرويد يفتح `sqlite3` العادية
   /// افتراضيًا، فيجب توجيهه إلى مكتبة SQLCipher.
@@ -258,4 +350,17 @@ class DbCipher {
       }
     }
   }
+}
+
+/// مفتاح القاعدة غائبٌ أو لا يُقرأ والقاعدة المشفّرة قائمة — لا يُولَّد بديله.
+class DbKeyMissing implements Exception {
+  const DbKeyMissing(this.message, {this.unreadable = false});
+
+  final String message;
+
+  /// المخزن رمى خطأً عند القراءة (لا مجرّد غياب).
+  final bool unreadable;
+
+  @override
+  String toString() => message;
 }

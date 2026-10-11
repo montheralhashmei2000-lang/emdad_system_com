@@ -163,6 +163,46 @@ void main() {
       expect(DbCipher.removeStalePlainBackups(file, 'e' * 64), isEmpty);
     });
   });
+
+  group('H-2: مفتاحٌ غائب والقاعدة مشفّرة لا يُستبدل بمفتاحٍ جديد', () {
+    test('قاعدةٌ مشفّرة موجودة ومفتاحها غائب ⇒ DbKeyMissing ولا يُكتب مفتاح', () async {
+      final file = dbFile()..writeAsBytesSync(List.generate(4096, (i) => (i * 37) % 256));
+      final store = _MemoryKeyStore();
+      await expectLater(DbCipher.loadKey(store: store, dbFile: file), throwsA(isA<DbKeyMissing>()));
+      expect(store.writes, 0, reason: 'وُلّد مفتاحٌ جديد يقفل القاعدة القائمة للأبد');
+    });
+
+    test('مخزنٌ لا يُقرأ ⇒ DbKeyMissing (لا يُولَّد ولا يُمسح شيء)', () async {
+      final store = _BrokenKeyStore();
+      final e = await DbCipher.loadKey(store: store, dbFile: dbFile()).then<Object?>((_) => null, onError: (Object e) => e);
+      expect(e, isA<DbKeyMissing>());
+      expect((e as DbKeyMissing).unreadable, isTrue);
+      expect(store.writes, 0);
+    });
+
+    test('بلا قاعدة (تثبيتٌ جديد) أو بقاعدةٍ صريحة قديمة يُولَّد المفتاح كما كان', () async {
+      expect(await DbCipher.loadKey(store: _MemoryKeyStore(), dbFile: dbFile('fresh.sqlite')), hasLength(64));
+      final plain = dbFile('plain.sqlite')..writeAsStringSync('SQLite format 3\u0000 legacy');
+      expect(await DbCipher.loadKey(store: _MemoryKeyStore(), dbFile: plain), hasLength(64));
+    });
+
+    test('بدء قاعدة جديدة يُنحّي القديمة ولا يحذفها', () {
+      final file = dbFile()..writeAsStringSync('old');
+      File('${file.path}-wal').writeAsStringSync('wal');
+      final aside = DbCipher.setAsideLocked(file);
+      expect(file.existsSync(), isFalse);
+      expect(aside.readAsStringSync(), 'old');
+      expect(File('${aside.path}-wal').existsSync(), isTrue);
+    });
+
+    test('المفتاح المستردّ يُحفظ ويُقرأ', () async {
+      final store = _MemoryKeyStore();
+      await DbCipher.storeKey('AB' * 32, store: store);
+      expect(await DbCipher.loadKey(store: store), 'ab' * 32);
+      expect(() => DbCipher.storeKey('xyz', store: store), throwsArgumentError);
+    });
+  });
+
 }
 
 class _MemoryKeyStore implements KeyStore {
@@ -179,4 +219,21 @@ class _MemoryKeyStore implements KeyStore {
     writes++;
     _data[key] = value;
   }
+
+  @override
+  Future<void> delete(String key) async => _data.remove(key);
+}
+
+/// مخزنٌ يرمي عند القراءة — كمخزن أسرارٍ تعطّل فكّه بعد تحديث نظام.
+class _BrokenKeyStore implements KeyStore {
+  int writes = 0;
+
+  @override
+  Future<String?> read(String key) async => throw StateError('BadPaddingException');
+
+  @override
+  Future<void> write(String key, String value) async => writes++;
+
+  @override
+  Future<void> delete(String key) async {}
 }

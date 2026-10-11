@@ -268,11 +268,12 @@ void main() {
       await b.server.stopReceiving();
       await b.server.startReceiving(trustedOnly: true);
 
-      expect((await SyncTrust(branch).peers()).single.pulledUpTo, 0);
+      expect((await SyncTrust(branch).peers()).single.pulledSeq, 0);
       await b.client.autoSync();
       final after = (await SyncTrust(branch).peers()).single;
-      expect(after.pulledUpTo, greaterThan(0));
-      expect(after.pushedUpTo, greaterThanOrEqualTo(0));
+      // العلامة رقم تسلسل القرين لا ختمٌ زمني (C-1): الختم الزمني خليطُ ساعات.
+      expect(after.pulledSeq, greaterThan(0));
+      expect(after.pushedSeq, greaterThan(0));
     });
   });
 

@@ -133,6 +133,7 @@ class _EditFormState extends State<_EditForm> {
         beneficiaryUnitId: r.source?.beneficiaryUnitId ?? '',
         beneficiaryUnitName: r.source?.beneficiaryUnitName ?? '',
         cylinderAction: r.source?.cylinderAction ?? '',
+        expiryDate: r.source?.expiryDate ?? '',
       ));
     }
     if (out.isEmpty) {
@@ -143,12 +144,10 @@ class _EditFormState extends State<_EditForm> {
 
     setState(() => _busy = true);
     try {
-      final available = await widget.mv.balances(scope: widget.perm.scope);
       final check = await widget.repo.saveEdit(
         doc: widget.doc,
         rows: out,
         reason: reason,
-        availableBaseQty: available,
         date: _date.isNotEmpty ? _date : widget.doc.date,
         warehouse: _wh,
         party: party,

@@ -4,7 +4,7 @@ part of '../legacy_import.dart';
 ///
 /// نقلٌ حرفيّ من `LegacyImporter` — خليطٌ في المكتبة نفسها، فواجهة
 /// المستورد العامة (`importJson`/`importFile`) لم تتغيّر.
-mixin _LegacyMovements on _LegacyBase {
+mixin _LegacyMovements on _LegacyBase, _LegacyNaturalKeys {
   Future<void> _importReceipts(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final r in rows) {
@@ -175,20 +175,23 @@ mixin _LegacyMovements on _LegacyBase {
     final rows = _rows(raw);
     for (final r in rows) {
       if (!_accept('opening_balances', _id(r))) continue;
+      if (!await _claimNaturalKey('opening_balances', _id(r), [_s(r, 'itemId'), _s(r, 'warehouse')], res)) continue;
       if (!_quantitiesOk(r, 'opening_balances', res, hasFactor: false)) continue;
-      await db
-          .into(db.openingBalances)
-          .insertOnConflictUpdate(OpeningBalancesCompanion.insert(
-            id: _id(r),
-            itemId: _s(r, 'itemId'),
-            itemCode: Value(_s(r, 'itemCode')),
-            itemName: Value(_s(r, 'itemName')),
-            warehouse: Value(_s(r, 'warehouse')),
-            qty: Value(_d(r, 'qty')),
-            date: Value(_s(r, 'date')),
-            setBy: Value(_s(r, 'setBy')),
-            createdAt: Value(_created(r)),
-          ));
+      await _guardedRow('opening_balances', _id(r), res, () async {
+        await db
+            .into(db.openingBalances)
+            .insertOnConflictUpdate(OpeningBalancesCompanion.insert(
+              id: _id(r),
+              itemId: _s(r, 'itemId'),
+              itemCode: Value(_s(r, 'itemCode')),
+              itemName: Value(_s(r, 'itemName')),
+              warehouse: Value(_s(r, 'warehouse')),
+              qty: Value(_d(r, 'qty')),
+              date: Value(_s(r, 'date')),
+              setBy: Value(_s(r, 'setBy')),
+              createdAt: Value(_created(r)),
+            ));
+      });
     }
     _count(res, 'openingBalances', rows.length);
     if (rows.any((r) => _s(r, 'warehouse').isEmpty)) {

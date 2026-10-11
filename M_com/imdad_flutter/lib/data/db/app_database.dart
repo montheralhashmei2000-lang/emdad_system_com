@@ -100,7 +100,7 @@ class AppDatabase extends _$AppDatabase {
 
   /// إصدار المخطط الحالي. ثابتٌ ساكن لتقرأه طبقة الاتصال (النسخة الاحتياطية قبل
   /// الترحيل) قبل أن تُنشأ نسخةٌ من القاعدة.
-  static const int kSchemaVersion = 25;
+  static const int kSchemaVersion = 26;
 
   @override
   int get schemaVersion => kSchemaVersion;
@@ -657,6 +657,11 @@ class AppDatabase extends _$AppDatabase {
             final userCols = await _columnsOf('users');
             if (!userCols.contains('section_blocked')) await m.addColumn(users, users.sectionBlocked);
             if (!userCols.contains('owner_sig')) await m.addColumn(users, users.ownerSig);
+          }
+          // v26: سقف تراكم استحقاق المحروقات وما شُطب منه بالتصفير (H-6).
+          if (from < 26) {
+            await _addCol(m, fuelSettingsRows, fuelSettingsRows.carryCapPeriods);
+            await _addCol(m, fuelAllocations, fuelAllocations.writtenOffLiters);
           }
           // v15: إصلاح ما خلّفه تنقّل القاعدة بين نسختين مختلفتي المخطط.
           //

@@ -35,6 +35,7 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
   final _orgName = TextEditingController();
   final _seal = TextEditingController();
   final _low = TextEditingController();
+  final _cap = TextEditingController();
   final _daily = TextEditingController();
   final _weekly = TextEditingController();
   final _monthly = TextEditingController();
@@ -67,6 +68,7 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
       _orgName,
       _seal,
       _low,
+      _cap,
       _daily,
       _weekly,
       _monthly,
@@ -96,6 +98,7 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
     imdSetText(_orgName, s.orgName);
     imdSetText(_seal, s.sealLines);
     imdSetText(_low, _num(s.lowStockPercent));
+    imdSetText(_cap, '${s.carryCapPeriods}');
     imdSetText(_daily, _num(s.defaultDailyLiters));
     imdSetText(_weekly, _num(s.defaultWeeklyLiters));
     imdSetText(_monthly, _num(s.defaultMonthlyLiters));
@@ -137,6 +140,7 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
       signChief: _chief.text,
       requireChassis: _requireChassis,
       allowExceptional: _allowExceptional,
+      carryCapPeriods: int.tryParse(_cap.text.trim()) ?? 0,
       notes: _notes.text,
       actor: context.read<AuthService>().currentUser?.email ?? '',
     );
@@ -264,6 +268,18 @@ class _FuelSettingsScreenState extends State<FuelSettingsScreen> {
           const ImdLdText('إن عُطّل، لم يُصرف وقود إلا من تفريدة معتمدة. '
               'وإن بقي مفعَّلًا فالاستثنائي يلزمه مبرر وجهة أمر، ويُسجَّل في '
               'التدقيق عالي الخطورة.'),
+          const SizedBox(height: 14),
+          ImdF2(children: [
+            ImdLabeled(
+              'سقف تراكم الاستحقاق (عدد الفترات، صفر = بلا سقف)',
+              ImdFld(controller: _cap, number: true, enabled: can),
+              size: 11,
+            ),
+          ]),
+          const SizedBox(height: 6),
+          const ImdLdText('ما لم يُصرف من التفريدة يتراكم، ولا يُتاح منه في وقتٍ واحد أكثر من '
+              'هذا العدد من الفترات (أسابيع أو أشهر بحسب التفريدة). ويُصفَّر الرصيد '
+              'المتراكم لأي تفريدة من شاشة التفريدة.'),
         ]),
       ),
       ImdPanel(

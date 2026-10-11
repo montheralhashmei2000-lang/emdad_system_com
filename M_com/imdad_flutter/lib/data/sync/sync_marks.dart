@@ -9,14 +9,21 @@ class SyncMark {
     required this.rowId,
     required this.updatedAt,
     this.deletedAt,
+    this.seq = 0,
   });
 
   final String entity;
   final String rowId;
 
-  /// بالمللي ثانية منذ الحقبة — ساعة الجهاز الذي كتب السجل.
+  /// بالمللي ثانية منذ الحقبة — ساعة الجهاز الذي كتب السجل. **للحسم وحده**
+  /// (أيُّ النسختين أحدث)، لا لمعرفة ما تغيّر منذ آخر مزامنة.
   final int updatedAt;
   final int? deletedAt;
+
+  /// ترتيب كتابة العلامة **على هذا الجهاز** (عدّادٌ محليٌّ متزايد، انظر
+  /// [SyncMarks.seqTable]). لا يغادر الجهاز: لا يدخل [toMap] ولا يُقرأ من
+  /// [fromMap]، لأن عدّاد جهازٍ لا معنى له عند غيره.
+  final int seq;
 
   bool get isDeleted => deletedAt != null;
 
@@ -59,12 +66,32 @@ class SyncMark {
 ///
 /// العلامات تُملأ بمحفِّزات SQLite لا بنداءات في المستودعات: المحفِّز يغطي كل
 /// مسارات الكتابة (بما فيها الاستيراد والحذف المباشر) فلا ينسى أحدها.
+///
+/// **قياسان لا قياس واحد** (إصلاح C-1 في تدقيق 2026-10-10):
+/// • `updated_at`/`deleted_at` — ساعة **الكاتب الأصلي**، تسافر مع السجل
+///   وتحسم «أيُّ النسختين أحدث».
+/// • `seq` — عدّادٌ **محليّ** يتقدّم مع كل كتابةٍ للعلامة على هذا الجهاز،
+///   بما فيها ما وصل بالمزامنة. عليه وحده تُبنى المزامنة التفاضلية.
+///
+/// كانت التفاضلية تُبنى على أكبر ختمٍ في الجدول، وهو خليطٌ من ساعات الأجهزة
+/// كلها (الدمج يثبّت ختم المرسِل). فسجلٌّ عبر جهازًا وسيطًا بختمه القديم كان
+/// يقع تحت علامة ماءٍ تجاوزته فلا يُطلب أبدًا، وساعةٌ متقدّمة دقائق كانت ترفع
+/// العلامة فوق تعديلات الجهاز الآخر فلا تُرسل أبدًا — بلا خطأ ولا أثر.
 class SyncMarks {
   const SyncMarks(this.db);
 
   final AppDatabase db;
 
   static const String table = 'sync_marks';
+
+  /// عدّاد هذا الجهاز: صفٌّ واحد (`k = 1`) لا ينقص أبدًا — لا بتقليم الشواهد
+  /// ولا بحذف العلامات. لو أُخذ `MAX(seq)` بدله لنزل بحذف أعلى علامة فتكرّر رقمٌ
+  /// سبق أن حفظه قرينٌ علامةَ ماء، فسقط ما يحمله.
+  static const String seqTable = 'sync_seq';
+
+  /// وسمٌ في نصّ المحفِّز الحالي: محفِّزٌ لا يحمله من إصدارٍ أقدم فيُستبدل.
+  /// (`CREATE TRIGGER IF NOT EXISTS` لا يحدّث محفِّزًا قائمًا أبدًا.)
+  static const String _triggerVersion = 'imdad-mark-v2';
 
   /// الجداول المشمولة بالمزامنة ومفتاح كل منها.
   static const Map<String, String> entities = {
@@ -134,7 +161,11 @@ class SyncMarks {
   static const String _nowMillis =
       "CAST((julianday('now') - 2440587.5) * 86400000.0 AS INTEGER)";
 
-  /// ينشئ الجدول والمحفِّزات إن لم تكن موجودة — يُستدعى عند كل فتح للقاعدة.
+  /// قيمة العدّاد الحالية — تُقرأ بعد [_bump] داخل المحفِّز نفسه.
+  static const String _currentSeq = '(SELECT v FROM $seqTable WHERE k = 1)';
+  static const String _bump = 'UPDATE $seqTable SET v = v + 1 WHERE k = 1;';
+
+  /// ينشئ الجداول والمحفِّزات أو يرقّيها — يُستدعى عند كل فتح للقاعدة.
   static Future<void> install(AppDatabase db) async {
     await db.customStatement('''
       CREATE TABLE IF NOT EXISTS $table (
@@ -142,64 +173,109 @@ class SyncMarks {
         row_id TEXT NOT NULL,
         updated_at INTEGER NOT NULL,
         deleted_at INTEGER,
+        seq INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (entity, row_id)
       )
     ''');
+    // قاعدةٌ من إصدارٍ أقدم: الجدول بلا عمود `seq`. علاماتها القائمة تأخذ صفرًا،
+    // وأول دورةٍ مع كل قرين كاملةٌ أصلًا (علامات `seq` عند القرين صفر بعد الترقية).
+    final cols = {
+      for (final r in await db.customSelect('PRAGMA table_info("$table")').get()) r.data['name'] as String,
+    };
+    if (!cols.contains('seq')) {
+      await db.customStatement('ALTER TABLE $table ADD COLUMN seq INTEGER NOT NULL DEFAULT 0');
+    }
+    await db.customStatement('CREATE INDEX IF NOT EXISTS ix_${table}_seq ON $table (seq)');
+    await db.customStatement(
+      'CREATE TABLE IF NOT EXISTS $seqTable (k INTEGER PRIMARY KEY CHECK (k = 1), v INTEGER NOT NULL)',
+    );
+    await db.customStatement(
+      'INSERT OR IGNORE INTO $seqTable (k, v) SELECT 1, COALESCE(MAX(seq), 0) FROM $table',
+    );
+
+    final existing = {
+      for (final r in await db
+          .customSelect("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'tg_%_mark'")
+          .get())
+        r.data['name'] as String: (r.data['sql'] as String?) ?? '',
+    };
+    Future<void> ensure(String name, String body) async {
+      final current = existing[name];
+      if (current != null && current.contains(_triggerVersion)) return;
+      if (current != null) await db.customStatement('DROP TRIGGER IF EXISTS $name');
+      await db.customStatement(body);
+    }
 
     for (final entry in entities.entries) {
       final t = entry.key;
       final pk = entry.value;
-      // الإدراج والتعديل: ختم جديد، وإلغاء أي شاهد حذف سابق على المعرّف نفسه.
+      // الإدراج والتعديل: ختم جديد، وإلغاء أي شاهد حذف سابق على المعرّف نفسه،
+      // ورقمٌ جديد من عدّاد الجهاز.
       for (final event in ['INSERT', 'UPDATE']) {
-        await db.customStatement('''
-          CREATE TRIGGER IF NOT EXISTS tg_${t}_${event.toLowerCase()}_mark
+        final name = 'tg_${t}_${event.toLowerCase()}_mark';
+        await ensure(name, '''
+          CREATE TRIGGER $name
           AFTER $event ON $t BEGIN
-            INSERT INTO $table (entity, row_id, updated_at, deleted_at)
-            VALUES ('$t', NEW.$pk, $_nowMillis, NULL)
+            -- $_triggerVersion
+            $_bump
+            INSERT INTO $table (entity, row_id, updated_at, deleted_at, seq)
+            VALUES ('$t', NEW.$pk, $_nowMillis, NULL, $_currentSeq)
             ON CONFLICT (entity, row_id) DO UPDATE
-              SET updated_at = excluded.updated_at, deleted_at = NULL;
+              SET updated_at = excluded.updated_at, deleted_at = NULL, seq = excluded.seq;
           END
         ''');
       }
       // الحذف: يبقى شاهد ينتقل إلى بقية الأجهزة.
-      await db.customStatement('''
-        CREATE TRIGGER IF NOT EXISTS tg_${t}_delete_mark
+      final del = 'tg_${t}_delete_mark';
+      await ensure(del, '''
+        CREATE TRIGGER $del
         AFTER DELETE ON $t BEGIN
-          INSERT INTO $table (entity, row_id, updated_at, deleted_at)
-          VALUES ('$t', OLD.$pk, $_nowMillis, $_nowMillis)
+          -- $_triggerVersion
+          $_bump
+          INSERT INTO $table (entity, row_id, updated_at, deleted_at, seq)
+          VALUES ('$t', OLD.$pk, $_nowMillis, $_nowMillis, $_currentSeq)
           ON CONFLICT (entity, row_id) DO UPDATE
-            SET deleted_at = excluded.deleted_at, updated_at = excluded.updated_at;
+            SET deleted_at = excluded.deleted_at, updated_at = excluded.updated_at, seq = excluded.seq;
         END
       ''');
+    }
 
-      // سطرٌ سبق المحفِّز لا علامة له، والمحفِّز لا يعمل بأثر رجعي. فلولا هذا
-      // الملء لبقيت بيانات جدولٍ أُضيف إلى المزامنة اليوم غائبةً عن كل جهاز
-      // تجاوز مزامنته الأولى: التصدير التفاضلي يسأل العلامات، والعلامات خالية.
-      //
-      // يجري مرة واحدة لكل سطر (`OR IGNORE` يتخطى ما له علامة)، وثمنه دورةٌ
-      // واحدة أثقل بعد التحديث ثم يعود كل شيء تفاضليًا.
+    // سطرٌ سبق المحفِّز لا علامة له، والمحفِّز لا يعمل بأثر رجعي. فلولا هذا
+    // الملء لبقيت بيانات جدولٍ أُضيف إلى المزامنة اليوم غائبةً عن كل جهاز
+    // تجاوز مزامنته الأولى: التصدير التفاضلي يسأل العلامات، والعلامات خالية.
+    //
+    // يجري مرة واحدة لكل سطر (`OR IGNORE` يتخطى ما له علامة)، وثمنه دورةٌ
+    // واحدة أثقل بعد التحديث ثم يعود كل شيء تفاضليًا. ورقمٌ واحد من العدّاد
+    // لكل ما يُملأ في هذا الفتح: كلها «كُتبت» في اللحظة نفسها.
+    await db.customStatement(_bump);
+    for (final entry in entities.entries) {
+      final t = entry.key;
+      final pk = entry.value;
       await db.customStatement('''
-        INSERT OR IGNORE INTO $table (entity, row_id, updated_at, deleted_at)
-        SELECT '$t', $pk, $_nowMillis, NULL FROM $t
+        INSERT OR IGNORE INTO $table (entity, row_id, updated_at, deleted_at, seq)
+        SELECT '$t', $pk, $_nowMillis, NULL, $_currentSeq FROM $t
       ''');
     }
   }
+
+  static SyncMark _markOf(QueryRow r) => SyncMark(
+        entity: r.read<String>('entity'),
+        rowId: r.read<String>('row_id'),
+        updatedAt: r.read<int>('updated_at'),
+        deletedAt: r.readNullable<int>('deleted_at'),
+        seq: r.readNullable<int>('seq') ?? 0,
+      );
 
   /// كل العلامات مفهرسة بـ `entity/rowId`.
   Future<Map<String, SyncMark>> snapshot() async {
     final rows = await db.customSelect('SELECT * FROM $table').get();
     return {
-      for (final r in rows)
-        '${r.read<String>('entity')}/${r.read<String>('row_id')}': SyncMark(
-          entity: r.read<String>('entity'),
-          rowId: r.read<String>('row_id'),
-          updatedAt: r.read<int>('updated_at'),
-          deletedAt: r.readNullable<int>('deleted_at'),
-        ),
+      for (final r in rows) '${r.read<String>('entity')}/${r.read<String>('row_id')}': _markOf(r),
     };
   }
 
-  /// العلامات التي تغيّرت بعد [stamp] — أساس المزامنة التفاضلية.
+  /// العلامات التي تغيّر **ختمها** بعد [stamp] — المسار القديم للمزامنة
+  /// التفاضلية، باقٍ لنظيرٍ بإصدارٍ أقدم لا يعرف [changedSinceSeq].
   ///
   /// المقارنة على `stamp` لا على `updated_at` وحده: شاهد الحذف يحمل ختمه في
   /// `deleted_at`، فلو قِيس بالتعديل وحده لما انتقل حذفٌ وقع بعد آخر مزامنة.
@@ -208,18 +284,21 @@ class SyncMarks {
       'SELECT * FROM $table WHERE MAX(updated_at, COALESCE(deleted_at, 0)) > ?',
       variables: [Variable<int>(stamp)],
     ).get();
-    return [
-      for (final r in rows)
-        SyncMark(
-          entity: r.read<String>('entity'),
-          rowId: r.read<String>('row_id'),
-          updatedAt: r.read<int>('updated_at'),
-          deletedAt: r.readNullable<int>('deleted_at'),
-        ),
-    ];
+    return [for (final r in rows) _markOf(r)];
   }
 
-  /// أحدث ختم في هذا الجهاز — علامة الماء التي يبني عليها الطرف الآخر.
+  /// العلامات التي كُتبت على هذا الجهاز بعد الرقم [seq] — أساس المزامنة
+  /// التفاضلية: يشمل ما كُتب هنا وما وصل من قرينٍ آخر، أيًّا كانت ساعة كاتبه.
+  Future<List<SyncMark>> changedSinceSeq(int seq) async {
+    final rows = await db.customSelect(
+      'SELECT * FROM $table WHERE seq > ?',
+      variables: [Variable<int>(seq)],
+    ).get();
+    return [for (final r in rows) _markOf(r)];
+  }
+
+  /// أحدث ختم في هذا الجهاز — علامة الماء **القديمة** (نظيرٌ بإصدارٍ أقدم).
+  /// لا تصلح لغيره: هي خليطٌ من ساعات الأجهزة كلها، انظر [maxSeq].
   Future<int> maxStamp() async {
     final row = await db
         .customSelect('SELECT COALESCE(MAX(MAX(updated_at, COALESCE(deleted_at, 0))), 0) AS m '
@@ -228,14 +307,36 @@ class SyncMarks {
     return row.read<int>('m');
   }
 
+  /// قيمة عدّاد هذا الجهاز الآن — علامة الماء التي يحفظها القرين ليطلب ما بعدها.
+  Future<int> maxSeq() async {
+    final row = await db.customSelect('SELECT v FROM $seqTable WHERE k = 1').getSingleOrNull();
+    return row?.read<int>('v') ?? 0;
+  }
+
   /// يكتب علامة صراحةً — يُستعمل بعد الدمج لتثبيت الختم الفائز بدل الختم
   /// الذي كتبه المحفِّز لحظة الاستيراد.
-  Future<void> put(SyncMark mark) => db.customStatement(
-        'INSERT INTO $table (entity, row_id, updated_at, deleted_at) VALUES (?, ?, ?, ?) '
+  ///
+  /// [keepSeq]: العلامة لم تتغيّر على هذا الجهاز (الوارد نسخةٌ مما عندنا)،
+  /// فيُعاد رقمها القديم ولا تُعدّ «تغييرًا» يُرسل للأقران من جديد — وإلا
+  /// تبادل جهازان السجلَّ نفسه في كل دورة إلى الأبد. وإلا أخذت رقمًا جديدًا.
+  Future<void> put(SyncMark mark, {bool keepSeq = false}) async {
+    if (keepSeq) {
+      await db.customStatement(
+        'INSERT INTO $table (entity, row_id, updated_at, deleted_at, seq) VALUES (?, ?, ?, ?, ?) '
         'ON CONFLICT (entity, row_id) DO UPDATE '
-        'SET updated_at = excluded.updated_at, deleted_at = excluded.deleted_at',
-        [mark.entity, mark.rowId, mark.updatedAt, mark.deletedAt],
+        'SET updated_at = excluded.updated_at, deleted_at = excluded.deleted_at, seq = excluded.seq',
+        [mark.entity, mark.rowId, mark.updatedAt, mark.deletedAt, mark.seq],
       );
+      return;
+    }
+    await db.customStatement(_bump);
+    await db.customStatement(
+      'INSERT INTO $table (entity, row_id, updated_at, deleted_at, seq) VALUES (?, ?, ?, ?, $_currentSeq) '
+      'ON CONFLICT (entity, row_id) DO UPDATE '
+      'SET updated_at = excluded.updated_at, deleted_at = excluded.deleted_at, seq = excluded.seq',
+      [mark.entity, mark.rowId, mark.updatedAt, mark.deletedAt],
+    );
+  }
 
   /// يحذف السجل الأصلي نهائيًا مع إبقاء شاهد الحذف (يكتبه المحفِّز).
   Future<void> applyTombstone(SyncMark mark) async {

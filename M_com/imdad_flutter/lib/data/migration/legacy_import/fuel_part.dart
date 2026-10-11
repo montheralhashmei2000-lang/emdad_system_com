@@ -4,7 +4,7 @@ part of '../legacy_import.dart';
 ///
 /// نقلٌ حرفيّ من `LegacyImporter` — خليطٌ في المكتبة نفسها، فواجهة
 /// المستورد العامة (`importJson`/`importFile`) لم تتغيّر.
-mixin _LegacyFuel on _LegacyBase {
+mixin _LegacyFuel on _LegacyBase, _LegacyNaturalKeys {
   Future<void> _importSupplyAuthorities(
       Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
@@ -28,34 +28,40 @@ mixin _LegacyFuel on _LegacyBase {
       Map<String, dynamic> data, LegacyImportResult res) async {
     for (final w in _rows(data['fuelWarehouses'])) {
       if (!_accept('fuel_warehouses', _id(w))) continue;
-      await db
-          .into(db.fuelWarehouses)
-          .insertOnConflictUpdate(FuelWarehousesCompanion.insert(
-            id: _id(w),
-            code: Value(_s(w, 'code')),
-            name: _s(w, 'name'),
-            manager: Value(_s(w, 'manager')),
-            location: Value(_s(w, 'location')),
-            capacityLiters: Value(_d(w, 'capacityLiters')),
-            active: Value(_b(w, 'active', true)),
-            notes: Value(_s(w, 'notes')),
-            createdAt: Value(_created(w)),
-          ));
+      if (!await _claimNaturalKey('fuel_warehouses', _id(w), [_s(w, 'name')], res)) continue;
+      await _guardedRow('fuel_warehouses', _id(w), res, () async {
+        await db
+            .into(db.fuelWarehouses)
+            .insertOnConflictUpdate(FuelWarehousesCompanion.insert(
+              id: _id(w),
+              code: Value(_s(w, 'code')),
+              name: _s(w, 'name'),
+              manager: Value(_s(w, 'manager')),
+              location: Value(_s(w, 'location')),
+              capacityLiters: Value(_d(w, 'capacityLiters')),
+              active: Value(_b(w, 'active', true)),
+              notes: Value(_s(w, 'notes')),
+              createdAt: Value(_created(w)),
+            ));
+      });
     }
     for (final u in _rows(data['fuelUnits'])) {
       if (!_accept('fuel_units', _id(u))) continue;
-      await db
-          .into(db.fuelUnits)
-          .insertOnConflictUpdate(FuelUnitsCompanion.insert(
-            id: _id(u),
-            code: Value(_s(u, 'code')),
-            name: _s(u, 'name'),
-            commander: Value(_s(u, 'commander')),
-            phone: Value(_s(u, 'phone')),
-            active: Value(_b(u, 'active', true)),
-            notes: Value(_s(u, 'notes')),
-            createdAt: Value(_created(u)),
-          ));
+      if (!await _claimNaturalKey('fuel_units', _id(u), [_s(u, 'name')], res)) continue;
+      await _guardedRow('fuel_units', _id(u), res, () async {
+        await db
+            .into(db.fuelUnits)
+            .insertOnConflictUpdate(FuelUnitsCompanion.insert(
+              id: _id(u),
+              code: Value(_s(u, 'code')),
+              name: _s(u, 'name'),
+              commander: Value(_s(u, 'commander')),
+              phone: Value(_s(u, 'phone')),
+              active: Value(_b(u, 'active', true)),
+              notes: Value(_s(u, 'notes')),
+              createdAt: Value(_created(u)),
+            ));
+      });
     }
     for (final x in _rows(data['fuelSettings'])) {
       if (!_accept('fuel_settings_rows', _id(x))) continue;
@@ -81,6 +87,8 @@ mixin _LegacyFuel on _LegacyBase {
             signChief: Value(_s(x, 'signChief')),
             requireChassis: Value(_b(x, 'requireChassis')),
             allowExceptional: Value(_b(x, 'allowExceptional', true)),
+            // قرينٌ أقدم بلا الحقل ⇒ يبقى المحلي (لا يُفرض الافتراضي فوقه).
+            carryCapPeriods: x.containsKey('carryCapPeriods') ? Value(_i(x, 'carryCapPeriods', 3)) : const Value.absent(),
             notes: Value(_s(x, 'notes')),
           ));
     }
@@ -91,7 +99,7 @@ mixin _LegacyFuel on _LegacyBase {
           .insertOnConflictUpdate(FuelAllocationsCompanion.insert(
             id: _id(a),
             refNo: Value(_s(a, 'refNo')),
-            unitId: Value(_s(a, 'unitId')),
+            unitId: Value(_ref('fuel_units', _s(a, 'unitId'))),
             unitName: Value(_s(a, 'unitName')),
             fuelType: Value(_s(a, 'fuelType', 'diesel')),
             periodType: Value(_s(a, 'periodType', 'monthly')),
@@ -104,6 +112,8 @@ mixin _LegacyFuel on _LegacyBase {
             endDate: Value(_s(a, 'endDate')),
             active: Value(_b(a, 'active', true)),
             disbursable: Value(_b(a, 'disbursable', true)),
+            writtenOffLiters:
+                a.containsKey('writtenOffLiters') ? Value(_d(a, 'writtenOffLiters')) : const Value.absent(),
             notes: Value(_s(a, 'notes')),
             createdBy: Value(_s(a, 'createdBy')),
             createdAt: Value(_created(a)),
@@ -125,7 +135,7 @@ mixin _LegacyFuel on _LegacyBase {
             vehicleType: Value(_s(i, 'vehicleType')),
             chassisNo: Value(_s(i, 'chassisNo')),
             allocationId: Value(_s(i, 'allocationId')),
-            beneficiaryUnitId: Value(_s(i, 'beneficiaryUnitId')),
+            beneficiaryUnitId: Value(_ref('fuel_units', _s(i, 'beneficiaryUnitId'))),
             beneficiaryName: Value(_s(i, 'beneficiaryName')),
             entitledLiters: Value(_d(i, 'entitledLiters')),
             periodType: Value(_s(i, 'periodType')),

@@ -5,27 +5,30 @@ part of '../legacy_import.dart';
 ///
 /// نقلٌ حرفيّ من `LegacyImporter` — خليطٌ في المكتبة نفسها، فواجهة
 /// المستورد العامة (`importJson`/`importFile`) لم تتغيّر.
-mixin _LegacyCamps on _LegacyBase {
+mixin _LegacyCamps on _LegacyBase, _LegacyNaturalKeys {
   Future<void> _importWarehouseLimits(Object? raw, LegacyImportResult res) async {
     final rows = _rows(raw);
     for (final l in rows) {
       if (!_accept('warehouse_stock_limits', _id(l))) continue;
-      await db
-          .into(db.warehouseStockLimits)
-          .insertOnConflictUpdate(WarehouseStockLimitsCompanion.insert(
-            id: _id(l),
-            warehouseId: _s(l, 'warehouseId'),
-            warehouseName: Value(_s(l, 'warehouseName')),
-            itemId: _s(l, 'itemId'),
-            itemName: Value(_s(l, 'itemName')),
-            unitName: Value(_s(l, 'unitName')),
-            factor: Value(_d(l, 'factor', 1)),
-            minStock: Value(_d(l, 'minStock')),
-            maxStock: Value(_d(l, 'maxStock')),
-            notes: Value(_s(l, 'notes')),
-            updatedAt:
-                Value(DateTime.tryParse(_s(l, 'updatedAt')) ?? DateTime.now()),
-          ));
+      if (!await _claimNaturalKey('warehouse_stock_limits', _id(l), [_s(l, 'warehouseId'), _s(l, 'itemId')], res)) continue;
+      await _guardedRow('warehouse_stock_limits', _id(l), res, () async {
+        await db
+            .into(db.warehouseStockLimits)
+            .insertOnConflictUpdate(WarehouseStockLimitsCompanion.insert(
+              id: _id(l),
+              warehouseId: _s(l, 'warehouseId'),
+              warehouseName: Value(_s(l, 'warehouseName')),
+              itemId: _s(l, 'itemId'),
+              itemName: Value(_s(l, 'itemName')),
+              unitName: Value(_s(l, 'unitName')),
+              factor: Value(_d(l, 'factor', 1)),
+              minStock: Value(_d(l, 'minStock')),
+              maxStock: Value(_d(l, 'maxStock')),
+              notes: Value(_s(l, 'notes')),
+              updatedAt:
+                  Value(DateTime.tryParse(_s(l, 'updatedAt')) ?? DateTime.now()),
+            ));
+      });
     }
     if (rows.isNotEmpty) _count(res, 'حدود مخزون المستودعات', rows.length);
   }
@@ -104,30 +107,33 @@ mixin _LegacyCamps on _LegacyBase {
     final rows = _rows(raw);
     for (final l in rows) {
       if (!_accept('camp_ledgers', _id(l))) continue;
-      await db
-          .into(db.campLedgers)
-          .insertOnConflictUpdate(CampLedgersCompanion.insert(
-            id: _id(l),
-            campId: _s(l, 'campId'),
-            campName: Value(_s(l, 'campName')),
-            itemId: _s(l, 'itemId'),
-            itemName: Value(_s(l, 'itemName')),
-            unitName: Value(_s(l, 'unitName')),
-            year: _i(l, 'year'),
-            month: _i(l, 'month'),
-            openingEntitled: Value(_d(l, 'openingEntitled')),
-            openingStock: Value(_d(l, 'openingStock')),
-            entitlementTotal: Value(_d(l, 'entitlementTotal')),
-            transferredIn: Value(_d(l, 'transferredIn')),
-            issuedDirect: Value(_d(l, 'issuedDirect')),
-            returnedQty: Value(_d(l, 'returnedQty')),
-            consumedKitchen: Value(_d(l, 'consumedKitchen')),
-            strengthSum: Value(_d(l, 'strengthSum')),
-            strengthDays: Value(_i(l, 'strengthDays')),
-            status: Value(_s(l, 'status', 'OPEN')),
-            closedBy: Value(_s(l, 'closedBy')),
-            closedAt: Value(DateTime.tryParse(_s(l, 'closedAt'))),
-          ));
+      if (!await _claimNaturalKey('camp_ledgers', _id(l), [_s(l, 'campId'), _s(l, 'itemId'), _i(l, 'year'), _i(l, 'month')], res)) continue;
+      await _guardedRow('camp_ledgers', _id(l), res, () async {
+        await db
+            .into(db.campLedgers)
+            .insertOnConflictUpdate(CampLedgersCompanion.insert(
+              id: _id(l),
+              campId: _s(l, 'campId'),
+              campName: Value(_s(l, 'campName')),
+              itemId: _s(l, 'itemId'),
+              itemName: Value(_s(l, 'itemName')),
+              unitName: Value(_s(l, 'unitName')),
+              year: _i(l, 'year'),
+              month: _i(l, 'month'),
+              openingEntitled: Value(_d(l, 'openingEntitled')),
+              openingStock: Value(_d(l, 'openingStock')),
+              entitlementTotal: Value(_d(l, 'entitlementTotal')),
+              transferredIn: Value(_d(l, 'transferredIn')),
+              issuedDirect: Value(_d(l, 'issuedDirect')),
+              returnedQty: Value(_d(l, 'returnedQty')),
+              consumedKitchen: Value(_d(l, 'consumedKitchen')),
+              strengthSum: Value(_d(l, 'strengthSum')),
+              strengthDays: Value(_i(l, 'strengthDays')),
+              status: Value(_s(l, 'status', 'OPEN')),
+              closedBy: Value(_s(l, 'closedBy')),
+              closedAt: Value(DateTime.tryParse(_s(l, 'closedAt'))),
+            ));
+      });
     }
     if (rows.isNotEmpty) _count(res, 'سجلات المعسكرات', rows.length);
   }
@@ -136,18 +142,21 @@ mixin _LegacyCamps on _LegacyBase {
     final rows = _rows(raw);
     for (final c in rows) {
       if (!_accept('camp_stock_limits', _id(c))) continue;
-      await db
-          .into(db.campStockLimits)
-          .insertOnConflictUpdate(CampStockLimitsCompanion.insert(
-            id: _id(c),
-            campId: _s(c, 'campId'),
-            campName: Value(_s(c, 'campName')),
-            itemId: _s(c, 'itemId'),
-            itemName: Value(_s(c, 'itemName')),
-            minStock: Value(_d(c, 'minStock')),
-            maxStock: Value(_d(c, 'maxStock')),
-            alertDaysBefore: Value(_i(c, 'alertDaysBefore', 2)),
-          ));
+      if (!await _claimNaturalKey('camp_stock_limits', _id(c), [_s(c, 'campId'), _s(c, 'itemId')], res)) continue;
+      await _guardedRow('camp_stock_limits', _id(c), res, () async {
+        await db
+            .into(db.campStockLimits)
+            .insertOnConflictUpdate(CampStockLimitsCompanion.insert(
+              id: _id(c),
+              campId: _s(c, 'campId'),
+              campName: Value(_s(c, 'campName')),
+              itemId: _s(c, 'itemId'),
+              itemName: Value(_s(c, 'itemName')),
+              minStock: Value(_d(c, 'minStock')),
+              maxStock: Value(_d(c, 'maxStock')),
+              alertDaysBefore: Value(_i(c, 'alertDaysBefore', 2)),
+            ));
+      });
     }
     if (rows.isNotEmpty) _count(res, 'حدود مخزون المعسكرات', rows.length);
   }
@@ -156,21 +165,24 @@ mixin _LegacyCamps on _LegacyBase {
     final rows = _rows(raw);
     for (final m in rows) {
       if (!_accept('monthly_settlements', _id(m))) continue;
-      await db
-          .into(db.monthlySettlements)
-          .insertOnConflictUpdate(MonthlySettlementsCompanion.insert(
-            id: _id(m),
-            year: _i(m, 'year'),
-            month: _i(m, 'month'),
-            settledBy: Value(_s(m, 'settledBy')),
-            notes: Value(_s(m, 'notes')),
-            campsCount: Value(_i(m, 'campsCount')),
-            itemsCount: Value(_i(m, 'itemsCount')),
-            totalCredit: Value(_d(m, 'totalCredit')),
-            totalDebit: Value(_d(m, 'totalDebit')),
-            settledAt:
-                Value(DateTime.tryParse(_s(m, 'settledAt')) ?? DateTime.now()),
-          ));
+      if (!await _claimNaturalKey('monthly_settlements', _id(m), [_i(m, 'year'), _i(m, 'month')], res)) continue;
+      await _guardedRow('monthly_settlements', _id(m), res, () async {
+        await db
+            .into(db.monthlySettlements)
+            .insertOnConflictUpdate(MonthlySettlementsCompanion.insert(
+              id: _id(m),
+              year: _i(m, 'year'),
+              month: _i(m, 'month'),
+              settledBy: Value(_s(m, 'settledBy')),
+              notes: Value(_s(m, 'notes')),
+              campsCount: Value(_i(m, 'campsCount')),
+              itemsCount: Value(_i(m, 'itemsCount')),
+              totalCredit: Value(_d(m, 'totalCredit')),
+              totalDebit: Value(_d(m, 'totalDebit')),
+              settledAt:
+                  Value(DateTime.tryParse(_s(m, 'settledAt')) ?? DateTime.now()),
+            ));
+      });
     }
     if (rows.isNotEmpty) _count(res, 'تصفيات الشهور', rows.length);
   }

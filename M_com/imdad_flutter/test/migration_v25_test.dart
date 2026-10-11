@@ -61,11 +61,12 @@ void main() {
 
   List<File> backups() => [
         for (final e in dir.listSync())
-          if (e is File && p.basename(e.path).contains('.pre-v25-') && !e.path.endsWith('.json')) e,
+          if (e is File && p.basename(e.path).contains('.pre-v') && !e.path.endsWith('.json')) e,
       ];
 
-  test('المخطط الحالي 25', () {
-    expect(AppDatabase.kSchemaVersion, 25);
+  test('المخطط الحالي 25 فأحدث', () {
+    // v26 (تراكم المحروقات) فوق v25؛ هذا الملف يحرس ترحيل v25 وحده.
+    expect(AppDatabase.kSchemaVersion, greaterThanOrEqualTo(25));
   });
 
   test('الترقية من v24 تضيف العمودين بقيمتيهما الافتراضيتين وتُبقي البيانات', () async {
@@ -86,7 +87,7 @@ void main() {
     expect((await db.select(db.users).get()).length, 2);
 
     final v = await db.customSelect('PRAGMA user_version').getSingle();
-    expect(v.read<int>('user_version'), 25);
+    expect(v.read<int>('user_version'), AppDatabase.kSchemaVersion);
     await db.close();
   });
 

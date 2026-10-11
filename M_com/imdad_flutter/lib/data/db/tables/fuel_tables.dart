@@ -108,6 +108,11 @@ class FuelSettingsRows extends Table {
   /// هل يُسمح بالصرف الاستثنائي خارج التفريدة؟
   BoolColumn get allowExceptional =>
       boolean().withDefault(const Constant(true))();
+
+  /// v26: سقف تراكم الاستحقاق بعدد الفترات — ما لم يُصرف يتراكم، ولا يُتاح منه
+  /// في وقتٍ واحد أكثر من هذا العدد من الفترات (قرار المالك 2026-10-11). صفر ⇒
+  /// بلا سقف. كان التراكم بلا حدٍّ، فوحدةٌ لم تسحب أشهرًا تسحب استحقاقها دفعةً.
+  IntColumn get carryCapPeriods => integer().withDefault(const Constant(3))();
   TextColumn get notes => text().withDefault(const Constant(''))();
   DateTimeColumn get updatedAt => dateTime().nullable()();
 
@@ -150,6 +155,10 @@ class FuelAllocations extends Table {
   TextColumn get endDate => text().withDefault(const Constant(''))();
   BoolColumn get active => boolean().withDefault(const Constant(true))();
   BoolColumn get disbursable => boolean().withDefault(const Constant(true))();
+
+  /// v26: ما شُطب من الاستحقاق المتراكم بـ«تصفير الرصيد» — يُطرح من المستحق
+  /// فيصير المتبقي صفرًا لحظة التصفير، ويعود يتراكم من الفترة التالية.
+  RealColumn get writtenOffLiters => real().withDefault(const Constant(0))();
   TextColumn get notes => text().withDefault(const Constant(''))();
   TextColumn get createdBy => text().withDefault(const Constant(''))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();

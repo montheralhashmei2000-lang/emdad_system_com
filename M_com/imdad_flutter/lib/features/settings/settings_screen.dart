@@ -47,6 +47,12 @@ import '../../data/repos/settings_repo.dart';
 import '../../data/repos/movements_repo.dart';
 import '../../data/repos/users_repo.dart';
 import '../../domain/access_control.dart';
+import '../../domain/esign_policy.dart';
+import '../../core/security/device_activation.dart';
+import '../../core/ui/imd_files.dart';
+import '../../data/backup/key_escrow.dart';
+import '../../data/db/db_cipher.dart';
+import '../../data/repos/audit_repo.dart';
 import '../../domain/section_block.dart';
 import '../../domain/rules_engine.dart';
 import '../home/home_shell.dart';
@@ -188,6 +194,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _hasSignKey = false;
   String _signAt = '';
   String _signKeyId = '';
+  ESignMode _esignMode = ESignMode.auto;
+
+  /// آخر حفظٍ لملف استرداد مفتاح القاعدة على هذا الجهاز (H-2)، أو `null`.
+  DateTime? _escrowAt;
   bool _pushEnabled = false;
 
   @override
@@ -219,12 +229,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final signAt = await esign.createdAt();
     final prefs = await SettingsRepo(_db).read('prefs');
     final signKeyId = await esign.keyId();
+    final esignMode = await SettingsRepo(_db).esignMode();
+    final escrowAt = await KeyEscrow.lastSaved(_db);
     // كل الانتظار قبل الحارس: `await` بعده يُبطله، فيكتب في حالةٍ مُتلَفة.
     if (!mounted) return;
     imdSetText(_rules, '${rules['text'] ?? ''}');
     _hasSignKey = hasKey;
     _signAt = signAt;
     _signKeyId = signKeyId;
+    _esignMode = esignMode;
+    _escrowAt = escrowAt;
     _pushEnabled = prefs['push'] == true;
     setState(() {
       _items = items.length;
@@ -322,6 +336,70 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return result;
   }
 
+  /// ملف استرداد مفتاح القاعدة على USB (H-2، قرار المالك 2026-10-11): نسخةٌ من
+  /// المفتاح مشفّرةٌ بكلمة مرورٍ يختارها المالك، تُحفظ في خزنة وتُحدَّث دوريًّا.
+  Future<void> _saveKeyEscrow() async {
+    if (!_perm.guardSys(context, SysPerm.backup)) return;
+    final pass = TextEditingController();
+    final confirm = TextEditingController();
+    final password = await showImdModal<String>(
+      context,
+      title: 'كلمة مرور ملف الاسترداد',
+      icon: 'key',
+      maxWidth: 480,
+      builder: (ctx) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const ImdNote('الملف وحده لا يفتح شيئًا: يلزمه كلمة المرور هذه. احفظ الملف على USB في '
+            'الخزنة، وكلمة المرور في مكانٍ آخر منفصل. نسيانها يعني أن الملف لا ينفع.'),
+        const SizedBox(height: 12),
+        ImdLabeled('كلمة المرور (${KeyEscrow.minPasswordLength} أحرف فأكثر)', ImdFld(controller: pass, obscure: true)),
+        const SizedBox(height: 10),
+        ImdLabeled('تأكيد كلمة المرور', ImdFld(controller: confirm, obscure: true)),
+      ]),
+      actions: (ctx) => [
+        ImdButton.outline(label: 'إلغاء', onPressed: () => Navigator.of(ctx).pop()),
+        ImdButton(
+          label: 'حفظ الملف',
+          icon: 'check',
+          onPressed: () {
+            if (pass.text.length < KeyEscrow.minPasswordLength) {
+              showImdToast(ctx, '✖ كلمة المرور ${KeyEscrow.minPasswordLength} أحرف على الأقل', error: true);
+              return;
+            }
+            if (pass.text != confirm.text) {
+              showImdToast(ctx, '✖ كلمتا المرور غير متطابقتين', error: true);
+              return;
+            }
+            Navigator.of(ctx).pop(pass.text);
+          },
+        ),
+      ],
+    );
+    pass.dispose();
+    confirm.dispose();
+    if (password == null || !mounted) return;
+    try {
+      final key = await DbCipher.loadKey(dbFile: await DbCipher.defaultFile());
+      final deviceId = await DeviceActivation(_db).deviceId();
+      final bytes = KeyEscrow.seal(keyHex: key, deviceId: deviceId, password: password);
+      if (!mounted) return;
+      final path = await ImdFiles.saveBytes(context, 'imdad-key-$deviceId.${KeyEscrow.extension}', bytes);
+      if (path == null || !mounted) return;
+      await KeyEscrow.markSaved(_db);
+      await AuditRepo(_db).log(
+        action: 'backup.key_escrow',
+        entityType: 'نسخة احتياطية',
+        summary: 'حُفظ ملف استرداد مفتاح القاعدة لهذا الجهاز ($deviceId)',
+        details: {'deviceId': deviceId},
+        risk: AuditRepo.riskHigh,
+        actorEmail: _perm.email,
+      );
+      await _load();
+      if (mounted) _toast('✔ حُفظ ملف الاسترداد — انقله إلى الخزنة');
+    } catch (e) {
+      if (mounted) _toast('✖ تعذّر حفظ ملف الاسترداد: $e', error: true);
+    }
+  }
+
   Future<void> _exportBackup() async {
     // نسخةٌ كاملة بكل البيانات والحسابات: لمدير النظام وحده.
     if (!_perm.guardSys(context, SysPerm.backup)) return;
@@ -403,7 +481,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (path == null || !mounted) return;
     setState(() => _note = 'جارٍ قراءة الملف…');
     try {
-      final result = await ExcelImporter(_db).importFile(
+      final result = await ExcelImporter(
+        _db,
+        actor: _perm.email,
+        canSetOpening: (wh) => _perm.has('opening', PermAction.create) && _perm.canWh(wh),
+      ).importFile(
         File(path),
         onProgress: (sheet, done, total) {
           if (mounted) setState(() => _note = 'ورقة «$sheet»: ${nf(done)} من ${nf(total)}');
@@ -477,6 +559,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final id = await settings.identity();
     await settings.saveIdentity(id.copyWith(themePref: pref));
     if (mounted) context.read<ImdTheme>().apply(pref);
+  }
+
+  /// وضع التوقيع الإلكتروني للسندات (H-5) — سياسة الجهة، للمالك وحده.
+  Future<void> _setEsignMode(ESignMode mode) async {
+    if (!_perm.guardSys(context, SysPerm.settingsSensitive)) return;
+    if (mode == _esignMode) return;
+    await SettingsRepo(_db).saveEsignMode(mode);
+    await AuditRepo(_db).log(
+      action: 'esign.policy',
+      entityType: 'توقيع إلكتروني',
+      summary: 'وضع التوقيع الإلكتروني للسندات: ${ESignPolicy.labels[mode]}',
+      details: {'mode': mode.name},
+      risk: AuditRepo.riskHigh,
+      actorEmail: _perm.email,
+    );
+    if (!mounted) return;
+    setState(() => _esignMode = mode);
+    _toast('✔ ${ESignPolicy.labels[mode]}');
   }
 
   Future<void> _removeSignKey() async {
@@ -602,7 +702,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final buttons = <Widget>[];
     if (!horizontal) {
       // رأسيًّا: عنوانُ المجموعة فوق بنودها، فلا تُقرأ القائمةُ كلّها بحثًا عن بند.
-      var lastGroup = ' ';
+      var lastGroup = '\u0000';
       for (final s in sections) {
         if (s.group != lastGroup) {
           lastGroup = s.group;
@@ -1044,8 +1144,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
           icon: 'edit',
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             const ImdNote('زوج مفاتيح على هذا الجهاز (ECDSA P-256): الخاص يوقّع ولا '
-                'يغادر الجهاز، والعام يتحقق به الآخرون. كل سند مطبوع يحمل رمز تحقق '
-                'أسفله يكشف أي تعديل يطرأ عليه بعد الاعتماد.'),
+                'يغادر الجهاز، والعام يتحقق به الآخرون. يُوقَّع **السند المحفوظ** وحده '
+                'وبحالةٍ نهائية — لا مسودة ولا أمرًا معلّقًا ولا ملغى — ويحمل رمز تحققٍ '
+                'أسفله يكشف أي تعديل يطرأ عليه بعده.'),
+            const SizedBox(height: 10),
+            ImdLabeled(
+              'وضع التوقيع',
+              ImdSelect<ESignMode>(
+                value: _esignMode,
+                items: [for (final m in ESignMode.values) (m, ESignPolicy.labels[m]!)],
+                onChanged: _sensitive ? (v) => _setEsignMode(v ?? _esignMode) : null,
+              ),
+            ),
+            if (_esignMode == ESignMode.manual)
+              const ImdNote('في الوضع اليدوي يُوقِّع من سجل المستندات (زرّ «توقيع») المالكُ أو من '
+                  'مُنح صلاحية «التوقيع الإلكتروني للسندات (القائد)» صراحةً — لا يرثها المدير.'),
             const SizedBox(height: 10),
             Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
               ImdChip(
@@ -1327,6 +1440,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'backup',
           'النسخ الاحتياطي التلقائي المشفّر جدولة كلمة مرور مجلد',
           const BackupScheduleCard(),
+        ),
+      if (_backupOwner)
+        (
+          'backup',
+          'ملف استرداد مفتاح القاعدة USB خزنة',
+          ImdPanel(
+            title: 'ملف استرداد مفتاح القاعدة (USB)',
+            icon: 'key',
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const ImdNote('قاعدة البيانات مشفّرة بمفتاحٍ في مخزن أسرار هذا الجهاز. إن فُقد (إعادة '
+                  'تعيين حساب ويندوز، عطلٌ في مخزن أندرويد) لا تُفتح القاعدة إلا بهذا الملف — '
+                  'والنسخ الاحتياطية لا تغني عنه لمن يريد قاعدته كما هي. لكل جهازٍ ملفه.'),
+              const SizedBox(height: 10),
+              Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                ImdChip(
+                  _escrowAt == null
+                      ? 'لم يُحفظ ملفٌّ لهذا الجهاز بعد'
+                      : 'آخر حفظ: ${_escrowAt!.toIso8601String().substring(0, 10)}',
+                  tone: KeyEscrow.isDue(_escrowAt) ? ImdTone.pend : ImdTone.ok,
+                ),
+                if (_escrowAt != null && KeyEscrow.isDue(_escrowAt))
+                  const ImdChip('حان تحديثه', tone: ImdTone.pend),
+                ImdButton(label: 'حفظ ملف الاسترداد', icon: 'save', small: true, onPressed: _saveKeyEscrow),
+              ]),
+            ]),
+          ),
         ),
       if (_perm.owner)
         (

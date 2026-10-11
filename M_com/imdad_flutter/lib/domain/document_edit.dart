@@ -102,10 +102,23 @@ class DocumentEdit {
 }
 
 class EditCheck {
-  const EditCheck({required this.ok, this.itemId = '', this.available = 0, this.needed = 0});
+  const EditCheck({
+    required this.ok,
+    this.itemId = '',
+    this.available = 0,
+    this.needed = 0,
+    this.warehouse = '',
+    this.error = '',
+  });
 
   final bool ok;
   final String itemId;
   final double available;
   final double needed;
+
+  /// المستودع الذي لا يكفي رصيده أو المجمَّد — فارغ في الفحص القديم بالصنف وحده.
+  final String warehouse;
+
+  /// رسالة رفضٍ جاهزة لغير نقص الرصيد (مستودعٌ مجمَّد، سندٌ تغيّر). فارغة ⇒ نقص رصيد.
+  final String error;
 }

@@ -21,6 +21,7 @@ import 'legacy_import_result.dart';
 
 part 'legacy_import/base_part.dart';
 part 'legacy_import/marks_part.dart';
+part 'legacy_import/natural_keys_part.dart';
 part 'legacy_import/users_part.dart';
 part 'legacy_import/docs_part.dart';
 part 'legacy_import/fuel_part.dart';
@@ -34,6 +35,7 @@ class LegacyImporter
     with
         _LegacyBase,
         _LegacyMarks,
+        _LegacyNaturalKeys,
         _LegacyUsers,
         _LegacyDocs,
         _LegacyFuel,
@@ -66,6 +68,10 @@ class LegacyImporter
         throw const BackupError('هذه نسخة احتياطية مشفّرة — أدخل كلمة مرورها');
       }
       data = jsonDecode(BackupCrypto.open(bytes, password)) as Map<String, dynamic>;
+      // ملف استرداد المفتاح بالصيغة المشفّرة نفسها: يُرفض صراحةً بدل «استعادة صفر سجل».
+      if (data['kind'] == 'imdad.dbkey.v1') {
+        throw const BackupError('هذا ملف استرداد مفتاح القاعدة لا نسخة احتياطية — يُستعمل من شاشة الاسترداد عند الإقلاع');
+      }
     } else {
       data = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
     }
@@ -109,45 +115,71 @@ class LegacyImporter
     await db.transaction(() async {
       _local = await marks.snapshot();
       _rejectedMarks = {};
+      _changedOnTie = {};
+      _replacedIds = {};
       _incoming = {
         for (final m in _rows(data['syncMarks']).map(SyncMark.fromMap))
           if (m != null) m.key: m,
       };
 
-      await _importUsers(data['users'], res, trusted: trusted);
-      await _importCategories(data['categories'], res);
-      await _importItems(data['items'], res);
-      await _importWarehouses(data['warehouses'], res);
-      await _importSuppliers(data['suppliers'], res);
-      await _importUnits(data['units'], res);
-      await _importFacilities(data['facilities'], res);
-      await _importReceipts(data['receipts'], res);
-      await _importIssues(data['issues'], res);
-      await _importTransfers(data['transfers'], res);
-      await _importReturns(data['returns'], res);
-      await _importOpening(data['openingBalances'], res);
-      await _importAdjustments(data['adjustments'], res);
-      await _importStrengths(data['strengths'], res);
-      await _importKitchenLogs(data['kitchenLogs'], res);
-      await _importEntitlements(data['entitlements'], res);
-      await _importStocktakes(data['stocktakes'], res);
-      await _importStocktakeLines(data['stocktakeLines'], res);
-      await _importSensitiveReviews(data['sensitiveReviews'], res);
-      await _importAssets(data['assets'], res);
-      await _importAssetAssignments(data['assetAssignments'], res);
-      await _importSupplyAuthorities(data['supplyAuthorities'], res);
-      await _importWarehouseLimits(data['warehouseStockLimits'], res);
-      await _importFuel(data, res);
-      await _importRationOrders(data['rationOrders'], res);
-      await _importRationOrderLines(data['rationOrderLines'], res);
-      await _importMealPlans(data['mealPlans'], res);
-      await _importMealPlanEntries(data['mealPlanEntries'], res);
-      await _importCampLedgers(data['campLedgers'], res);
-      await _importCampStockLimits(data['campStockLimits'], res);
-      await _importSettlements(data['monthlySettlements'], res);
-      await _importLinkage(data, res);
-      await _importAuditLogs(data['auditLogs'], res);
-      await _importSettings(data['settings'], res);
+      // كل جدولٍ في نقطة حفظٍ مستقلة: عطلٌ غير متوقَّع في جدولٍ واحد كان يُجهض
+      // معاملة الاستيراد كلها في كل دورة (H-1) — فتتوقف المزامنة لكل البيانات
+      // بسبب سجلٍّ واحد. الآن يُتجاوز الجدول المتعثّر وحده، ولا تُثبَّت علاماته،
+      // ولا تتقدّم علامة الماء فيُطلب ثانيةً.
+      Future<void> step(List<String> entities, Future<void> Function() body) async {
+        try {
+          await db.transaction(body);
+        } catch (err, stack) {
+          ErrorLogger.critical('import.table.${entities.first}', err, stack: stack);
+          for (final key in _incoming.keys) {
+            if (entities.any((e) => key.startsWith('$e/'))) _rejectedMarks.add(key);
+          }
+          res.failedRows++;
+          res.warnings.add('تعذّر دمج ${entities.join('، ')}: $err');
+        }
+      }
+
+      await step(['users'], () => _importUsers(data['users'], res, trusted: trusted));
+      await step(['categories'], () => _importCategories(data['categories'], res));
+      await step(['items'], () => _importItems(data['items'], res));
+      await step(['warehouses'], () => _importWarehouses(data['warehouses'], res));
+      await step(['suppliers'], () => _importSuppliers(data['suppliers'], res));
+      await step(['beneficiary_units'], () => _importUnits(data['units'], res));
+      await step(['facilities'], () => _importFacilities(data['facilities'], res));
+      await step(['receipts'], () => _importReceipts(data['receipts'], res));
+      await step(['issues'], () => _importIssues(data['issues'], res));
+      await step(['transfers'], () => _importTransfers(data['transfers'], res));
+      await step(['returns'], () => _importReturns(data['returns'], res));
+      await step(['opening_balances'], () => _importOpening(data['openingBalances'], res));
+      await step(['adjustments'], () => _importAdjustments(data['adjustments'], res));
+      await step(['strengths'], () => _importStrengths(data['strengths'], res));
+      await step(['kitchen_logs'], () => _importKitchenLogs(data['kitchenLogs'], res));
+      await step(['entitlements'], () => _importEntitlements(data['entitlements'], res));
+      await step(['stocktakes'], () => _importStocktakes(data['stocktakes'], res));
+      await step(['stocktake_lines'], () => _importStocktakeLines(data['stocktakeLines'], res));
+      await step(['sensitive_reviews'], () => _importSensitiveReviews(data['sensitiveReviews'], res));
+      await step(['assets'], () => _importAssets(data['assets'], res));
+      await step(['asset_assignments'], () => _importAssetAssignments(data['assetAssignments'], res));
+      await step(['supply_authorities'], () => _importSupplyAuthorities(data['supplyAuthorities'], res));
+      await step(['warehouse_stock_limits'], () => _importWarehouseLimits(data['warehouseStockLimits'], res));
+      await step([
+        for (final e in SyncMarks.entities.keys)
+          if (e.startsWith('fuel_')) e,
+      ], () => _importFuel(data, res));
+      await step(['ration_orders'], () => _importRationOrders(data['rationOrders'], res));
+      await step(['ration_order_lines'], () => _importRationOrderLines(data['rationOrderLines'], res));
+      await step(['meal_plans'], () => _importMealPlans(data['mealPlans'], res));
+      await step(['meal_plan_entries'], () => _importMealPlanEntries(data['mealPlanEntries'], res));
+      await step(['camp_ledgers'], () => _importCampLedgers(data['campLedgers'], res));
+      await step(['camp_stock_limits'], () => _importCampStockLimits(data['campStockLimits'], res));
+      await step(['monthly_settlements'], () => _importSettlements(data['monthlySettlements'], res));
+      await step([
+        'cables',
+        for (final e in SyncMarks.entities.keys)
+          if (e.startsWith('link_')) e,
+      ], () => _importLinkage(data, res));
+      await step(['audit_logs'], () => _importAuditLogs(data['auditLogs'], res));
+      await step(['app_settings'], () => _importSettings(data['settings'], res));
       // مفتاح المالك يُمرَّر: قرار الإلغاء الوارد يُتحقَّق منه بالمفتاح نفسه الذي
       // يحرس الحسابات (`_ownerKey`)، لا بالمدفون — وإلا اختلف الحارسان.
       await DeviceActivation(db, ownerPublicKey: _ownerKey)

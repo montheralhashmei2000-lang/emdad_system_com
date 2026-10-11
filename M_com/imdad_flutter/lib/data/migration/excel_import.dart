@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:excel/excel.dart';
 
 import '../db/app_database.dart';
+import '../repos/audit_repo.dart';
 import '../repos/catalog_repo.dart';
 import '../repos/settings_repo.dart';
 
@@ -34,9 +35,14 @@ class ExcelImportResult {
 enum SheetKind { items, suppliers, warehouses, units, opening, entitlements, unknown }
 
 class ExcelImporter {
-  ExcelImporter(this.db);
+  /// [canSetOpening]: هل يملك المنفِّذ تثبيت رصيدٍ افتتاحي في هذا المستودع
+  /// (`opening.create` ونطاق المستودعات)؟ `null` ⇒ لا — ورقة الأرصدة الافتتاحية
+  /// تُتخطّى. [actor] بريد المنفِّذ للتدقيق.
+  ExcelImporter(this.db, {this.canSetOpening, this.actor = ''});
 
   final AppDatabase db;
+  final bool Function(String warehouse)? canSetOpening;
+  final String actor;
 
   /// عدد الصفوف التي تُكتب قبل حفظ موضع الاستئناف.
   static const int chunkSize = 200;
@@ -296,6 +302,18 @@ class ExcelImporter {
         final warehouse = _get(row, h, 'warehouse');
         final qty = _getNum(row, h, 'qty');
         if (warehouse.isEmpty || qty == 0) return false;
+        // هذا المسار كان يكتب الرصيد بصلاحية «الإعدادات» وحدها، بلا نطاق
+        // المستودعات ولا تدقيق، وبجانب الصفّ القائم فيُحتسب الرصيد مرتين (H-7).
+        // الآن: صلاحية الأرصدة الافتتاحية ونطاقها، والتثبيت نفسه الذي تمرّ به
+        // شاشتها (صفٌّ واحد لكل صنفٍ في مستودع)، وتدقيقٌ حرج.
+        if (!(canSetOpening?.call(warehouse) ?? false)) {
+          res.warnings.add('الرصيد الافتتاحي في «$warehouse»: لا تملك صلاحية تثبيته — تُخطّي');
+          return false;
+        }
+        if (qty < 0) {
+          res.warnings.add('الرصيد الافتتاحي لا يكون سالبًا («$warehouse»)');
+          return false;
+        }
         final code = _get(row, h, 'code');
         final name = _get(row, h, 'name');
         final item = (await catalog.items())
@@ -305,18 +323,27 @@ class ExcelImporter {
           res.warnings.add('الرصيد الافتتاحي: لا يوجد صنف بالكود «$code» أو الاسم «$name»');
           return false;
         }
-        await db.into(db.openingBalances).insertOnConflictUpdate(
-              OpeningBalancesCompanion.insert(
-                id: 'opb-xls-${item.first.id}-$warehouse',
-                itemId: item.first.id,
-                itemCode: Value(item.first.code),
-                itemName: Value(item.first.name),
-                warehouse: Value(warehouse),
-                qty: Value(qty),
-                date: Value(_today()),
-                setBy: const Value('excel'),
-              ),
-            );
+        await catalog.setOpeningBalances(
+          warehouse,
+          actor.isEmpty ? 'excel' : actor,
+          [(item: item.first, qty: qty)],
+          date: _today(),
+        );
+        await AuditRepo(db).write(
+          'OPENING_BALANCE_SET',
+          'openingBalance',
+          'تثبيت رصيد افتتاحي لصنف (استيراد Excel)',
+          actorEmail: actor,
+          details: {
+            'refNo': item.first.code,
+            'qty': qty,
+            'target': item.first.name,
+            'warehouse': warehouse,
+            'status': 'OPENING_SET',
+            'source': 'excel',
+            'risk': 'critical',
+          },
+        );
         res.imported['الأرصدة الافتتاحية'] = (res.imported['الأرصدة الافتتاحية'] ?? 0) + 1;
         return true;
 

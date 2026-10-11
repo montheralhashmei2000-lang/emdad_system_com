@@ -182,7 +182,7 @@ class WarehouseLimitsRepo {
         await db
             .into(db.warehouseStockLimits)
             .insertOnConflictUpdate(WarehouseStockLimitsCompanion.insert(
-              id: byItem[r.itemId]?.id ?? Ids.next('whl'),
+              id: byItem[r.itemId]?.id ?? Ids.natural('whl', [warehouseId, r.itemId]),
               warehouseId: warehouseId,
               warehouseName: Value(warehouseName),
               itemId: r.itemId,

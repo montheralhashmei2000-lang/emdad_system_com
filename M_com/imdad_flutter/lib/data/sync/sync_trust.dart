@@ -15,6 +15,8 @@ class TrustedPeer {
     this.at,
     this.pulledUpTo = 0,
     this.pushedUpTo = 0,
+    this.pulledSeq = 0,
+    this.pushedSeq = 0,
   });
 
   /// معرّف الجهاز الآخر (ثمانية أحرف — نفس معرّف بطاقة التفعيل).
@@ -31,15 +33,20 @@ class TrustedPeer {
 
   final DateTime? at;
 
-  /// أحدث ختم سُحب من هذا الجهاز — **بساعته هو**. المرة القادمة نطلب ما بعده.
-  ///
-  /// صفر ⇒ لم نسحب منه شيئًا بعد، فتكون السحبة الأولى كاملة. وهي المرة الوحيدة
-  /// التي تعبر فيها قاعدة كاملة الشبكةَ: بها يصل الجهاز الجديد إلى حالة الوحدة.
+  /// علامة الماء **القديمة** (أكبر ختمٍ زمني رآه القرين) — لا تُستعمل إلا مع
+  /// قرينٍ بإصدارٍ أقدم لا يعرف رقم التسلسل. ختمٌ زمنيٌّ خليطٌ من ساعات الأجهزة
+  /// كلها لا يصلح علامة ماء (البند C-1 في تدقيق 2026-10-10)؛ انظر [pulledSeq].
   final int pulledUpTo;
 
-  /// أحدث ختم أُرسل إليه — **بساعتنا نحن**. الختمان لا يُخلطان: كل ساعة تقيس
-  /// نفسها، ومقارنة ختم جهاز بساعة جهاز آخر أصل كل خطأ في المزامنة التفاضلية.
+  /// نظير [pulledUpTo] للدفع — لم يعد يُكتب، ويُقرأ من سطورٍ قديمة فقط.
   final int pushedUpTo;
+
+  /// آخر رقم تسلسل سُحب من هذا القرين — **بعدّاده هو** (`SyncMarks.maxSeq`).
+  /// المرة القادمة نطلب ما كُتب عنده بعده. صفر ⇒ السحبة القادمة كاملة.
+  final int pulledSeq;
+
+  /// آخر رقم تسلسل أُرسل إليه — **بعدّادنا نحن**. صفر ⇒ الإرسال القادم كامل.
+  final int pushedSeq;
 
   TrustedPeer copyWith({
     String? host,
@@ -47,6 +54,8 @@ class TrustedPeer {
     DateTime? at,
     int? pulledUpTo,
     int? pushedUpTo,
+    int? pulledSeq,
+    int? pushedSeq,
   }) =>
       TrustedPeer(
         deviceId: deviceId,
@@ -56,6 +65,8 @@ class TrustedPeer {
         at: at ?? this.at,
         pulledUpTo: pulledUpTo ?? this.pulledUpTo,
         pushedUpTo: pushedUpTo ?? this.pushedUpTo,
+        pulledSeq: pulledSeq ?? this.pulledSeq,
+        pushedSeq: pushedSeq ?? this.pushedSeq,
       );
 
   Map<String, dynamic> toMap() => {
@@ -65,6 +76,8 @@ class TrustedPeer {
         if (at != null) 'at': at!.toIso8601String(),
         'pulledUpTo': pulledUpTo,
         'pushedUpTo': pushedUpTo,
+        'pulledSeq': pulledSeq,
+        'pushedSeq': pushedSeq,
       };
 
   static TrustedPeer? fromMap(String deviceId, Object? raw) {
@@ -79,6 +92,8 @@ class TrustedPeer {
       at: DateTime.tryParse('${raw['at'] ?? ''}'),
       pulledUpTo: (raw['pulledUpTo'] as num?)?.toInt() ?? 0,
       pushedUpTo: (raw['pushedUpTo'] as num?)?.toInt() ?? 0,
+      pulledSeq: (raw['pulledSeq'] as num?)?.toInt() ?? 0,
+      pushedSeq: (raw['pushedSeq'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -203,7 +218,29 @@ class SyncTrust {
     if (bag is! Map) return;
     for (final entry in bag.entries) {
       final v = entry.value;
-      if (v is Map) v['pulledUpTo'] = 0;
+      if (v is Map) {
+        v['pulledUpTo'] = 0;
+        v['pulledSeq'] = 0;
+      }
+    }
+    await _write(map);
+  }
+
+  /// «مزامنة كاملة»: تُصفَّر علامات السحب والدفع لكل قرين، فتنقل الدورة القادمة
+  /// القاعدة كاملة في الاتجاهين. علاجٌ لتباعدٍ يُشكّ فيه، والدمج بالمعرّف يجعلها
+  /// آمنة (لا تكرار).
+  Future<void> resetAllWatermarks() async {
+    final map = await _read();
+    for (final bucket in ['peers', 'accepted']) {
+      final bag = map[bucket];
+      if (bag is! Map) continue;
+      for (final v in bag.values) {
+        if (v is! Map) continue;
+        v['pulledUpTo'] = 0;
+        v['pushedUpTo'] = 0;
+        v['pulledSeq'] = 0;
+        v['pushedSeq'] = 0;
+      }
     }
     await _write(map);
   }

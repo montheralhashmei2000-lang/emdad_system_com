@@ -33,8 +33,10 @@ const _statusLabels = <String, String>{
 };
 
 /// رسالة نقص الرصيد بنص `editDoc()`: «✖ الرصيد لا يكفي للصنف …».
-String _stockMessage(EditCheck check, Item? item) =>
-    '✖ الرصيد لا يكفي للصنف «${item?.name ?? check.itemId}» (المتاح ${nf(check.available)})';
+String _stockMessage(EditCheck check, Item? item) => check.error.isNotEmpty
+    ? check.error
+    : '✖ الرصيد لا يكفي للصنف «${item?.name ?? check.itemId}»'
+        '${check.warehouse.isEmpty ? '' : ' في مستودع «${check.warehouse}»'} (المتاح ${nf(check.available)})';
 
 /// نص الكمية داخل حقل الإدخال — أرقام لاتينية كما في `input type=number`.
 String _plain(double v) {

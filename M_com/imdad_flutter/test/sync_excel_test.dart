@@ -170,7 +170,8 @@ void main() {
       final (dir, file) = _templateFile();
       addTearDown(() => dir.deleteSync(recursive: true));
 
-      final result = await ExcelImporter(target).importFile(file);
+      final result = await ExcelImporter(target, canSetOpening: (_) => true, actor: 'admin@imdad.local')
+          .importFile(file);
 
       expect(result.imported['الأصناف'], 1);
       expect(result.imported['الموردون'], 1);
@@ -189,6 +190,27 @@ void main() {
       // الرصيد الافتتاحي دخل رصيد المستودع المحدد وحده.
       final balances = await MovementsRepo(target).balances(warehouse: 'المخزن الرئيسي');
       expect(balances[items.single.id], 5000);
+    });
+
+    test('الرصيد الافتتاحي بلا صلاحيته يُتخطّى، وإعادة الاستيراد لا تضاعفه (H-7)', () async {
+      final (dir, file) = _templateFile();
+      addTearDown(() => dir.deleteSync(recursive: true));
+
+      final denied = await ExcelImporter(target).importFile(file);
+      expect(denied.imported['الأرصدة الافتتاحية'], isNull);
+      final item = (await CatalogRepo(target).items()).single;
+      expect((await MovementsRepo(target).balances(warehouse: 'المخزن الرئيسي'))[item.id], isNull);
+
+      // الشاشة ثبّتت رصيدًا، ثم استُورد الملف مرتين: يبقى صفٌّ واحد لا ثلاثة.
+      await CatalogRepo(target).setOpeningBalance(item, 'المخزن الرئيسي', 70, 'screen');
+      for (var i = 0; i < 2; i++) {
+        await ExcelImporter(target, canSetOpening: (_) => true).importFile(file, restart: true);
+      }
+      expect((await MovementsRepo(target).balances(warehouse: 'المخزن الرئيسي'))[item.id], 5000);
+      final rows = await target.select(target.openingBalances).get();
+      expect(rows.where((o) => o.itemId == item.id), hasLength(1));
+      final audit = await target.select(target.auditLogs).get();
+      expect(audit.where((a) => a.action == 'OPENING_BALANCE_SET'), hasLength(2));
     });
 
     test('إعادة الاستيراد تُحدّث الصنف ولا تُنشئ نسخة ثانية', () async {

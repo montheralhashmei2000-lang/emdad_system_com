@@ -106,6 +106,9 @@ mixin _LegacyMarks on _LegacyBase {
         // مكانه بدل أن تُجهض المزامنة كلها.
         ErrorLogger.log('sync.tombstone', err, stack);
         res.warnings.add('تعذّر تطبيق حذف منقول (${mark.entity}/${mark.rowId}) — له سجلات مرتبطة');
+        // الصفّ باقٍ هنا، فلا يأخذ علامةَ «محذوف»: كان `_settleMarks` يثبّتها
+        // فيبقى السجل موجودًا بعلامة حذف، ويتباعد الجهازان بلا أثر.
+        _rejectedMarks.add(mark.key);
         continue;
       }
       removed++;
@@ -129,6 +132,12 @@ mixin _LegacyMarks on _LegacyBase {
 
   /// تثبيت الختم الفائز لكل سجل بدل الختم الذي كتبته المحفِّزات لحظة الاستيراد،
   /// حتى يصل الجهازان إلى العلامات نفسها ولا تتأرجح المزامنة التالية.
+  ///
+  /// **ورقم التسلسل (`seq`) يتقدّم حين يتغيّر السجل على هذا الجهاز وحده**: سجلٌّ
+  /// جديد أو نسخةٌ أحدث تأخذ رقمًا جديدًا فتصل كلَّ قرينٍ يزامن معنا — ومنه
+  /// العبور عبر جهازٍ وسيط. أما الوارد المطابق لما عندنا (عودةُ ما أرسلناه
+  /// نحن) والمحلي الأحدث فيُعاد رقمهما القديم: وإلا تقاذف جهازان السجلَّ نفسه
+  /// في كل دورة إلى الأبد.
   Future<void> _settleMarks(SyncMarks marks) async {
     for (final entry in _incoming.entries) {
       // المرفوض يبقى بختمه المحلي، ومفتاح الإعدادات المحلي لا يأخذ ختمَ ما لم
@@ -137,9 +146,15 @@ mixin _LegacyMarks on _LegacyBase {
       if (entry.value.entity == 'app_settings' && SettingsRepo.localOnlyKeys.contains(entry.value.rowId)) continue;
       final incoming = entry.value;
       final local = _local[entry.key];
-      final winner =
-          (local == null || incoming.stamp >= local.stamp) ? incoming : local;
-      await marks.put(winner);
+      final changed = local == null ||
+          incoming.stamp > local.stamp ||
+          (incoming.stamp == local.stamp && incoming.isDeleted != local.isDeleted) ||
+          _changedOnTie.contains(entry.key);
+      if (changed) {
+        await marks.put(incoming);
+      } else {
+        await marks.put(local, keepSeq: true);
+      }
     }
   }
 

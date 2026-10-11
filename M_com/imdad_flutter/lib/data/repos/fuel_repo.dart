@@ -20,9 +20,13 @@ class FuelAllocationRow {
     required this.allocation,
     required this.issued,
     required this.asOf,
+    this.carryCapPeriods = 0,
   });
 
   final FuelAllocation allocation;
+
+  /// سقف التراكم بعدد الفترات من إعدادات المحروقات (صفر ⇒ بلا سقف).
+  final int carryCapPeriods;
 
   /// ما صُرف على هذه التفريدة فعلًا.
   final double issued;
@@ -38,6 +42,8 @@ class FuelAllocationRow {
         disbursable: allocation.disbursable,
         weeklyLiters: allocation.weeklyLiters,
         monthlyLiters: allocation.monthlyLiters,
+        carryCapPeriods: carryCapPeriods,
+        writtenOff: allocation.writtenOffLiters,
       );
 
   double get entitled => Fuel.entitledLiters(calc, asOf);
@@ -287,12 +293,16 @@ class FuelRepo {
     String signChief = '',
     bool requireChassis = false,
     bool allowExceptional = true,
+    int? carryCapPeriods,
     String notes = '',
     String actor = '',
   }) async {
     if (lowStockPercent < 0 || lowStockPercent > 100) {
       return const FuelResult(
           ok: false, error: '✖ حد التنبيه نسبة بين صفر ومئة');
+    }
+    if (carryCapPeriods != null && (carryCapPeriods < 0 || carryCapPeriods > 120)) {
+      return const FuelResult(ok: false, error: '✖ سقف التراكم عدد فترات بين صفر (بلا سقف) و١٢٠');
     }
     await settings();
     await (db.update(db.fuelSettingsRows)
@@ -316,6 +326,7 @@ class FuelRepo {
       signChief: Value(signChief.trim()),
       requireChassis: Value(requireChassis),
       allowExceptional: Value(allowExceptional),
+      carryCapPeriods: carryCapPeriods == null ? const Value.absent() : Value(carryCapPeriods),
       notes: Value(notes.trim()),
       updatedAt: Value(DateTime.now()),
     ));
@@ -323,7 +334,7 @@ class FuelRepo {
       action: 'fuel.settings.update',
       entityType: 'إعدادات محروقات',
       summary: 'تعديل إعدادات قسم المحروقات',
-      details: {'lowStockPercent': lowStockPercent},
+      details: {'lowStockPercent': lowStockPercent, if (carryCapPeriods != null) 'carryCapPeriods': carryCapPeriods},
       risk: AuditRepo.riskHigh,
       actorEmail: actor,
     );
@@ -465,12 +476,14 @@ class FuelRepo {
           ifAbsent: () => i.quantityLiters);
     }
     final now = asOf ?? DateTime.now();
+    final cap = (await settings()).carryCapPeriods;
     final out = [
       for (final a in rows)
         FuelAllocationRow(
           allocation: a,
           issued: issued[a.id] ?? 0,
           asOf: now,
+          carryCapPeriods: cap,
         ),
     ];
     out.sort((a, b) => a.allocation.unitName.compareTo(b.allocation.unitName));
@@ -556,6 +569,34 @@ class FuelRepo {
     return FuelResult(ok: true, refNo: ref);
   }
 
+  /// «تصفير الرصيد» (قرار المالك 2026-10-11): يُشطب المتبقي المتراكم كله فيصير
+  /// صفرًا الآن، ويعود الاستحقاق يتراكم من الفترة التالية. شطبٌ لا حذف: يُضاف
+  /// إلى `writtenOffLiters` فيبقى أثره محسوبًا ومدقَّقًا.
+  Future<FuelResult> resetCarry(String id, {String actor = '', DateTime? asOf}) async {
+    final row = (await allocations()).where((r) => r.allocation.id == id).firstOrNull;
+    if (row == null) return const FuelResult(ok: false, error: '✖ التفريدة غير موجودة');
+    final amount = Fuel.writeOffAmount(
+      allocation: row.calc,
+      issued: row.issued,
+      asOf: asOf ?? DateTime.now(),
+    );
+    if (amount <= 0) return const FuelResult(ok: false, error: '✖ لا رصيد متراكم يُصفَّر');
+    await (db.update(db.fuelAllocations)..where((t) => t.id.equals(id))).write(FuelAllocationsCompanion(
+      writtenOffLiters: Value(Fuel.round(row.allocation.writtenOffLiters + amount)),
+      updatedAt: Value(DateTime.now()),
+    ));
+    await AuditRepo(db).log(
+      action: 'fuel.allocation.reset',
+      entityType: 'تفريدة محروقات',
+      summary: 'تصفير الرصيد المتراكم لتفريدة «${row.allocation.unitName}» '
+          '(${row.allocation.refNo}) — شُطب ${Fuel.round(amount)} ${Fuel.unit}',
+      details: {'allocationId': id, 'writtenOff': amount},
+      risk: AuditRepo.riskHigh,
+      actorEmail: actor,
+    );
+    return FuelResult(ok: true, refNo: row.allocation.refNo);
+  }
+
   /// التفريدة التي صُرف عليها لا تُحذف: حذفها يترك سنداتها بلا مرجع.
   Future<FuelResult> deleteAllocation(String id, {String actor = ''}) async {
     final used = await (db.select(db.fuelIssues)
@@ -617,107 +658,116 @@ class FuelRepo {
     if (date.trim().isEmpty) {
       return const FuelResult(ok: false, error: '✖ التاريخ مطلوب');
     }
-
-    final stock = await available(warehouse, fuelType);
-    if (quantityLiters > stock + 1e-9) {
-      return FuelResult(
-        ok: false,
-        error: '✖ رصيد «$warehouse» من ${FuelType.label(fuelType)} '
-            '${Fuel.round(stock)} ${Fuel.unit} فقط',
-      );
+    // التاريخ القادم كان يجمع استحقاق الفترات حتى ذلك اليوم فيُصرف الآن ما لم
+    // يستحق بعد (H-6) — ويُرفض لكل صرفٍ لا لصرف التفريدة وحده.
+    if (Fuel.isFutureDate(date, DateTime.now())) {
+      return const FuelResult(ok: false, error: '✖ تاريخ الصرف لا يكون في المستقبل');
     }
 
-    final conf = await settings();
-    if (conf.requireChassis && chassisNo.trim().isEmpty) {
-      return const FuelResult(
-          ok: false, error: '✖ رقم الشاصي مطلوب — اضبطه من إعدادات المحروقات');
-    }
-    if (source == FuelSource.exceptional && !conf.allowExceptional) {
-      return const FuelResult(
-          ok: false, error: '✖ الصرف الاستثنائي معطَّل في إعدادات المحروقات');
-    }
-
-    var entitled = 0.0;
-    var periodType = '';
-    if (source == FuelSource.allocation) {
-      if (allocationId.trim().isEmpty) {
-        return const FuelResult(ok: false, error: '✖ اختر التفريدة');
+    // الفحص (رصيد المستودع والمتبقي من التفريدة) والإدراج في معاملة واحدة: كان
+    // بينهما فجوةٌ يمرّ فيها صرفٌ آخر على الرصيد نفسه.
+    return db.transaction<FuelResult>(() async {
+      final stock = await available(warehouse, fuelType);
+      if (quantityLiters > stock + 1e-9) {
+        return FuelResult(
+          ok: false,
+          error: '✖ رصيد «$warehouse» من ${FuelType.label(fuelType)} '
+              '${Fuel.round(stock)} ${Fuel.unit} فقط',
+        );
       }
-      final rows = await allocations();
-      final row =
-          rows.where((r) => r.allocation.id == allocationId).firstOrNull;
-      if (row == null) {
-        return const FuelResult(ok: false, error: '✖ التفريدة غير موجودة');
-      }
-      final block = Fuel.issueBlock(
-        allocation: row.calc,
-        date: date,
-        qty: quantityLiters,
-        alreadyIssued: row.issued,
-      );
-      if (block != null) return FuelResult(ok: false, error: '✖ $block');
-      entitled = row.entitled;
-      periodType = row.allocation.periodType;
-      beneficiaryUnitId =
-          beneficiaryUnitId.isEmpty ? row.allocation.unitId : beneficiaryUnitId;
-      beneficiaryName =
-          beneficiaryName.isEmpty ? row.allocation.unitName : beneficiaryName;
-    } else {
-      // الاستثنائي خارج كل تفريدة، فلا يُجاز إلا بمبرر وجهةِ أمرٍ مسمّاة.
-      if (justification.trim().isEmpty) {
+
+      final conf = await settings();
+      if (conf.requireChassis && chassisNo.trim().isEmpty) {
         return const FuelResult(
-            ok: false, error: '✖ الأمر الاستثنائي يلزمه مبرر');
+            ok: false, error: '✖ رقم الشاصي مطلوب — اضبطه من إعدادات المحروقات');
       }
-      if (orderAuthority.trim().isEmpty) {
-        return const FuelResult(ok: false, error: '✖ اذكر جهة الأمر');
+      if (source == FuelSource.exceptional && !conf.allowExceptional) {
+        return const FuelResult(
+            ok: false, error: '✖ الصرف الاستثنائي معطَّل في إعدادات المحروقات');
       }
-    }
 
-    final numbering = DocNumbering(db);
-    final docNo = await numbering.peek('fuel_issues', 'مح-');
-    final id = Ids.next('fis');
-    await db.into(db.fuelIssues).insert(FuelIssuesCompanion.insert(
-          id: id,
-          refNo: Value(docNo),
-          date: Value(date),
-          fuelType: Value(fuelType),
-          warehouse: Value(warehouse),
-          source: Value(source),
-          quantityLiters: Value(quantityLiters),
-          driverName: Value(driverName),
-          vehicleType: Value(vehicleType),
-          chassisNo: Value(chassisNo.trim()),
-          allocationId:
-              Value(source == FuelSource.allocation ? allocationId : ''),
-          beneficiaryUnitId: Value(beneficiaryUnitId),
-          beneficiaryName: Value(beneficiaryName),
-          entitledLiters: Value(entitled),
-          periodType: Value(periodType),
-          justification: Value(justification),
-          orderAuthority: Value(orderAuthority),
-          purpose: Value(purpose),
-          notes: Value(notes),
-          createdBy: Value(actor),
-        ));
-    await numbering.claim('fuel_issues', 'مح-', docNo);
-    await AuditRepo(db).log(
-      action: 'fuel.issue',
-      entityType: 'صرف محروقات',
-      summary: 'صرف ${Fuel.round(quantityLiters)} ${Fuel.unit} '
-          '${FuelType.label(fuelType)} لـ«$beneficiaryName» ($docNo)',
-      details: {
-        'issueId': id,
-        'docNo': docNo,
-        'warehouse': warehouse,
-        'source': source,
-        'chassisNo': chassisNo.trim(),
-      },
-      risk: source == FuelSource.exceptional
-          ? AuditRepo.riskHigh
-          : AuditRepo.riskNormal,
-      actorEmail: actor,
-    );
-    return FuelResult(ok: true, refNo: docNo);
+      var entitled = 0.0;
+      var periodType = '';
+      if (source == FuelSource.allocation) {
+        if (allocationId.trim().isEmpty) {
+          return const FuelResult(ok: false, error: '✖ اختر التفريدة');
+        }
+        final rows = await allocations();
+        final row =
+            rows.where((r) => r.allocation.id == allocationId).firstOrNull;
+        if (row == null) {
+          return const FuelResult(ok: false, error: '✖ التفريدة غير موجودة');
+        }
+        final block = Fuel.issueBlock(
+          allocation: row.calc,
+          date: date,
+          qty: quantityLiters,
+          alreadyIssued: row.issued,
+        );
+        if (block != null) return FuelResult(ok: false, error: '✖ $block');
+        entitled = row.entitled;
+        periodType = row.allocation.periodType;
+        beneficiaryUnitId =
+            beneficiaryUnitId.isEmpty ? row.allocation.unitId : beneficiaryUnitId;
+        beneficiaryName =
+            beneficiaryName.isEmpty ? row.allocation.unitName : beneficiaryName;
+      } else {
+        // الاستثنائي خارج كل تفريدة، فلا يُجاز إلا بمبرر وجهةِ أمرٍ مسمّاة.
+        if (justification.trim().isEmpty) {
+          return const FuelResult(
+              ok: false, error: '✖ الأمر الاستثنائي يلزمه مبرر');
+        }
+        if (orderAuthority.trim().isEmpty) {
+          return const FuelResult(ok: false, error: '✖ اذكر جهة الأمر');
+        }
+      }
+
+      final numbering = DocNumbering(db);
+      final docNo = await numbering.peek('fuel_issues', 'مح-');
+      final id = Ids.next('fis');
+      await db.into(db.fuelIssues).insert(FuelIssuesCompanion.insert(
+            id: id,
+            refNo: Value(docNo),
+            date: Value(date),
+            fuelType: Value(fuelType),
+            warehouse: Value(warehouse),
+            source: Value(source),
+            quantityLiters: Value(quantityLiters),
+            driverName: Value(driverName),
+            vehicleType: Value(vehicleType),
+            chassisNo: Value(chassisNo.trim()),
+            allocationId:
+                Value(source == FuelSource.allocation ? allocationId : ''),
+            beneficiaryUnitId: Value(beneficiaryUnitId),
+            beneficiaryName: Value(beneficiaryName),
+            entitledLiters: Value(entitled),
+            periodType: Value(periodType),
+            justification: Value(justification),
+            orderAuthority: Value(orderAuthority),
+            purpose: Value(purpose),
+            notes: Value(notes),
+            createdBy: Value(actor),
+          ));
+      await numbering.claim('fuel_issues', 'مح-', docNo);
+      await AuditRepo(db).log(
+        action: 'fuel.issue',
+        entityType: 'صرف محروقات',
+        summary: 'صرف ${Fuel.round(quantityLiters)} ${Fuel.unit} '
+            '${FuelType.label(fuelType)} لـ«$beneficiaryName» ($docNo)',
+        details: {
+          'issueId': id,
+          'docNo': docNo,
+          'warehouse': warehouse,
+          'source': source,
+          'chassisNo': chassisNo.trim(),
+        },
+        risk: source == FuelSource.exceptional
+            ? AuditRepo.riskHigh
+            : AuditRepo.riskNormal,
+        actorEmail: actor,
+      );
+      return FuelResult(ok: true, refNo: docNo);
+    });
   }
 
   // ───────────────────────── التوريد
@@ -789,6 +839,9 @@ class FuelRepo {
     String notes = '',
     String actor = '',
   }) async {
+    if (Fuel.isFutureDate(date, DateTime.now())) {
+      return const FuelResult(ok: false, error: '✖ تاريخ التحويل لا يكون في المستقبل');
+    }
     final stock = await available(fromWarehouse, fuelType);
     final error = Fuel.validateTransfer(
       from: fromWarehouse,

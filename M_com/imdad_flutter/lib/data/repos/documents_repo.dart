@@ -6,6 +6,7 @@ import '../../core/ids.dart';
 import '../db/app_database.dart';
 import '../../domain/document_edit.dart';
 import 'audit_repo.dart';
+import 'movements_repo.dart';
 
 /// سجل المستندات المحفوظة: استلام، صرف، تحويل، مرتجعات — مجمّعة برقم السند.
 /// يدعم العرض والتعديل والإلغاء وفق قواعد documents-center.js:
@@ -49,6 +50,7 @@ class DocumentLineRow {
     this.beneficiaryUnitId = '',
     this.beneficiaryUnitName = '',
     this.cylinderAction = '',
+    this.expiryDate = '',
   });
 
   final String id;
@@ -63,6 +65,10 @@ class DocumentLineRow {
   String beneficiaryUnitId;
   String beneficiaryUnitName;
   String cylinderAction;
+
+  /// تاريخ صلاحية الدفعة (سطر الوارد وحده). كان التعديل يُعيد إنشاء السطور بلا
+  /// هذا الحقل فتضيع تنبيهات قرب الانتهاء بصمت (M-8).
+  String expiryDate;
 }
 
 /// سطر واحد في سجل تعديلات السند (`editLog`).
@@ -276,6 +282,7 @@ class DocumentsRepo {
               beneficiaryUnitId: kind == DocKind.issue ? r.beneficiaryUnitId as String : '',
               beneficiaryUnitName: kind == DocKind.issue ? r.beneficiaryUnitName as String : '',
               cylinderAction: r.cylinderAction as String,
+              expiryDate: kind == DocKind.receipt ? r.expiryDate as String : '',
             ))
         .toList();
   }
@@ -296,80 +303,146 @@ class DocumentsRepo {
     }
   }
 
-  /// فرق الكميات بين الحالة المحفوظة والحالة الجديدة، بوحدة الأساس.
-  Future<Map<String, double>> pendingDelta({
-    required DocumentSummary doc,
-    required List<DocumentLineRow> after,
-  }) async {
-    final before = await lines(doc.kind, doc.refNo);
-    return DocumentEdit.delta(
-      context: doc.context,
-      before: before.map((l) => DocumentLine(itemId: l.itemId, baseQty: l.baseQty)).toList(),
-      after: after.map((l) => DocumentLine(itemId: l.itemId, baseQty: l.baseQty)).toList(),
+  /// الحالات التي لا أثر لها على الرصيد — كما في `MovementsRepo._balanceRows`.
+  static const Set<String> _inactive = {'DRAFT', 'ORDER', 'CANCELLED', 'REJECTED'};
+
+  /// أثر سطور سندٍ على أرصدة المستودعات: (المستودع، الصنف) ← الكمية بوحدة الأساس.
+  ///
+  /// **مرآةٌ حرفيّة لـ`MovementsRepo._balanceRows`** — الحالات غير الفاعلة،
+  /// واستثناء الأسطوانات، والتحويل يُنقص المصدر ما لم يُرفض أو يُلغَ ويزيد الهدف
+  /// إذا استُلم، والمرتجع التالف بلا أثر. كان الفحص بالصنف وحده على رصيد كل
+  /// مستودعات النطاق مجموعًا، والتحويل بلا فحص إطلاقًا (H-4).
+  static Map<(String, String), double> stockEffect({
+    required DocKind kind,
+    required String status,
+    required String warehouse,
+    String destWarehouse = '',
+    String returnType = 'FROM_UNIT',
+    String condition = 'صالحة',
+    required Iterable<({String itemId, double baseQty, String cylinderAction})> lines,
+  }) {
+    final out = <(String, String), double>{};
+    void add(String wh, String item, double q) {
+      if (wh.isEmpty || item.isEmpty || q == 0) return;
+      final k = (wh, item);
+      out[k] = _r3((out[k] ?? 0) + q);
+    }
+
+    for (final l in lines) {
+      switch (kind) {
+        case DocKind.receipt:
+          if (!_inactive.contains(status) && l.cylinderAction != 'REFILL') add(warehouse, l.itemId, l.baseQty);
+        case DocKind.issue:
+          if (!_inactive.contains(status) && l.cylinderAction != 'EXCHANGE' && l.cylinderAction != 'SEND_REFILL') {
+            add(warehouse, l.itemId, -l.baseQty);
+          }
+        case DocKind.transfer:
+          if (status != 'REJECTED' && status != 'CANCELLED') add(warehouse, l.itemId, -l.baseQty);
+          if (status == 'RECEIVED') add(destWarehouse, l.itemId, l.baseQty);
+        case DocKind.returnDoc:
+          if (_inactive.contains(status)) continue;
+          if (returnType == 'TO_SUPPLIER') {
+            add(warehouse, l.itemId, -l.baseQty);
+          } else if (condition != 'تالفة') {
+            add(warehouse, l.itemId, l.baseQty);
+          }
+      }
+    }
+    return out;
+  }
+
+  static double _r3(double v) => (v * 1000).round() / 1000;
+
+  /// أثر صفوف السند المحفوظة كما هي في القاعدة.
+  static Map<(String, String), double> _effectOfRows(DocKind kind, List<dynamic> rows) {
+    if (rows.isEmpty) return const {};
+    final head = rows.first;
+    return stockEffect(
+      kind: kind,
+      status: head.status as String,
+      warehouse: head.warehouse as String,
+      destWarehouse: kind == DocKind.transfer ? head.destWarehouse as String : '',
+      returnType: kind == DocKind.returnDoc ? head.type as String : 'FROM_UNIT',
+      condition: kind == DocKind.returnDoc ? head.condition as String : 'صالحة',
+      lines: [
+        for (final r in rows)
+          (itemId: r.itemId as String, baseQty: (r.baseQty as num).toDouble(), cylinderAction: r.cylinderAction as String),
+      ],
     );
   }
 
-  /// يطبّق التعديل بعد التحقق من كفاية الرصيد، ويسجّل سبب التعديل في سجل السند.
-  Future<EditCheck> applyEdit({
-    required DocumentSummary doc,
-    required List<DocumentLineRow> after,
-    required String reason,
-    required Map<String, double> availableBaseQty,
-    String editedBy = '',
-  }) async {
-    final delta = await pendingDelta(doc: doc, after: after);
-    final check = DocumentEdit.check(delta: delta, availableBaseQty: availableBaseQty);
-    if (!check.ok) return check;
-
-    final stamp = {
-      'at': DateTime.now().toIso8601String(),
-      'by': editedBy,
-      'reason': reason,
-      'delta': delta,
-    };
-
-    for (final line in after) {
-      final baseQty = line.qty * (line.factor <= 0 ? 1 : line.factor);
-      await _updateLine(doc.kind, line.id, qty: line.qty, baseQty: baseQty, stamp: stamp);
+  /// يفحص انتقال الأرصدة من [before] إلى [after]: لا مستودعَ مجمَّدٌ بأمر جرد
+  /// يُمسّ، ولا رصيد (مستودع × صنف) ينزل تحت الصفر. يُستدعى **داخل** معاملة
+  /// الكتابة نفسها فلا تفصل بين الفحص والكتابة فجوةٌ يمرّ فيها سندٌ آخر.
+  Future<EditCheck> _checkTransition(
+    Map<(String, String), double> before,
+    Map<(String, String), double> after,
+  ) async {
+    final moves = MovementsRepo(db);
+    final keys = {...before.keys, ...after.keys};
+    for (final wh in {for (final k in keys) k.$1}) {
+      final frozen = await moves.frozenMessage(wh);
+      if (frozen != null) return EditCheck(ok: false, warehouse: wh, error: frozen);
     }
-    // سطور حُذفت من السند: تُزال نهائيًا بعد أن دخل أثرها في الفرق أعلاه.
-    final keep = after.map((l) => l.id).toSet();
-    for (final old in await lines(doc.kind, doc.refNo)) {
-      if (!keep.contains(old.id)) await _deleteLine(doc.kind, old.id);
+    final balances = <String, Map<String, double>>{};
+    for (final k in keys) {
+      final delta = _r3((after[k] ?? 0) - (before[k] ?? 0));
+      if (delta >= 0) continue;
+      final have = (balances[k.$1] ??= await moves.balances(warehouse: k.$1))[k.$2] ?? 0;
+      if (have + delta < -1e-9) {
+        return EditCheck(ok: false, itemId: k.$2, warehouse: k.$1, available: have, needed: -delta);
+      }
     }
-
-    await AuditRepo(db).log(
-      action: 'document.edit',
-      entityType: doc.kind.label,
-      summary: 'تعديل ${doc.kind.label} ${doc.refNo} — $reason',
-      details: {'refNo': doc.refNo, 'warehouse': doc.warehouse, 'delta': delta},
-      risk: AuditRepo.riskHigh,
-      actorEmail: editedBy,
-    );
-    return check;
+    return const EditCheck(ok: true);
   }
 
   /// حفظ التعديل الكامل: تُحذف سطور السند وتُكتب
   /// القائمة الجديدة بالكامل ببيانات رأس محدَّثة (التاريخ/المستودع/الجهة)، مع رفع
-  /// عدّاد التعديلات وإضافة سطر في سجل التعديلات. الأرصدة تتأثر بالفرق فقط.
+  /// عدّاد التعديلات وإضافة سطر في سجل التعديلات.
+  ///
+  /// الرصيد يُفحص بالفرق **لكل مستودع** (ومنه تغيير المستودع نفسه، والتحويل
+  /// بمستودعيه)، ويُرفض المستودع المجمَّد بأمر جرد — والفحص والكتابة في معاملة
+  /// واحدة على صفوف السند كما هي الآن لا كما عُرضت.
   Future<EditCheck> saveEdit({
     required DocumentSummary doc,
     required List<DocumentLineRow> rows,
     required String reason,
-    required Map<String, double> availableBaseQty,
     required String date,
     required String warehouse,
     required String party,
     String headNotes = '',
     String actor = '',
   }) async {
-    final delta = await pendingDelta(doc: doc, after: rows);
-    final check = DocumentEdit.check(delta: delta, availableBaseQty: availableBaseQty);
-    if (!check.ok) return check;
-
-    final old = await _rowsOf(doc.kind, doc.refNo);
-    if (old.isEmpty) return check;
-    final head = old.first;
+    var summary = '';
+    final stockDelta = <String, double>{};
+    final check = await db.transaction<EditCheck>(() async {
+      final old = await _rowsOf(doc.kind, doc.refNo);
+      if (old.isEmpty) return const EditCheck(ok: false, error: '✖ السند غير موجود — حدّث القائمة');
+      final head = old.first;
+      final status = head.status as String;
+      final ctx = DocumentContext(type: doc.kind.docType, status: status);
+      if (status == 'CANCELLED' || status == 'REJECTED' || !ctx.editable) {
+        return const EditCheck(ok: false, error: '✖ هذا السند لا يُعدَّل بحالته الحالية — حدّث القائمة');
+      }
+      final after = stockEffect(
+        kind: doc.kind,
+        status: status,
+        warehouse: warehouse,
+        destWarehouse: doc.kind == DocKind.transfer ? party : '',
+        returnType: doc.kind == DocKind.returnDoc ? head.type as String : 'FROM_UNIT',
+        condition: doc.kind == DocKind.returnDoc ? head.condition as String : 'صالحة',
+        lines: [
+          for (final r in rows)
+            (itemId: r.itemId, baseQty: _r3(r.qty * (r.factor <= 0 ? 1 : r.factor)), cylinderAction: r.cylinderAction),
+        ],
+      );
+      final before = _effectOfRows(doc.kind, old);
+      final verdict = await _checkTransition(before, after);
+      if (!verdict.ok) return verdict;
+      final delta = <String, double>{
+        for (final k in {...before.keys, ...after.keys})
+          if (_r3((after[k] ?? 0) - (before[k] ?? 0)) != 0) '${k.$1}|${k.$2}': _r3((after[k] ?? 0) - (before[k] ?? 0)),
+      };
 
     final changes = <String>[];
     if (date != doc.date) changes.add('التاريخ ${doc.date} ← $date');
@@ -377,7 +450,7 @@ class DocumentsRepo {
     if (party != doc.party) changes.add('الجهة ${doc.party} ← $party');
     if (rows.length != old.length) changes.add('الأصناف ${old.length} ← ${rows.length}');
     if (delta.isNotEmpty) changes.add('فروقات رصيد على ${delta.length} صنف');
-    final summary = '${changes.isEmpty ? 'تعديل بيانات' : changes.join('، ')} — السبب: $reason';
+    summary = '${changes.isEmpty ? 'تعديل بيانات' : changes.join('، ')} — السبب: $reason';
 
     final logJson = jsonEncode([
       ...(jsonDecode(head.editLog as String) as List),
@@ -385,7 +458,7 @@ class DocumentsRepo {
     ]);
     final count = (head.editCount as int) + 1;
 
-    await db.transaction(() async {
+    {
       for (final l in old) {
         await _deleteLine(doc.kind, l.id as String);
       }
@@ -421,6 +494,7 @@ class DocumentsRepo {
                   supervision: Value(o.supervision),
                   audit: Value(o.audit),
                   cylinderAction: Value(r.cylinderAction),
+                  expiryDate: Value(r.expiryDate),
                 ));
           case DocKind.issue:
             final o = head as Issue;
@@ -515,7 +589,12 @@ class DocumentsRepo {
                 ));
         }
       }
+    }
+      // الفرق مُسجَّلٌ بمفتاح «مستودع|صنف» لسجل التدقيق.
+      stockDelta.addAll(delta);
+      return verdict;
     });
+    if (!check.ok) return check;
 
     await AuditRepo(db).write(
       'DOCUMENT_EDITED',
@@ -530,7 +609,7 @@ class DocumentsRepo {
         'itemCount': rows.length,
         'reason': reason,
         'summary': summary,
-        'stockDelta': delta,
+        'stockDelta': stockDelta,
         'risk': 'critical',
       },
     );
@@ -539,68 +618,6 @@ class DocumentsRepo {
 
   static String _stamp() =>
       DateTime.now().toIso8601String().replaceFirst('T', ' ').substring(0, 16);
-
-  Future<void> _updateLine(
-    DocKind kind,
-    String id, {
-    required double qty,
-    required double baseQty,
-    required Map<String, dynamic> stamp,
-  }) async {
-    final rows = await _rowById(kind, id);
-    if (rows.isEmpty) return;
-    final row = rows.first;
-    final log = <dynamic>[...(jsonDecode(row.editLog as String) as List), stamp];
-    final count = (row.editCount as int) + 1;
-
-    switch (kind) {
-      case DocKind.receipt:
-        await (db.update(db.receipts)..where((t) => t.id.equals(id))).write(ReceiptsCompanion(
-          qty: Value(qty),
-          baseQty: Value(baseQty),
-          editCount: Value(count),
-          editLog: Value(jsonEncode(log)),
-        ));
-        break;
-      case DocKind.issue:
-        await (db.update(db.issues)..where((t) => t.id.equals(id))).write(IssuesCompanion(
-          qty: Value(qty),
-          baseQty: Value(baseQty),
-          editCount: Value(count),
-          editLog: Value(jsonEncode(log)),
-        ));
-        break;
-      case DocKind.transfer:
-        await (db.update(db.transfers)..where((t) => t.id.equals(id))).write(TransfersCompanion(
-          qty: Value(qty),
-          baseQty: Value(baseQty),
-          editCount: Value(count),
-          editLog: Value(jsonEncode(log)),
-        ));
-        break;
-      case DocKind.returnDoc:
-        await (db.update(db.returns)..where((t) => t.id.equals(id))).write(ReturnsCompanion(
-          qty: Value(qty),
-          baseQty: Value(baseQty),
-          editCount: Value(count),
-          editLog: Value(jsonEncode(log)),
-        ));
-        break;
-    }
-  }
-
-  Future<List<dynamic>> _rowById(DocKind kind, String id) {
-    switch (kind) {
-      case DocKind.receipt:
-        return (db.select(db.receipts)..where((t) => t.id.equals(id))).get();
-      case DocKind.issue:
-        return (db.select(db.issues)..where((t) => t.id.equals(id))).get();
-      case DocKind.transfer:
-        return (db.select(db.transfers)..where((t) => t.id.equals(id))).get();
-      case DocKind.returnDoc:
-        return (db.select(db.returns)..where((t) => t.id.equals(id))).get();
-    }
-  }
 
   Future<void> _deleteLine(DocKind kind, String id) async {
     switch (kind) {
@@ -620,29 +637,32 @@ class DocumentsRepo {
   }
 
   /// إلغاء السند: يعكس أثره كاملًا لأن دفتر الأرصدة يتجاهل الحالة CANCELLED.
+  ///
+  /// الرصيد يُفحص لكل مستودع يمسّه الإلغاء — ومنه **مستودع الاستلام** حين يُلغى
+  /// تحويلٌ مُستلَم (كان التحويل بلا فحص فيسحب الإلغاء رصيدًا صُرف هناك) —
+  /// ويُرفض المستودع المجمَّد بأمر جرد، والفحص والكتابة في معاملة واحدة.
   Future<EditCheck> cancel({
     required DocumentSummary doc,
     required String reason,
-    required Map<String, double> availableBaseQty,
     String cancelledBy = '',
   }) async {
-    final rows = await lines(doc.kind, doc.refNo);
-    final reversal = DocumentEdit.cancellation(
-      context: doc.context,
-      lines: rows.map((l) => DocumentLine(itemId: l.itemId, baseQty: l.baseQty)).toList(),
-    );
-    final check = DocumentEdit.check(delta: reversal, availableBaseQty: availableBaseQty);
-    if (!check.ok) return check;
-
-    // الحالة السابقة وسجل التعديل يُقرآن من أول سطر — كل السطور تحمل نفس بيانات الرأس.
-    final old = await _rowsOf(doc.kind, doc.refNo);
-    if (old.isEmpty) return check;
-    final prev = old.first.status as String;
-    final logJson = jsonEncode([
-      ...(jsonDecode(old.first.editLog as String) as List),
-      {'at': _stamp(), 'by': cancelledBy, 'summary': 'إلغاء المستند — السبب: $reason'},
-    ]);
-
+    var rowsCount = 0;
+    var prev = '';
+    var reversal = <String, double>{};
+    final check = await db.transaction<EditCheck>(() async {
+      final old = await _rowsOf(doc.kind, doc.refNo);
+      if (old.isEmpty) return const EditCheck(ok: false, error: '✖ السند غير موجود — حدّث القائمة');
+      prev = old.first.status as String;
+      if (prev == 'CANCELLED') return const EditCheck(ok: false, error: '✖ السند ملغى سلفًا');
+      final before = _effectOfRows(doc.kind, old);
+      final verdict = await _checkTransition(before, const {});
+      if (!verdict.ok) return verdict;
+      rowsCount = old.length;
+      reversal = {for (final e in before.entries) '${e.key.$1}|${e.key.$2}': _r3(-e.value)};
+      final logJson = jsonEncode([
+        ...(jsonDecode(old.first.editLog as String) as List),
+        {'at': _stamp(), 'by': cancelledBy, 'summary': 'إلغاء المستند — السبب: $reason'},
+      ]);
     switch (doc.kind) {
       case DocKind.receipt:
         await (db.update(db.receipts)..where((t) => t.refNo.equals(doc.refNo)))
@@ -684,6 +704,9 @@ class DocumentsRepo {
         ));
         break;
     }
+      return verdict;
+    });
+    if (!check.ok) return check;
 
     await AuditRepo(db).write(
       'DOCUMENT_CANCELLED',
@@ -695,7 +718,7 @@ class DocumentsRepo {
         'warehouse': doc.warehouse,
         'target': doc.party,
         'status': prev,
-        'itemCount': rows.length,
+        'itemCount': rowsCount,
         'reason': reason,
         'reversal': reversal,
         'risk': 'critical',

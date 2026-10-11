@@ -20,6 +20,18 @@ mixin _LegacyBase {
   /// يُثبَّت ختمُها الوارد في `_settleMarks`، فيبقى الختم المحلي على القيمة المحلية.
   Set<String> _rejectedMarks = {};
 
+  /// علامات سجلاتٍ كتبها الاستيراد **بقيمة مختلفة رغم تساوي الختمين** (حسمُ
+  /// تعادل الإعدادات): تغيّرت هنا فعلًا فتأخذ رقم تسلسلٍ جديدًا في
+  /// `_settleMarks` لتبلغ من سحب القيمة القديمة منّا.
+  Set<String> _changedOnTie = {};
+
+  /// معرّفاتٌ حُسم تعارض مفتاحها الطبيعي في هذا الاستيراد: الجدول ← (الخاسر ←
+  /// الفائز). تُترجم بها المراجع في الصفوف الواردة بعدها ([_ref])، فلا يُكتب
+  /// سجلٌّ يشير إلى وحدةٍ حُذفت للتوّ.
+  Map<String, Map<String, String>> _replacedIds = {};
+
+  String _ref(String entity, String id) => _replacedIds[entity]?[id] ?? id;
+
   /// هل يُقبل السجل الوارد؟ يفوز الأحدث ختمًا؛ وعند تساوي الختم يفوز الوارد
   /// (السجلان متطابقان عمليًا، والترجيح الثابت يمنع تذبذب الأجهزة).
   bool _accept(String entity, String rowId) {
@@ -50,7 +62,12 @@ mixin _LegacyBase {
   /// كلها ويتكرر الإجهاض في كل مزامنة.
   bool _quantitiesOk(Map<String, dynamic> r, String table, LegacyImportResult res, {bool hasFactor = true}) {
     final bad = _d(r, 'qty') < 0 || _d(r, 'baseQty') < 0 || (hasFactor && _d(r, 'factor', 1) < 0);
-    if (bad) res.warnings.add('تُجوِّز سجل بكمية سالبة في $table (${_id(r)})');
+    if (bad) {
+      res.warnings.add('تُجوِّز سجل بكمية سالبة في $table (${_id(r)})');
+      // لم يُكتب، فلا تُثبَّت علامته: علامةٌ بلا صفٍّ تقول إن الجهاز يحمل
+      // نسخةً لا يحملها، فلا تُطلب ثانيةً.
+      _rejectedMarks.add('$table/${_s(r, 'id')}');
+    }
     return !bad;
   }
 

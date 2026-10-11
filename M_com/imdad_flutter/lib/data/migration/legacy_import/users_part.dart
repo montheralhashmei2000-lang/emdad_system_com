@@ -39,6 +39,28 @@ mixin _LegacyUsers on _LegacyBase {
       }
     }
 
+    // **صفٌّ موقَّعٌ أقدم من المحلي يُرفض (H-3 في تدقيق 2026-10-10).** التواقيع
+    // تربط القيم بختم `updatedAt` الخاص بها، ولا شيء كان يشترط أن يكون الوارد
+    // أحدث: فجهازٌ مقترن يعيد إرسال صفّ مديرٍ قديم (قبل خفضه أو تعطيله أو تغيير
+    // كلمة مروره) بتوقيعه الأصلي الصحيح، وبعلامة دمجٍ من المستقبل (بيده)، فتعود
+    // الصلاحية المسحوبة أو كلمة المرور المسرَّبة — ولا يستطيع المالك نقضها.
+    // والختم المقارَن ختمُ الموقِّع نفسه (`updatedAt`)، لا علامة الدمج.
+    final localSec = local?.updatedAt == null ? null : OwnerSignature.seconds(local!.updatedAt!);
+    final vouched = inRank > 0 || localRank > 0 || (local != null && OwnerSignature.parse(local.ownerSig).isNotEmpty);
+    if (vouched && localSec != null && (updatedSec == null || updatedSec < localSec)) {
+      return (
+        kind: 'rollback',
+        reason: 'نسخةٌ أقدم من المحلية لحسابٍ موقَّع (${updatedSec ?? '—'} < $localSec) — إعادةُ صفٍّ قديم',
+      );
+    }
+    // وإحياءُ حسابٍ مميَّز حُذف هنا بصفٍّ وُقِّع قبل حذفه: الصف المحلي غائب، والشاهد يحمل وقت الحذف.
+    if (local == null && inRank > 0) {
+      final tomb = _local['users/$id'];
+      if (tomb != null && tomb.isDeleted && (updatedSec == null || updatedSec * 1000 <= tomb.deletedAt!)) {
+        return (kind: 'rollback', reason: 'إحياءُ حسابٍ مميَّز محذوف بصفٍّ وُقِّع قبل حذفه');
+      }
+    }
+
     // تغيير الدور يلزمه توقيع `r` على الدور الوارد: **رفعًا** في أي حساب، و**خفضًا**
     // في حسابٍ مميَّز محليًّا. كان الخفض حرًّا، فيُخفض المالك إلى `user` ومعه تُستبدل
     // بصمته وصلاحياته في الصف نفسه بلا توقيع — لأن حارس `c` أدناه كان يشترط أن يبقى

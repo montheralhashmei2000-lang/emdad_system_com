@@ -248,6 +248,85 @@ void main() {
     });
   });
 
+  group('إعادة صفٍّ قديم موقَّع (H-3)', () {
+    test('مديرٌ خُفِّض بتوقيع: إعادة صفّه القديم الموقَّع تُرفض ويبقى مستخدمًا', () async {
+      // الصف المحلي: خُفض إلى user بتوقيع المالك في sec+100.
+      await db.into(db.users).insert(UsersCompanion.insert(
+            id: 'a1',
+            username: 'a1',
+            role: const Value('user'),
+            saltHex: const Value('aa'),
+            hashHex: const Value('bb'),
+            updatedAt: Value(DateTime.fromMillisecondsSinceEpoch((sec + 100) * 1000)),
+            ownerSig: Value(OwnerSignature.encode({'r': roleSig('a1', 'user', sec + 100)})),
+          ));
+      // الوارد: صفّه حين كان مديرًا (sec) بتوقيعه الأصلي الصحيح، وعلامة دمجٍ من المستقبل.
+      final r = await importer().importJson({
+        'users': [
+          row('a1', 'admin', sigs: {'r': roleSig('a1', 'admin', sec), 'c': credsSig('a1', 'admin', sec)}),
+        ],
+        'syncMarks': marks(['a1']),
+      });
+      expect(r.rejectedUsers.single.kind, 'rollback');
+      expect((await user('a1'))!.role, 'user', reason: 'عادت صلاحية مسحوبة بصفٍّ قديم');
+      expect(await audits('sync.role_rejected'), hasLength(1));
+    });
+
+    test('كلمة مرور مدير تغيّرت بتوقيع: الصف القديم بكلمته القديمة يُرفض', () async {
+      await db.into(db.users).insert(UsersCompanion.insert(
+            id: 'a1',
+            username: 'a1',
+            role: const Value('admin'),
+            saltHex: const Value('new-salt'),
+            hashHex: const Value('new-hash'),
+            updatedAt: Value(DateTime.fromMillisecondsSinceEpoch((sec + 50) * 1000)),
+          ));
+      final r = await importer().importJson({
+        'users': [
+          row('a1', 'admin', sigs: {'r': roleSig('a1', 'admin', sec), 'c': credsSig('a1', 'admin', sec)}),
+        ],
+        'syncMarks': marks(['a1']),
+      });
+      expect(r.rejectedUsers.single.kind, 'rollback');
+      expect((await user('a1'))!.hashHex, 'new-hash');
+    });
+
+    test('مديرٌ حُذف هنا لا يُحيا بصفٍّ وُقِّع قبل حذفه', () async {
+      await db.into(db.users).insert(UsersCompanion.insert(id: 'gone', username: 'gone', role: const Value('user')));
+      await (db.delete(db.users)..where((t) => t.id.equals('gone'))).go();
+      final r = await importer().importJson({
+        'users': [
+          row('gone', 'admin', sigs: {'r': roleSig('gone', 'admin', sec), 'c': credsSig('gone', 'admin', sec)}),
+        ],
+        'syncMarks': marks(['gone']),
+      });
+      expect(r.rejectedUsers.single.kind, 'rollback');
+      expect(await user('gone'), isNull);
+    });
+
+    test('النسخة الأحدث الموقَّعة تُقبل كالمعتاد', () async {
+      await db.into(db.users).insert(UsersCompanion.insert(
+            id: 'a1',
+            username: 'a1',
+            role: const Value('admin'),
+            saltHex: const Value('aa'),
+            hashHex: const Value('bb'),
+            updatedAt: Value(DateTime.fromMillisecondsSinceEpoch((sec - 100) * 1000)),
+          ));
+      final r = await importer().importJson({
+        'users': [
+          {
+            ...row('a1', 'user', sigs: {'r': roleSig('a1', 'user', sec), 'c': credsSig('a1', 'user', sec, active: false)}),
+            'active': false,
+          },
+        ],
+        'syncMarks': marks(['a1']),
+      });
+      expect(r.rejectedUsers, isEmpty);
+      expect((await user('a1'))!.role, 'user');
+    });
+  });
+
   group('فكّ الحجب', () {
     Future<void> seedBlocked(String blocked) => db.into(db.users).insert(
         UsersCompanion.insert(id: 'u1', username: 'u1', sectionBlocked: Value(blocked)));

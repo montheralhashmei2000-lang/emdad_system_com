@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/print/voucher_print.dart';
+import '../../core/security/auth_service.dart';
 import '../../core/security/perm.dart';
 import '../../core/ui/imd_form.dart';
 import '../../core/ui/imd_format.dart';
@@ -13,8 +14,11 @@ import '../../data/db/app_database.dart';
 import '../../data/repos/catalog_repo.dart';
 import '../../data/repos/documents_repo.dart';
 import '../../data/repos/movements_repo.dart';
+import '../../data/repos/settings_repo.dart';
+import '../../data/repos/signatures_repo.dart';
 import '../../domain/access_control.dart';
 import '../../domain/document_edit.dart';
+import '../../domain/esign_policy.dart';
 import '../inventory/doc_kit.dart';
 
 part 'doc_log/doc_log_helpers.dart';
@@ -61,6 +65,15 @@ class _DocLogViewState extends State<DocLogView> {
   List<Item> _items = const [];
   List<Warehouse> _whs = const [];
   List<Supplier> _sups = const [];
+
+  /// وضع التوقيع الإلكتروني (H-5): في اليدوي يظهر زرّ «توقيع» لمن يملك صلاحيته.
+  ESignMode _esignMode = ESignMode.auto;
+
+  bool get _canSign {
+    final auth = context.read<AuthService>();
+    final u = auth.currentUser;
+    return u != null && ESignPolicy.canSign(role: u.role, permissions: auth.permissionsOf(u));
+  }
 
   /// أسماء الأصناف داخل كل سند — يحتاجها البحث داخل السطور لا الرؤوس وحدها.
   final _lineText = <String, String>{};
@@ -112,6 +125,7 @@ class _DocLogViewState extends State<DocLogView> {
     final items = await catalog.items();
     final whs = await catalog.warehouses();
     final sups = await catalog.suppliers();
+    final esignMode = await SettingsRepo(_db).esignMode();
 
     _lineText.clear();
     for (final d in docs) {
@@ -124,7 +138,38 @@ class _DocLogViewState extends State<DocLogView> {
       _items = items;
       _whs = whs;
       _sups = sups;
+      _esignMode = esignMode;
     });
+  }
+
+  /// توقيعٌ إلكترونيٌّ يدويٌّ لسندٍ محفوظ باسم القائد — في الوضع اليدوي، وبصلاحية
+  /// `esign.approve` (المالك ومن مُنحها صراحةً).
+  Future<void> _sign(DocumentSummary g) async {
+    if (!_canSign) {
+      showImdToast(context, '✖ التوقيع الإلكتروني لمن مُنح صلاحيته وحده', error: true);
+      return;
+    }
+    final ok = await imdConfirm(
+      context,
+      'توقيع ${_typeOf(g.kind).label} «${g.refNo}» إلكترونيًّا باسم القائد؟\n'
+      'يُطبع رمز التحقق على كل نسخةٍ منه بعد اليوم، ويسقط إن عُدِّل السند.',
+      ok: 'توقيع',
+    );
+    if (!ok || !mounted) return;
+    final signatures = SignaturesRepo(_db);
+    try {
+      final payload = await signatures.payloadOfStored(g.refNo);
+      if (payload == null) throw StateError('✖ السند غير موجود — حدّث القائمة');
+      await signatures.signManually(
+        docRef: g.refNo,
+        status: g.status,
+        payload: payload,
+        actorEmail: _perm.email,
+      );
+      if (mounted) showImdToast(context, '✔ وُقِّع السند ${g.refNo}');
+    } on StateError catch (e) {
+      if (mounted) showImdToast(context, e.message, error: true);
+    }
   }
 
   /// زر «تحديث» في شريط المرشّحات.
@@ -320,6 +365,8 @@ class _DocLogViewState extends State<DocLogView> {
         if (_canPrint(t))
           ImdButton.outline(label: 'طباعة', icon: 'printer', small: true, onPressed: () => _print(g)),
         if (_canEdit(g)) ImdButton(label: 'تعديل', icon: 'edit', small: true, onPressed: () => _edit(g)),
+        if (_esignMode == ESignMode.manual && ESignPolicy.signable(g.status) && _canSign)
+          ImdButton.outline(label: 'توقيع', icon: 'key', small: true, onPressed: () => _sign(g)),
         if (_canDelete(g))
           ImdButton(
             label: 'إلغاء',
@@ -481,6 +528,8 @@ class _DocLogViewState extends State<DocLogView> {
         audit: g.kind == DocKind.receipt ? head.audit as String : '',
         supervision: g.kind == DocKind.receipt ? head.supervision as String : '',
         statusLabel: _statusLabel(g),
+        saved: true,
+        status: g.status,
         condition: g.kind == DocKind.returnDoc ? g.condition : '',
         origRef: g.kind == DocKind.returnDoc ? head.origRef as String : '',
         strength: g.kind == DocKind.issue ? nf(head.soldierCount as num) : '',
@@ -589,11 +638,9 @@ class _DocLogViewState extends State<DocLogView> {
       if (mounted) showImdToast(context, '✖ سبب الإلغاء مطلوب', error: true);
       return;
     }
-    final available = await _mv.balances(scope: _perm.scope);
     final check = await _repo.cancel(
       doc: g,
       reason: why.trim(),
-      availableBaseQty: available,
       cancelledBy: _perm.email,
     );
     if (!mounted) return;

@@ -39,8 +39,15 @@ class SyncInfo {
 
 
 class SyncResult {
-  const SyncResult({required this.ok, this.message = '', this.records = 0, this.upTo = 0, bool? failed})
-      : failed = failed ?? !ok;
+  const SyncResult({
+    required this.ok,
+    this.message = '',
+    this.records = 0,
+    this.upTo = 0,
+    this.upToSeq,
+    this.partial = false,
+    bool? failed,
+  }) : failed = failed ?? !ok;
 
   final bool ok;
 
@@ -50,8 +57,16 @@ class SyncResult {
   final String message;
   final int records;
 
-  /// أحدث ختم شملته هذه العملية — تُحفظ علامةَ ماءٍ للدورة التالية.
+  /// أحدث ختم زمني شملته هذه العملية — علامة الماء القديمة، لقرينٍ أقدم وحده.
   final int upTo;
+
+  /// رقم تسلسل الجهاز المصدِّر عند التصدير — علامة الماء للدورة التالية.
+  /// `null` ⇒ المصدِّر بإصدارٍ أقدم لا يعرف رقم التسلسل.
+  final int? upToSeq;
+
+  /// وصلت البيانات وتعذّر دمج بعضها (`LegacyImportResult.failedRows`): علامة
+  /// الماء لا تتقدّم فيُعاد طلب ما تعثّر في الدورة القادمة.
+  final bool partial;
 }
 
 

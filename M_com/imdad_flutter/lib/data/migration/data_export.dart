@@ -36,15 +36,26 @@ class DataExporter {
   /// لا يملك حسابًا يدخل به غير الحسابات الواصلة بالمزامنة. بصماتهم تتبع حكمَ
   /// PBKDF2 (310 ألف دورة) وحارس المزامنة (`c`) يمنع استبدالها. النسخة الاحتياطية
   /// لملفٍّ مشفَّر تُبقي الكل (الافتراضي).
-  Future<Map<String, dynamic>> toMap(
-      {bool includeUsers = false, int? since, bool includeOwnerSecrets = true}) async {
+  ///
+  /// [sinceSeq] هو المسار التفاضلي المعتمد: ما كُتب **على هذا الجهاز** بعد رقم
+  /// التسلسل ذاك (`SyncMarks.changedSinceSeq`)، أيًّا كانت ساعة كاتبه الأصلي.
+  /// و[since] (ختم زمني) باقٍ لقرينٍ بإصدارٍ أقدم وحده؛ يُهمل إن مُرِّر [sinceSeq].
+  Future<Map<String, dynamic>> toMap({
+    bool includeUsers = false,
+    int? since,
+    int? sinceSeq,
+    bool includeOwnerSecrets = true,
+  }) async {
     final marks = SyncMarks(db);
     // **الترتيب هنا ليس اعتباطًا.** علامة الماء تُقرأ **قبل** مسح التغييرات:
-    // سجلٌ يُكتب بين القراءتين ختمُه أكبر من العلامة المُعلنة، فيُلتقط في
+    // سجلٌ يُكتب بين القراءتين رقمُه أكبر من العلامة المُعلنة، فيُلتقط في
     // الدورة القادمة. لو عُكس الترتيب لسقط ذلك السجل من الحمولة وسقطت العلامة
     // فوقه — فلا يُطلب مرة أخرى أبدًا، ويضيع بلا أثر.
     final upTo = await marks.maxStamp();
-    final delta = since == null ? null : await marks.changedSince(since);
+    final upToSeq = await marks.maxSeq();
+    final delta = sinceSeq != null
+        ? await marks.changedSinceSeq(sinceSeq)
+        : (since == null ? null : await marks.changedSince(since));
 
     /// معرّفات ما تغيّر في جدول واحد. `null` ⇒ تصدير كامل بلا ترشيح.
     Set<String>? ids(String entity) {
@@ -65,9 +76,11 @@ class DataExporter {
         'app': 'imdad',
         'exportedAt': DateTime.now().toIso8601String(),
         'schema': db.schemaVersion,
-        if (since != null) 'since': since,
-        // علامة الماء التي يحفظها الطرف الآخر ليطلب ما بعدها في المرة القادمة.
-        // تُؤخذ من ساعة هذا الجهاز وحده، فلا يفسدها اختلاف ساعتَي الجهازين.
+        if (sinceSeq != null) 'sinceSeq': sinceSeq else if (since != null) 'since': since,
+        // علامة الماء التي يحفظها الطرف الآخر ليطلب ما بعدها في المرة القادمة:
+        // رقم تسلسل هذا الجهاز (`maxSeq`). و`maxStamp` لقرينٍ أقدم وحده — هو
+        // أكبر ختمٍ في الجدول، خليطٌ من ساعات الأجهزة كلها، ولا يصلح علامةً.
+        'maxSeq': upToSeq,
         'maxStamp': upTo,
       },
       if (includeUsers)
@@ -566,6 +579,7 @@ class DataExporter {
                 'signChief': x.signChief,
                 'requireChassis': x.requireChassis,
                 'allowExceptional': x.allowExceptional,
+                'carryCapPeriods': x.carryCapPeriods,
                 'notes': x.notes,
               })
           .toList(),
@@ -587,6 +601,7 @@ class DataExporter {
                 'endDate': a.endDate,
                 'active': a.active,
                 'disbursable': a.disbursable,
+                'writtenOffLiters': a.writtenOffLiters,
                 'notes': a.notes,
                 'createdBy': a.createdBy,
                 'createdAt': a.createdAt.toIso8601String(),
@@ -892,11 +907,20 @@ class DataExporter {
     ResultSetImplementation<T, D> table,
     Set<String>? ids,
     Expression<String> Function(T) key,
-  ) {
-    if (ids != null && ids.isEmpty) return Future.value(const []);
-    final q = db.select(table);
-    if (ids != null) q.where((t) => key(t).isIn(ids.toList()));
-    return q.get();
+  ) async {
+    if (ids == null) return db.select(table).get();
+    if (ids.isEmpty) return const [];
+    // على دفعات: `IN (?, ?, …)` بعشرات الآلاف يتجاوز حدّ متغيّرات SQLite في
+    // الاستعلام الواحد، فتفشل دفعةٌ تفاضلية كبيرة (بعد استيراد Excel أو غيابٍ
+    // طويل) في كل دورة.
+    const chunk = 500;
+    final list = ids.toList();
+    final out = <D>[];
+    for (var i = 0; i < list.length; i += chunk) {
+      final part = list.sublist(i, i + chunk > list.length ? list.length : i + chunk);
+      out.addAll(await (db.select(table)..where((t) => key(t).isIn(part))).get());
+    }
+    return out;
   }
 
   /// حقول تعديل السند وإلغائه المشتركة بين جداول الحركات (سجل المستندات).

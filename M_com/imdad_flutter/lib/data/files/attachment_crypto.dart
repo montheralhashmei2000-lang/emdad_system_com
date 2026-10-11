@@ -59,7 +59,9 @@ class AttachmentCrypto {
   static Future<Uint8List> _key() async {
     final have = _cached;
     if (have != null) return have;
-    final dbKey = _debugKeyHex ?? await DbCipher.loadKey();
+    // لا يُولَّد مفتاح هنا أبدًا: القاعدة مفتوحةٌ قبل أي مرفق، فمفتاحها موجود؛
+    // وغيابُه والقاعدة قائمة يُرمى ([DbKeyMissing]) فلا يُكتب مرفقٌ بمفتاحٍ غريب.
+    final dbKey = _debugKeyHex ?? await DbCipher.loadKey(dbFile: await DbCipher.defaultFile());
     final out = Uint8List(32);
     HKDFKeyDerivator(SHA256Digest())
       ..init(HkdfParameters(_hexToBytes(dbKey), 32, _salt, _info))
